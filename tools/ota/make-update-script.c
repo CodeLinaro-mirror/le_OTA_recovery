@@ -211,7 +211,7 @@ int main(int argc, char *argv[]) {
 
     // write the radio image (actually just loads it into RAM for now)
     printf("show_progress 0.1 0\n");
-    printf("write_radio_image PACKAGE:radio.img\n");
+    //printf("write_radio_image PACKAGE:radio.img\n");
 
     // erase and reinstall the system image
     printf("show_progress 0.5 0\n");
@@ -229,5 +229,6 @@ int main(int argc, char *argv[]) {
     // after the end of the script, the radio will be written to cache
     // leave some space in the progress bar for this operation
     printf("show_progress 0.2 10\n");
+    printf("show_progress 0.2 0\n");
     return 0;
 }

@@ -119,10 +119,10 @@ handle_update_package(const char *path, ZipArchive *zip,
             VERIFICATION_PROGRESS_FRACTION,
             VERIFICATION_PROGRESS_TIME);
 
-    if (!verify_jar_signature(zip, keys, numKeys)) {
+    /*if (!verify_jar_signature(zip, keys, numKeys)) {
         LOGE("Verification failed\n");
         return INSTALL_CORRUPT;
-    }
+    }*/
 
     // Update should take the rest of the progress bar.
     ui_print("Installing update...\n");
