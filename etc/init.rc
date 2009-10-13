@@ -22,7 +22,7 @@ on boot
     class_start default
 
 
-service recovery /sbin/recovery "--update_package=SDCARD:update.zip"
+service recovery /sbin/recovery
 
 service adbd /sbin/adbd recovery
 
