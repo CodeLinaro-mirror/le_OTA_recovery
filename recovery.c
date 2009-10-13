@@ -317,7 +317,7 @@ prompt_and_wait()
         } else if ((key == KEY_UP || key == KEY_VOLUMEUP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if (key == BTN_MOUSE && visible) {
+        } else if ((key == BTN_MOUSE && visible) || (key == KEY_CENTER && visible)) {
             chosen_item = selected;
         }
 
