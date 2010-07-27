@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2007 The Android Open Source Project
+ * Copyright (c) 2010, Code Aurora Forum. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +24,7 @@
 
 #include "mtdutils/mtdutils.h"
 #include "mtdutils/mounts.h"
+#include "mmcutils/mmcutils.h"
 #include "minzip/Zip.h"
 #include "roots.h"
 #include "common.h"
@@ -40,10 +42,11 @@ typedef struct {
 xxx may just want to use enums
  */
 static const char g_mtd_device[] = "@\0g_mtd_device";
+static const char g_mmc_device[] = "@\0g_mmc_device";
 static const char g_raw[] = "@\0g_raw";
 static const char g_package_file[] = "@\0g_package_file";
 
-static RootInfo g_roots[] = {
+static RootInfo g_roots_mtd[] = {
     { "BOOT:", g_mtd_device, NULL, "boot", NULL, g_raw },
     { "CACHE:", g_mtd_device, NULL, "cache", "/cache", "yaffs2" },
     { "DATA:", g_mtd_device, NULL, "userdata", "/data", "yaffs2" },
@@ -55,7 +58,38 @@ static RootInfo g_roots[] = {
     { "MBM:", g_mtd_device, NULL, "mbm", NULL, g_raw },
     { "TMP:", NULL, NULL, NULL, "/tmp", NULL },
 };
-#define NUM_ROOTS (sizeof(g_roots) / sizeof(g_roots[0]))
+
+static RootInfo g_roots_mmc[] = {
+    { "BOOT:", g_mmc_device, NULL, "boot", NULL, g_raw },
+    { "CACHE:", g_mmc_device, NULL, "cache", "/cache", "ext3" },
+    { "DATA:", g_mmc_device, NULL, "userdata", "/data", "ext3" },
+    { "MISC:", g_mmc_device, NULL, "misc", NULL, g_raw },
+    { "PACKAGE:", NULL, NULL, NULL, NULL, g_package_file },
+    { "RECOVERY:", g_mtd_device, NULL, "recovery", "/", g_raw },
+    { "SDCARD:", "/dev/block/mmcblk1p1", "/dev/block/mmcblk1", NULL, "/sdcard", "vfat" },
+    { "SYSTEM:", g_mmc_device, NULL, "system", "/system", "ext3" },
+    { "MBM:", g_mmc_device, NULL, "mbm", NULL, g_raw },
+    { "TMP:", NULL, NULL, NULL, "/tmp", NULL },
+};
+
+static RootInfo *g_roots = NULL;
+
+void
+set_root_table()
+{
+    char emmc[64];
+    property_get("ro.emmc", emmc, "");
+    if(!strcmp(emmc, "1"))
+    {
+        g_roots = g_roots_mmc;
+    }
+    else
+    {
+        g_roots = g_roots_mtd;
+    }
+}
+
+#define NUM_ROOTS (sizeof(g_roots_mmc) / sizeof(g_roots_mmc[0]))
 
 // TODO: for SDCARD:, try /dev/block/mmcblk0 if mmcblk0p1 fails
 
@@ -365,7 +399,22 @@ format_root_device(const char *root)
             }
         }
     }
-//TODO: handle other device types (sdcard, etc.)
-    LOGW("format_root_device: can't handle non-mtd device \"%s\"\n", root);
+//Handle MMC device types
+    if(info->device == g_mmc_device) {
+        mmc_scan_partitions();
+        const MmcPartition *partition;
+        partition = mmc_find_partition_by_name(info->partition_name);
+        if (partition == NULL) {
+            LOGE("format_root_device: can't find mmc partition \"%s\"\n",
+                    info->partition_name);
+            return -1;
+        }
+        if (!strcmp(info->filesystem, "ext3")) {
+            if(mmc_format_ext3(partition))
+                LOGE("\n\"%s\" wipe failed!\n", info->partition_name);
+        }
+    }
+//TODO: handle other device types.
+    LOGW("format_root_device: can't handle non-mtd and non-mmc device \"%s\"\n", root);
     return -1;
 }
