@@ -53,6 +53,7 @@ int device_handle_key(int key_code, int visible) {
                 return HIGHLIGHT_UP;
 
             case KEY_ENTER:
+            case KEY_CENTER:
                 return SELECT_ITEM;
         }
     }
