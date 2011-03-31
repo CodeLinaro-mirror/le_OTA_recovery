@@ -47,6 +47,7 @@ static const struct option OPTIONS[] = {
   { "wipe_cache", no_argument, NULL, 'c' },
   { "set_encrypted_filesystems", required_argument, NULL, 'e' },
   { "show_text", no_argument, NULL, 't' },
+  { "radio_status", no_argument, NULL, 'r' },
   { NULL, 0, NULL, 0 },
 };
 
@@ -57,6 +58,7 @@ static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
 static const char *SDCARD_ROOT = "/sdcard";
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *SIDELOAD_TEMP_DIR = "/tmp/sideload";
+static const char *RADIO_DIR = "/sdcard/radio";
 
 /*
  * The recovery tool communicates with the main system through /cache files.
@@ -578,7 +580,10 @@ sdcard_directory(const char* path) {
             ui_print("\n-- Install %s ...\n", path);
             set_sdcard_update_bootloader_message();
             char* copy = copy_sideloaded_package(new_path);
-            ensure_path_unmounted(SDCARD_ROOT);
+            // create radio folder for QCOM radio image update
+            mkdir(RADIO_DIR,777);
+            // do not unmount SD card here itself. It's unmounted at the end.
+            // ensure_path_unmounted(SDCARD_ROOT);
             if (copy) {
                 result = install_package(copy);
                 free(copy);
@@ -710,6 +715,7 @@ main(int argc, char **argv) {
     const char *update_package = NULL;
     const char *encrypted_fs_mode = NULL;
     int wipe_data = 0, wipe_cache = 0;
+    int check_radio = 0;
     int toggle_secure_fs = 0;
     encrypted_fs_info encrypted_fs_data;
 
@@ -723,6 +729,7 @@ main(int argc, char **argv) {
         case 'c': wipe_cache = 1; break;
         case 'e': encrypted_fs_mode = optarg; toggle_secure_fs = 1; break;
         case 't': ui_show_text(1); break;
+        case 'r': check_radio = 1; break;
         case '?':
             LOGE("Invalid command argument\n");
             continue;
@@ -805,6 +812,16 @@ main(int argc, char **argv) {
     } else if (wipe_cache) {
         if (wipe_cache && erase_volume("/cache")) status = INSTALL_ERROR;
         if (status != INSTALL_SUCCESS) ui_print("Cache wipe failed.\n");
+    } else if (check_radio) {
+        struct bootloader_message boot;
+        memset(&boot, 0, sizeof(boot));
+        get_bootloader_message(&boot);
+        if(!strcmp(boot.status, "failed-update")) {
+            ui_print("Failed radio update\n");
+            status = INSTALL_ERROR;
+        }
+        else
+            ui_print("Radio update success\n");
     } else {
         status = INSTALL_ERROR;  // No command specified
     }
