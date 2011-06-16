@@ -1,6 +1,8 @@
 /*
  * Copyright (C) 2007 The Android Open Source Project
  *
+ * Copyright (c) 2009-2011, Code Aurora Forum. All rights reserved.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -51,11 +53,11 @@ static int gr_fb_fd = -1;
 static int gr_vt_fd = -1;
 
 static struct fb_var_screeninfo vi;
+static struct fb_fix_screeninfo fi;
 
 static int get_framebuffer(GGLSurface *fb)
 {
     int fd;
-    struct fb_fix_screeninfo fi;
     void *bits;
 
     fd = open("/dev/graphics/fb0", O_RDWR);
@@ -86,20 +88,20 @@ static int get_framebuffer(GGLSurface *fb)
     fb->version = sizeof(*fb);
     fb->width = vi.xres;
     fb->height = vi.yres;
-    fb->stride = vi.xres;
+    fb->stride = fi.line_length / (vi.bits_per_pixel / 8);
     fb->data = bits;
     fb->format = GGL_PIXEL_FORMAT_RGB_565;
-    memset(fb->data, 0, vi.yres * vi.xres * 2);
+    memset(fb->data, 0, fb->height * fb->stride * (vi.bits_per_pixel / 8));
 
     fb++;
 
     fb->version = sizeof(*fb);
     fb->width = vi.xres;
     fb->height = vi.yres;
-    fb->stride = vi.xres;
-    fb->data = (void*) (((unsigned) bits) + (vi.yres * vi.xres * vi.bits_per_pixel / 8));
+    fb->stride = fi.line_length / (vi.bits_per_pixel / 8);
+    fb->data = (void*) (((unsigned) bits) + (fb->height * fb->stride * vi.bits_per_pixel / 8));
     fb->format = GGL_PIXEL_FORMAT_RGB_565;
-    memset(fb->data, 0, vi.yres * vi.xres * 2);
+    memset(fb->data, 0, fb->height * fb->stride * (vi.bits_per_pixel / 8));
 
     return fd;
 }
@@ -108,8 +110,8 @@ static void get_memory_surface(GGLSurface* ms) {
   ms->version = sizeof(*ms);
   ms->width = vi.xres;
   ms->height = vi.yres;
-  ms->stride = vi.xres;
-  ms->data = malloc(vi.xres * vi.yres * 2);
+  ms->stride = fi.line_length / (vi.bits_per_pixel / 8);
+  ms->data = malloc(ms->stride * ms->height * 2);
   ms->format = GGL_PIXEL_FORMAT_RGB_565;
 }
 
@@ -163,7 +165,8 @@ void gr_flip(void)
     {
         gr_flip_32((unsigned *)gr_framebuffer[gr_active_fb].data,
                    (unsigned short *)gr_mem_surface.data,
-                   (vi.xres * vi.yres));
+                   (gr_framebuffer[gr_active_fb].stride
+                    * gr_framebuffer[gr_active_fb].height));
     }
 
     /* inform the display driver */
