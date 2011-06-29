@@ -34,7 +34,7 @@ int device_recovery_start() {
 }
 
 int device_toggle_display(volatile char* key_pressed, int key_code) {
-    return key_code == KEY_HOME;
+    return (key_code == KEY_HOME)||(key_code == KEY_POWER);
 }
 
 int device_reboot_now(volatile char* key_pressed, int key_code) {
@@ -55,6 +55,7 @@ int device_handle_key(int key_code, int visible) {
             case KEY_FN_F1:
             case KEY_ENTER:
             case KEY_CENTER:
+            case KEY_CAMERA:
                 return SELECT_ITEM;
         }
     }
