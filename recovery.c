@@ -59,6 +59,8 @@ static const char *SDCARD_ROOT = "/sdcard";
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *SIDELOAD_TEMP_DIR = "/tmp/sideload";
 static const char *RADIO_DIR = "/sdcard/radio";
+static int radio_update_success = 0;
+static const char *OTA_PATH_FILE="/sdcard/ota_path_file";
 
 /*
  * The recovery tool communicates with the main system through /cache files.
@@ -268,6 +270,27 @@ copy_log_file(const char* destination, int append) {
 }
 
 
+static int remove_ota_file() {
+    FILE *fp;
+    char ota_file[PATH_MAX];
+
+    fp = fopen(OTA_PATH_FILE,"rw");
+    if (!fp) {
+        LOGE("Error opening file for read: %s\n",OTA_PATH_FILE);
+        return -1;
+    }
+    while (fgets(ota_file,sizeof(ota_file),fp) != NULL);
+    fclose(fp);
+
+    if (unlink(ota_file) && errno !=ENOENT) {
+        LOGE("Error removing OTA file : %s\n",ota_file);
+    }
+
+    if (unlink(OTA_PATH_FILE) && errno !=ENOENT) {
+        LOGE("Error removing OTA PATH file: %s\n",OTA_PATH_FILE);
+    }
+    return 0;
+}
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
 // record any intent we were asked to communicate back to the system.
@@ -301,6 +324,19 @@ finish_recovery(const char *send_intent) {
         LOGW("Can't unlink %s\n", COMMAND_FILE);
     }
 
+    if (radio_update_success) {
+        /* Once the radio update is sucessful, remove the radio images
+         * and OTA upgrade zip file
+         */
+        ensure_path_mounted(SDCARD_ROOT);
+        if (rmdir(RADIO_DIR)) {
+            LOGE("Can't remove radio dir :%s\n",RADIO_DIR);
+        }
+        if (remove_ota_file()) {
+            LOGE("Can't remove OTA file\n");
+        }
+        ensure_path_unmounted(SDCARD_ROOT);
+    }
     sync();  // For good measure.
 }
 
@@ -479,6 +515,19 @@ static int compare_string(const void* a, const void* b) {
     return strcmp(*(const char**)a, *(const char**)b);
 }
 
+static void backup_ota_path(char *new_path) {
+    FILE *fp;
+    fp = fopen(OTA_PATH_FILE,"w+");
+
+    if (!fp) {
+        LOGE("Error opening file for write:%s\n",OTA_PATH_FILE);
+        return;
+    }
+
+    fwrite(new_path,1,strlen(new_path),fp);
+    fclose(fp);
+}
+
 static int
 sdcard_directory(const char* path) {
     ensure_path_mounted(SDCARD_ROOT);
@@ -577,6 +626,10 @@ sdcard_directory(const char* path) {
             strlcat(new_path, "/", PATH_MAX);
             strlcat(new_path, item, PATH_MAX);
 
+            /* Back up the name of zip file selected for OTA upgrade,
+             * and remove once the OTA upgrade is successful
+             */
+            backup_ota_path(new_path);
             ui_print("\n-- Install %s ...\n", path);
             set_sdcard_update_bootloader_message();
             char* copy = copy_sideloaded_package(new_path);
@@ -820,8 +873,10 @@ main(int argc, char **argv) {
             ui_print("Failed radio update\n");
             status = INSTALL_ERROR;
         }
-        else
+        else {
             ui_print("Radio update success\n");
+            radio_update_success = 1;
+       }
     } else {
         status = INSTALL_ERROR;  // No command specified
     }
