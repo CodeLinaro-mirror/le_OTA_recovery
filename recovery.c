@@ -62,6 +62,8 @@ static const char *RADIO_DIR = "/sdcard/radio";
 static int radio_update_success = 0;
 static const char *OTA_PATH_FILE="/sdcard/ota_path_file";
 
+static int reset_devinfo = 0;
+
 /*
  * The recovery tool communicates with the main system through /cache files.
  *   /cache/recovery/command - INPUT - command line for tool, one arg per line
@@ -316,6 +318,8 @@ finish_recovery(const char *send_intent) {
     // Reset to mormal system boot so recovery won't cycle indefinitely.
     struct bootloader_message boot;
     memset(&boot, 0, sizeof(boot));
+    if(reset_devinfo)
+        strlcpy(boot.command, "reset-device-info", sizeof(boot.command));
     set_bootloader_message(&boot);
 
     // Remove the command file, so recovery won't repeat indefinitely.
@@ -856,7 +860,10 @@ main(int argc, char **argv) {
         }
     } else if (update_package != NULL) {
         status = install_package(update_package);
-        if (status != INSTALL_SUCCESS) ui_print("Installation aborted.\n");
+        if (status != INSTALL_SUCCESS)
+            ui_print("Installation aborted.\n");
+        else
+            reset_devinfo = 1;
     } else if (wipe_data) {
         if (device_wipe_data()) status = INSTALL_ERROR;
         if (erase_volume("/data")) status = INSTALL_ERROR;
