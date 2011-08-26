@@ -738,8 +738,10 @@ prompt_and_wait() {
                         ui_set_background(BACKGROUND_ICON_ERROR);
                         ui_print("Installation aborted.\n");
                     } else if (!ui_text_visible()) {
+                        reset_devinfo = 1;
                         return;  // reboot if logs aren't visible
                     } else {
+                        reset_devinfo = 1;
                         ui_print("\nInstall from sdcard complete.\n");
                     }
                 }
