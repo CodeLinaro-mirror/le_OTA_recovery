@@ -32,6 +32,11 @@ LOCAL_SRC_FILES := main.c
 LOCAL_MODULE := applypatch
 LOCAL_C_INCLUDES += bootable/recovery
 LOCAL_STATIC_LIBRARIES += libapplypatch libmtdutils libmincrypt libbz
+ifeq ($(TARGET_FOTA_UPDATE_LIB),)
+  LOCAL_STATIC_LIBRARIES += libduadummy
+else
+  LOCAL_STATIC_LIBRARIES += $(TARGET_FOTA_UPDATE_LIB)
+endif
 LOCAL_SHARED_LIBRARIES += libz libcutils libstdc++ libc
 
 include $(BUILD_EXECUTABLE)
@@ -44,6 +49,11 @@ LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_MODULE_TAGS := eng
 LOCAL_C_INCLUDES += bootable/recovery
 LOCAL_STATIC_LIBRARIES += libapplypatch libmtdutils libmincrypt libbz
+ifeq ($(TARGET_FOTA_UPDATE_LIB),)
+  LOCAL_STATIC_LIBRARIES += libduadummy
+else
+  LOCAL_STATIC_LIBRARIES += $(TARGET_FOTA_UPDATE_LIB)
+endif
 LOCAL_STATIC_LIBRARIES += libz libcutils libstdc++ libc
 
 include $(BUILD_EXECUTABLE)

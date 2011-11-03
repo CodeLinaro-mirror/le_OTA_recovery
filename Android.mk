@@ -67,6 +67,7 @@ include $(commands_recovery_local_path)/tools/Android.mk
 include $(commands_recovery_local_path)/edify/Android.mk
 include $(commands_recovery_local_path)/updater/Android.mk
 include $(commands_recovery_local_path)/applypatch/Android.mk
+include $(commands_recovery_local_path)/duadummy/Android.mk
 commands_recovery_local_path :=
 
 endif   # TARGET_ARCH == arm
