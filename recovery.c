@@ -952,13 +952,15 @@ static int set_deltaupdate_status(int status, int error_code)
         case DELTA_UPDATE_IN_PROGRESS:
         case DELTA_UPDATE_SUCCESSFUL:
         case DELTA_UPDATE_FAILED:
-            strlcpy(strbuf,DELTA_UPDATE_STATUS_DB[status].str,sizeof(strbuf));
-            sprintf(&strbuf[strlen(strbuf)], " %d", error_code);
+            if ((snprintf(strbuf, sizeof(strbuf), "%s %d", DELTA_UPDATE_STATUS_DB[status].str, error_code)) >= sizeof(strbuf)) {
+               LOGI("Output Truncated while setting error code\n");
+            }
             fwrite(strbuf, sizeof(char), strlen(strbuf), f);
             break;
         default:
-            strlcpy(strbuf,"DELTA_NO_UPDATE",sizeof(strbuf));
-            sprintf(&strbuf[strlen(strbuf)], " %d", error_code);
+            if ((snprintf(strbuf, sizeof(strbuf), "DELTA_NO_UPDATE %d", error_code)) >= sizeof(strbuf)) {
+               LOGI("Output Truncated while setting error code\n");
+            }
             fwrite(strbuf, sizeof(char), strlen(strbuf), f);
             break;
     }
@@ -1013,7 +1015,7 @@ static void increment_deltaupdate_recoverycount(void)
 
     num = get_deltaupdate_recoverycount();
     num += 1;
-    sprintf(numbuf, "%d", num);
+    snprintf(numbuf, sizeof(numbuf), "%d", num);
 
     memset(strbuf,0x0,sizeof(strbuf));
     strlcpy(strbuf,"numRecovery=",sizeof(strbuf));
@@ -1022,7 +1024,8 @@ static void increment_deltaupdate_recoverycount(void)
     f = fopen_path(NUM_OF_RECOVERY, "w");
     if(f == NULL)
     {
-       LOGI("Creating...\n");
+       LOGI("Error Creating file %s\n",NUM_OF_RECOVERY);
+       return;
     }
     fwrite(strbuf, sizeof(char), strlen(strbuf), f);
     check_and_fclose(f, NUM_OF_RECOVERY);
@@ -1036,6 +1039,10 @@ static int remove_tempfiles(char* diff_pkg_path_name)
    }
    if (unlink(NUM_OF_RECOVERY) && errno != ENOENT) {
        LOGI("Cannot unlink %s\n", NUM_OF_RECOVERY);
+       return -1;
+   }
+   if (unlink(RADIO_DIFF_OUTPUT) && errno != ENOENT) {
+       LOGI("Cannot unlink %s\n", RADIO_DIFF_OUTPUT);
        return -1;
    }
    return 0;
@@ -1059,7 +1066,7 @@ static int read_buildprop(char **ver)
         if(strcmp(tmpStr, BUILD_PROP_NAME) == 0)
         {
            tmpStr = strtok_r(NULL, "=", &saveptr);
-           strlcpy(*ver, tmpStr, sizeof(*ver));
+           strlcpy(*ver, tmpStr, MAX_STRING_LEN);
            fclose(b_fp);
            return 0;
         }
@@ -1077,10 +1084,14 @@ static char *delta_update_replace_str(char *str, char *org, char *rep)
     if(!(p = strstr(str, org)))
        return str;
 
-    strlcpy(buffer, str, sizeof(buffer));
+    if ((strlcpy(buffer, str, MAX_STRING_LEN)) >= MAX_STRING_LEN) {
+        LOGI("Version Update string truncated\n");
+        return NULL;
+    }
     buffer[p-str] = '\0';
 
-    sprintf(buffer+(p-str), "%s%s", rep, p+strlen(org));
+    strlcat(buffer, rep, MAX_STRING_LEN);
+    strlcat(buffer, p + strlen(org), MAX_STRING_LEN);
 
     return buffer;
 }
@@ -1118,12 +1129,12 @@ static int update_fotapropver(char *ver)
     }
 
     //Build New Version
-    sprintf(newstr,"%s=%s",VERSION_STRING_NAME, ver);
+    snprintf(newstr, MAX_STRING_LEN, "%s=%s",VERSION_STRING_NAME, ver);
 
     //Read Org File
     fseek(b_fp, 0, SEEK_END);
     size = ftell(b_fp);
-    buff = (char*)malloc(size);
+    buff = (char*)malloc(size+1);
     if (buff == NULL) {
         LOGI("Failed to allocate buffer\n");
         return -1;
@@ -1134,14 +1145,17 @@ static int update_fotapropver(char *ver)
     fseek(b_fp, 0, SEEK_SET);
     fread(buff, sizeof(char), size, b_fp);
     fclose(b_fp);
-
+    buff[size] = '\0';
     newbuff = delta_update_replace_str(buff, orgstr, newstr);
 
-    b_fp = fopen_path(FOTA_PROP_FILE, "w+");
-    fwrite(newbuff, sizeof(char), strlen(newbuff), b_fp);
-    fclose(b_fp);
+    if (newbuff) {
+        b_fp = fopen_path(FOTA_PROP_FILE, "w+");
+        fwrite(newbuff, sizeof(char), strlen(newbuff), b_fp);
+        fclose(b_fp);
+        return 0;
+    }
 
-    return 0;
+    return -1;
 }
 
 static int update_fotaprop(void)
@@ -1214,6 +1228,7 @@ int start_deltaupdate(char* diff_pkg_path_name)
     set_deltaupdate_status(DELTA_UPDATE_SUCCESSFUL, DELTA_UPDATE_SUCCESS_200);
 
     ui_print("\nAndroid Delta Update Completed \n");
+    // Remove all temp files
     remove_tempfiles(diff_pkg_path_name);
     update_fotaprop();
     return 0;

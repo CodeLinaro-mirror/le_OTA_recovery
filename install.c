@@ -40,7 +40,6 @@
 #define PUBLIC_KEYS_FILE "/res/keys"
 
 #define RADIO_DIFF_NAME "radio.diff"
-#define RADIO_DIFF_OUTPUT "/cache/fota/radio.diff"
 
 static const char *LAST_INSTALL_FILE = "/cache/recovery/last_install";
 
