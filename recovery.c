@@ -978,13 +978,15 @@ static int set_deltaupdate_status(int status, int error_code)
         case DELTA_UPDATE_IN_PROGRESS:
         case DELTA_UPDATE_SUCCESSFUL:
         case DELTA_UPDATE_FAILED:
-            strlcpy(strbuf,DELTA_UPDATE_STATUS_DB[status].str,sizeof(strbuf));
-            sprintf(&strbuf[strlen(strbuf)], " %d", error_code);
+            if ((snprintf(strbuf, sizeof(strbuf), "%s %d", DELTA_UPDATE_STATUS_DB[status].str, error_code)) >= sizeof(strbuf)) {
+               LOGI("Buffer overflow while setting error code\n");
+            }
             fwrite(strbuf, sizeof(char), strlen(strbuf), f);
             break;
         default:
-            strlcpy(strbuf,"DELTA_NO_UPDATE",sizeof(strbuf));
-            sprintf(&strbuf[strlen(strbuf)], " %d", error_code);
+            if ((snprintf(strbuf, sizeof(strbuf), "DELTA_NO_UPDATE %d", error_code)) >= sizeof(strbuf)) {
+               LOGI("Buffer overflow while setting error code\n");
+            }
             fwrite(strbuf, sizeof(char), strlen(strbuf), f);
             break;
     }
@@ -1064,6 +1066,10 @@ static int remove_tempfiles(char* diff_pkg_path_name)
        LOGI("Cannot unlink %s\n", NUM_OF_RECOVERY);
        return -1;
    }
+   if (unlink(RADIO_DIFF_OUTPUT) && errno != ENOENT) {
+       LOGI("Cannot unlink %s\n", RADIO_DIFF_OUTPUT);
+       return -1;
+   }
    return 0;
 }
 
@@ -1085,7 +1091,7 @@ static int read_buildprop(char **ver)
         if(strcmp(tmpStr, BUILD_PROP_NAME) == 0)
         {
            tmpStr = strtok_r(NULL, "=", &saveptr);
-           strlcpy(*ver, tmpStr, sizeof(*ver));
+           strlcpy(*ver, tmpStr, MAX_STRING_LEN);
            fclose(b_fp);
            return 0;
         }
@@ -1103,7 +1109,7 @@ static char *delta_update_replace_str(char *str, char *org, char *rep)
     if(!(p = strstr(str, org)))
        return str;
 
-    strlcpy(buffer, str, sizeof(buffer));
+    strlcpy(buffer, str, MAX_STRING_LEN);
     buffer[p-str] = '\0';
 
     sprintf(buffer+(p-str), "%s%s", rep, p+strlen(org));
@@ -1149,7 +1155,7 @@ static int update_fotapropver(char *ver)
     //Read Org File
     fseek(b_fp, 0, SEEK_END);
     size = ftell(b_fp);
-    buff = (char*)malloc(size);
+    buff = (char*)malloc(size+1);
     if (buff == NULL) {
         LOGI("Failed to allocate buffer\n");
         return -1;
@@ -1160,7 +1166,7 @@ static int update_fotapropver(char *ver)
     fseek(b_fp, 0, SEEK_SET);
     fread(buff, sizeof(char), size, b_fp);
     fclose(b_fp);
-
+    buff[size] = '\0';
     newbuff = delta_update_replace_str(buff, orgstr, newstr);
 
     b_fp = fopen_path(FOTA_PROP_FILE, "w+");
