@@ -41,7 +41,6 @@
 #define RUN_DELTAUPDATE_AGENT  "/tmp/ipth_dua"
 #define PUBLIC_KEYS_FILE "/res/keys"
 #define RADIO_DIFF_NAME "radio.diff"
-#define RADIO_DIFF_OUTPUT "/cache/fota/radio.diff"
 
 extern RecoveryUI* ui;
 // Default allocation of progress bar segments to operations

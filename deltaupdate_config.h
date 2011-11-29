@@ -48,6 +48,9 @@
 //Contains information about delta update package location
 #define FOTA_PROP_FILE    "/data/fota/ipth-muc.prop"
 
+//Contains information about radio delta update
+#define RADIO_DIFF_OUTPUT "/cache/fota/radio.diff"
+
 //Indicates device firmware version to be used by DM client
 //for server communication. Recovery mode updates this string
 //when delta update is complete.
