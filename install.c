@@ -40,7 +40,6 @@
 #define PUBLIC_KEYS_FILE "/res/keys"
 
 #define RADIO_DIFF_NAME "radio.diff"
-#define RADIO_DIFF_OUTPUT "/cache/fota/radio.diff"
 
 const ZipEntry* radio_diff;
 // If the package contains an update binary, extract it and run it.
