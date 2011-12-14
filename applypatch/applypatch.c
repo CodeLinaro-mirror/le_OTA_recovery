@@ -43,6 +43,21 @@ static int GenerateTarget(FileContents* source_file,
 
 static int mtd_partitions_scanned = 0;
 
+int CheckSymLink(const char* filename) {
+    struct stat st;
+    int ret = 0;
+    if (lstat(filename, &st) != 0) {
+        printf("failed to stat \"%s\": %s\n", filename, strerror(errno));
+        ret = -1;
+        goto res;
+    }
+
+    if ((st.st_mode & S_IFMT) == S_IFLNK)
+         ret = 0;
+res:
+    return ret;
+}
+
 // Read a file into memory; optionally (retouch_flag == RETOUCH_DO_MASK) mask
 // the retouched entries back to their original value (such that SHA-1 checks
 // don't fail due to randomization); store the file contents and associated
@@ -865,9 +880,13 @@ static int GenerateTarget(FileContents* source_file,
             result = ApplyBSDiffPatch(source_to_use->data, source_to_use->size,
                                       patch, 0, sink, token, &ctx);
         } else if (header_bytes_read >= 8 &&
-                   memcmp(header, "IMGDIFF2", 8) == 0) {
+            memcmp(header, "IPDIFF10", 8) == 0) {
+            result = ApplyIPDiffPatch(source_to_use->data, source_to_use->size,
+                                      patch, 0, sink, token, &ctx);
+        } else if (header_bytes_read >= 8 &&
+            memcmp(header, "IMGDIFF2", 8) == 0) {
             result = ApplyImagePatch(source_to_use->data, source_to_use->size,
-                                     patch, sink, token, &ctx);
+                                      patch, sink, token, &ctx);
         } else {
             printf("Unknown patch file format\n");
             return 1;
