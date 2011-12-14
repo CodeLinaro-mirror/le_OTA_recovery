@@ -32,10 +32,19 @@
 #include "mtdutils/mtdutils.h"
 #include "roots.h"
 #include "verifier.h"
+#include "deltaupdate_config.h"
 
 #define ASSUMED_UPDATE_BINARY_NAME  "META-INF/com/google/android/update-binary"
+#define ASSUMED_DELTAUPDATE_BINARY_NAME  "META-INF/com/google/android/ipth_dua"
+#define RUN_DELTAUPDATE_AGENT  "/tmp/ipth_dua"
 #define PUBLIC_KEYS_FILE "/res/keys"
 
+#define RADIO_DIFF_NAME "radio.diff"
+#define RADIO_DIFF_OUTPUT "/cache/fota/radio.diff"
+
+static const char *LAST_INSTALL_FILE = "/cache/recovery/last_install";
+
+const ZipEntry* radio_diff;
 // If the package contains an update binary, extract it and run it.
 static int
 try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
@@ -44,6 +53,33 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
     if (binary_entry == NULL) {
         mzCloseZipArchive(zip);
         return INSTALL_CORRUPT;
+    }
+    fprintf(stderr, "try_update_binary(path(%s))\n",path);
+
+    radio_diff = mzFindZipEntry(zip, RADIO_DIFF_NAME);
+
+    if (radio_diff == NULL) {
+        fprintf(stderr, "%s not found\n", RADIO_DIFF_NAME);
+    }
+    else
+    {
+        char* diff_file = RADIO_DIFF_OUTPUT;
+        int fd_diff = creat(diff_file, 0777);
+
+        fprintf(stderr, "%s found\n", RADIO_DIFF_NAME);
+
+        if (fd_diff < 0) {
+            fprintf(stderr, "Can't make %s\n", diff_file);
+        }
+        else
+        {
+            bool ok_diff = mzExtractZipEntryToFile(zip, radio_diff, fd_diff);
+            close(fd_diff);
+
+            if (!ok_diff) {
+                fprintf(stderr, "Can't copy %s\n", RADIO_DIFF_NAME);
+            }
+        }
     }
 
     char* binary = "/tmp/update_binary";
@@ -307,4 +343,120 @@ install_package(const char* path, int* wipe_cache, const char* install_file)
         fclose(install_log);
     }
     return result;
+}
+
+int extract_deltaupdate_binary(const char *path)
+{
+    int err;
+    ZipArchive zip;
+
+    // Try to open the package.
+    err = mzOpenZipArchive(path, &zip);
+    if (err != 0) {
+        LOGE("Can't open %s\n(%s)\n", path, err != -1 ? strerror(err) : "bad");
+        return INSTALL_ERROR;
+    }
+
+    const ZipEntry* dua_entry =
+            mzFindZipEntry(&zip, ASSUMED_DELTAUPDATE_BINARY_NAME);
+    if (dua_entry == NULL) {
+        mzCloseZipArchive(&zip);
+       LOGE("Can't find %s\n", ASSUMED_DELTAUPDATE_BINARY_NAME);
+        return INSTALL_ERROR;
+    }
+
+    char* deltaupdate_agent = RUN_DELTAUPDATE_AGENT;
+    unlink(deltaupdate_agent);
+    int fd = creat(deltaupdate_agent, 0755);
+    if (fd < 0) {
+        mzCloseZipArchive(&zip);
+        LOGE("Can't make %s\n", deltaupdate_agent);
+        return INSTALL_ERROR;
+    }
+
+    bool ok = mzExtractZipEntryToFile(&zip, dua_entry, fd);
+    close(fd);
+    mzCloseZipArchive(&zip);
+
+    if (!ok) {
+        LOGE("Can't copy %s\n", ASSUMED_DELTAUPDATE_BINARY_NAME);
+        return INSTALL_ERROR;
+    }
+
+    return 0;
+}
+
+int run_modem_deltaupdate(void)
+{
+    int ret;
+
+    pid_t duapid = fork();
+
+    if (duapid == -1)
+    {
+        LOGE("fork failed. Returning error.\n");
+        return INSTALL_ERROR;
+    }
+
+    if (duapid == 0)
+    {//child process
+     /*
+      * argv[0] ipth_dua exeuable command itself
+      * argv[1] false(default) - old binary update as a block / true - old
+      * binary update as a file
+      * argv[2] old binary file name. Will be used as partition name if argv[1]
+      * is false
+      * argv[3] diff package name
+      * argv[4] flash memory block size in KB
+      */
+       char** args = malloc(sizeof(char*) * 5);
+       args[0] = RUN_DELTAUPDATE_AGENT;
+       args[1] = "false";
+       args[2] = "AMSS";
+       args[3] = RADIO_DIFF_OUTPUT;
+       args[4] = "256";
+       args[5] = NULL;
+
+       execv(RUN_DELTAUPDATE_AGENT, args);
+       fprintf(stdout, "E:Can't run %s (%s)\n", RUN_DELTAUPDATE_AGENT, strerror(errno));
+       _exit(-1);
+    }
+
+    //parents process
+    waitpid(duapid, &ret, 0);
+    if (!WIFEXITED(ret) || WEXITSTATUS(ret) != 0) {
+        LOGE("Error in %s\n(Status %d)\n", RUN_DELTAUPDATE_AGENT, WEXITSTATUS(ret));
+        return INSTALL_ERROR;
+    }
+
+    return INSTALL_SUCCESS;
+}
+
+int start_delta_modemupdate(const char *path)
+{
+    int ret = 0;
+
+    if (radio_diff == NULL)
+    {
+        LOGE("No modem package available.\n");
+        LOGE("No modem update needed. returning O.K\n");
+        return DELTA_UPDATE_SUCCESS_200;
+    }
+
+    // If the package contains an delta update binary for modem update, extract it
+    ret = extract_deltaupdate_binary(path);
+    if(ret != 0)
+    {
+       LOGE("idev_extractDua returned error(%d)\n", ret);
+       return ret;
+    }
+
+    // Execute modem update using delta update binary
+    ret = run_modem_deltaupdate();
+    LOGE("modem update result(%d)\n", ret);
+
+    if(ret == 0)
+	return DELTA_UPDATE_SUCCESS_200;
+    else
+	return ret;
 }

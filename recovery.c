@@ -25,6 +25,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/reboot.h>
 #include <time.h>
 #include <unistd.h>
 #include <dirent.h>
@@ -38,6 +39,18 @@
 #include "minzip/DirUtil.h"
 #include "roots.h"
 #include "recovery_ui.h"
+
+#include "deltaupdate_config.h"
+
+static const deltaupdate_config_st DELTA_UPDATE_STATUS_DB[] = {
+        {NO_DELTA_UPDATE, "IP_NO_UPDATE"},
+        {START_DELTA_UPDATE, "IP_START_UPDATE"},
+        {DELTA_UPDATE_IN_PROGRESS, "IP_PREVIOUS_UPDATE_IN_PROGRESS"},
+        {DELTA_UPDATE_SUCCESSFUL, "IP_PREVIOUS_UPDATE_SUCCESSFUL"},
+        {DELTA_UPDATE_FAILED, "IP_PREVIOUS_UPDATE_FAILED"}
+};
+
+static char diff_pkg_path_name[PATH_MAX];
 
 static const struct option OPTIONS[] = {
   { "send_intent", required_argument, NULL, 's' },
@@ -728,6 +741,550 @@ print_property(const char *key, const char *name, void *cookie) {
     printf("%s=%s\n", key, name);
 }
 
+static const char* skip_whitespaces(const char* ptr)
+{
+    while(*ptr != '\0')
+    {
+        if(*ptr == 0x09 /* Tab */
+            || *ptr == 0x0A /* LF */
+            || *ptr == 0x0D /* CR */
+            || *ptr == 0x20 /* SP */
+            )
+            ptr++;
+        else
+            return ptr;
+    }
+    return NULL;
+}
+
+static char* trim_whitespace(char *str)
+{
+    char *end;
+
+    // Trim leading space
+    while(isspace(*str)) str++;
+
+    if(*str == 0)
+        return str;
+
+    // Trim trailing space
+    end = str + strlen(str) - 1;
+    while(end > str && isspace(*end)) end--;
+
+    // Write new null terminator
+    *(end+1) = 0;
+
+    return str;
+}
+
+static int deltaupdate_pkg_location(char* diff_pkg_path_name)
+{
+    static char line[MAX_STRING_LEN];
+    struct stat status;
+    FILE* fp;
+    char* tmp_str, saveptr;
+    bool found = false;
+    int i = 0;
+
+    while (i++ < 3)
+    {
+        LOGI("fopen_path %d %s\n", i, FOTA_PROP_FILE);
+        sleep(1);
+        fp = fopen_path(FOTA_PROP_FILE, "r");
+        if (fp)
+            break;
+    }
+
+    if (fp == NULL)
+    {
+        LOGI("Failed to open %s, use default pkg location:%s\n",
+             FOTA_PROP_FILE, DEFAULT_PKG_LOCATION);
+        strlcpy(diff_pkg_path_name, DEFAULT_PKG_LOCATION, PATH_MAX);
+    }
+    else
+    {
+        while(fgets(line, MAX_STRING_LEN, fp)!=NULL)
+        {
+            tmp_str = strtok_r(line, "=", &saveptr);
+            if(strcmp(tmp_str, PKG_LOCATION_STRING_NAME) == 0)
+            {
+               tmp_str = strtok_r(NULL, "=\n", &saveptr);
+               strlcpy(diff_pkg_path_name, tmp_str, PATH_MAX);
+               diff_pkg_path_name = trim_whitespace(diff_pkg_path_name);
+               LOGI("Package location: %s\r\n", diff_pkg_path_name);
+               found = true;
+               break;
+            }
+        }
+        if (!found)
+        {
+            LOGI("Package location is not defined in %s. Use default location: %s\n",
+            FOTA_PROP_FILE, DEFAULT_PKG_LOCATION );
+            strlcpy(diff_pkg_path_name, DEFAULT_PKG_LOCATION, PATH_MAX);
+        }
+        fclose(fp);
+    }
+
+    if (ensure_path_mounted(diff_pkg_path_name) != 0) {
+        LOGI("Cannot mount %s\n", diff_pkg_path_name);
+        return -1;
+    }
+
+    strlcat(diff_pkg_path_name, "/", PATH_MAX);
+    strlcat(diff_pkg_path_name, DIFF_PACKAGE_NAME, PATH_MAX);
+
+    if (access(diff_pkg_path_name, F_OK) != 0) {
+        LOGI("Delta package does not exist %s\n", diff_pkg_path_name);
+        return -1;
+    }
+
+    LOGI("Delta package path name: %s\n", diff_pkg_path_name);
+
+    return 0;
+}
+
+static int get_deltaupdate_recoverycount(void)
+{
+    FILE* f;
+    int len, num;
+    char* buf;
+
+    f = fopen_path(NUM_OF_RECOVERY, "r");
+    if(f == NULL)
+    {
+       LOGI("Error opening recovery count file. Ignore.\n");
+       return 0;
+    }
+
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    buf = malloc(len+1);
+    if (buf == NULL) {
+        LOGI("Failed to allocate buffer\n");
+        return 0;
+    }
+    memset(buf,0x0,len+1);
+    fseek(f, 0, SEEK_SET);
+    fread(buf, sizeof(char), len, f);
+    check_and_fclose(f,NUM_OF_RECOVERY);
+
+    if ((buf = strstr((const char*)buf, "numRecovery")) == NULL)
+    {
+        LOGI("Recovery count string doesn't match.Ignore.\n");
+    }
+    else
+    {
+        buf += 11;
+        if ((buf = strstr((const char*)buf, "=")) == NULL)
+        {
+            LOGI("Invalid recovery count value. Ignore.\n");
+        }
+        else
+        {
+            buf += 1;
+            buf = (char*)skip_whitespaces((const char*)buf);
+            num = atoi((const char*)buf);
+            return num;
+        }
+    }
+    return 0;
+}
+
+static int get_deltaupdate_status(void)
+{
+    FILE* f;
+    int len;
+    char* buf;
+    int i, num_index;
+
+    LOGI("Checking delta update status...\n");
+
+    f = fopen_path(DELTA_UPDATE_STATUS_FILE, "r");
+    if(f == NULL)
+    {
+       LOGI("fopen error(%s)\n",DELTA_UPDATE_STATUS_FILE);
+       return -1;
+    }
+
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    buf = malloc(len+1);
+    if (buf == NULL) {
+        LOGI("Failed to allocate buffer\n");
+        return -1;
+    }
+    memset(buf,0x0,len+1);
+    fseek(f, 0, SEEK_SET);
+    fread(buf, sizeof(char), len, f);
+    check_and_fclose(f,DELTA_UPDATE_STATUS_FILE);
+
+    num_index = sizeof(DELTA_UPDATE_STATUS_DB)/sizeof(deltaupdate_config_st);
+
+    for (i = 0; i < num_index; i++)
+    {
+        if (strstr((const char*)buf, DELTA_UPDATE_STATUS_DB[i].str)!=NULL)
+        {
+            return DELTA_UPDATE_STATUS_DB[i].idx;
+        }
+    }
+
+    LOGI("NO UPDATE SET\n");
+    return NO_DELTA_UPDATE;
+}
+
+static int set_deltaupdate_status(int status, int error_code)
+{
+    FILE* f;
+    char strbuf[64];
+
+    LOGI("Setting delta update status...\n");
+
+    f = fopen_path(DELTA_UPDATE_STATUS_FILE, "w");
+    if(f == NULL)
+    {
+       LOGI("fopen error(%s)\n",DELTA_UPDATE_STATUS_FILE);
+       return -1;
+    }
+
+    switch(status)
+    {
+        case START_DELTA_UPDATE:
+        case DELTA_UPDATE_IN_PROGRESS:
+        case DELTA_UPDATE_SUCCESSFUL:
+        case DELTA_UPDATE_FAILED:
+            strlcpy(strbuf,DELTA_UPDATE_STATUS_DB[status].str,sizeof(strbuf));
+            sprintf(&strbuf[strlen(strbuf)], " %d", error_code);
+            fwrite(strbuf, sizeof(char), strlen(strbuf), f);
+            break;
+        default:
+            strlcpy(strbuf,"DELTA_NO_UPDATE",sizeof(strbuf));
+            sprintf(&strbuf[strlen(strbuf)], " %d", error_code);
+            fwrite(strbuf, sizeof(char), strlen(strbuf), f);
+            break;
+    }
+
+    LOGI("Delta update status is set to (%s)\n",strbuf);
+    check_and_fclose(f,DELTA_UPDATE_STATUS_FILE);
+    return 0;
+}
+
+static void set_deltaupdate_recovery_bootmessage(void)
+{
+    struct bootloader_message boot;
+    memset(&boot, 0, sizeof(boot));
+
+    LOGI("Setting recovery boot...\n");
+
+    if(MAX_NUM_UPDATE_RECOVERY > get_deltaupdate_recoverycount())
+    {
+       strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
+       strlcpy(boot.recovery, "recovery\n", sizeof(boot.recovery));
+    }
+    else
+    {
+       LOGI("Recovery mode reached maximum retry. Clear boot message.\n");
+    }
+    set_bootloader_message(&boot);
+
+    LOGI("boot.command=%s\n",boot.command);
+    LOGI("boot.recovery=%s\n",boot.recovery);
+}
+
+static void reset_deltaupdate_recovery_bootmessage(void)
+{
+    struct bootloader_message boot;
+
+    memset(&boot, 0, sizeof(boot));
+
+    LOGI("Resetting recovery boot...\n");
+
+    set_bootloader_message(&boot);
+
+    LOGI("boot.command=%s\n",boot.command);
+    LOGI("boot.recovery=%s\n",boot.recovery);
+}
+
+static void increment_deltaupdate_recoverycount(void)
+{
+    FILE* f;
+    int num;
+    char numbuf[8];
+    char strbuf[32];
+
+    num = get_deltaupdate_recoverycount();
+    num += 1;
+    sprintf(numbuf, "%d", num);
+
+    memset(strbuf,0x0,sizeof(strbuf));
+    strlcpy(strbuf,"numRecovery=",sizeof(strbuf));
+    strlcat(strbuf,numbuf,sizeof(strbuf));
+
+    f = fopen_path(NUM_OF_RECOVERY, "w");
+    if(f == NULL)
+    {
+       LOGI("Creating...\n");
+    }
+    fwrite(strbuf, sizeof(char), strlen(strbuf), f);
+    check_and_fclose(f, NUM_OF_RECOVERY);
+}
+
+static int remove_tempfiles(char* diff_pkg_path_name)
+{
+   if (unlink(diff_pkg_path_name) && errno != ENOENT) {
+       LOGI("Cannot unlink %s\n", diff_pkg_path_name);
+       return -1;
+   }
+   if (unlink(NUM_OF_RECOVERY) && errno != ENOENT) {
+       LOGI("Cannot unlink %s\n", NUM_OF_RECOVERY);
+       return -1;
+   }
+   return 0;
+}
+
+static int read_buildprop(char **ver)
+{
+    FILE* b_fp;
+    char line[MAX_STRING_LEN];
+    char *tmpStr, *saveptr;
+
+    LOGI("read_buildprop.\n");
+
+    b_fp = fopen_path(BUILD_PROP_FILE, "r");
+    if(!b_fp)
+        return -1;
+
+    while(fgets(line, sizeof(line), b_fp))
+    {
+        tmpStr = strtok_r(line, "=", &saveptr);
+        if(strcmp(tmpStr, BUILD_PROP_NAME) == 0)
+        {
+           tmpStr = strtok_r(NULL, "=", &saveptr);
+           strlcpy(*ver, tmpStr, sizeof(*ver));
+           fclose(b_fp);
+           return 0;
+        }
+    }
+    fclose(b_fp);
+    return -1;
+
+}
+
+static char *delta_update_replace_str(char *str, char *org, char *rep)
+{
+    static char buffer[MAX_STRING_LEN];
+    char *p;
+
+    if(!(p = strstr(str, org)))
+       return str;
+
+    strlcpy(buffer, str, sizeof(buffer));
+    buffer[p-str] = '\0';
+
+    sprintf(buffer+(p-str), "%s%s", rep, p+strlen(org));
+
+    return buffer;
+}
+
+static int update_fotapropver(char *ver)
+{
+    int size;
+    FILE *b_fp;
+    char *buff;
+    char *newbuff;
+    char *orgstr=NULL;
+    char newstr[MAX_STRING_LEN];
+    char line[MAX_STRING_LEN];
+
+    LOGI("update_ver:%s\r\n",ver);
+
+    b_fp = fopen_path(FOTA_PROP_FILE, "r");
+    if(!b_fp)
+       return -1;
+
+    //Read Old Version
+    while(fgets(line, sizeof(line), b_fp))
+    {
+        orgstr = strstr(line, VERSION_STRING_NAME);
+        if(orgstr)
+        {
+           break;
+        }
+    }
+
+    if(orgstr == NULL)
+    {
+       LOGI("No firmware property.\r\n");
+       return -1;
+    }
+
+    //Build New Version
+    sprintf(newstr,"%s=%s",VERSION_STRING_NAME, ver);
+
+    //Read Org File
+    fseek(b_fp, 0, SEEK_END);
+    size = ftell(b_fp);
+    buff = (char*)malloc(size);
+    if (buff == NULL) {
+        LOGI("Failed to allocate buffer\n");
+        return -1;
+    }
+    memset(buff, 0x0, size);
+
+    //Update Version
+    fseek(b_fp, 0, SEEK_SET);
+    fread(buff, sizeof(char), size, b_fp);
+    fclose(b_fp);
+
+    newbuff = delta_update_replace_str(buff, orgstr, newstr);
+
+    b_fp = fopen_path(FOTA_PROP_FILE, "w+");
+    fwrite(newbuff, sizeof(char), strlen(newbuff), b_fp);
+    fclose(b_fp);
+
+    return 0;
+}
+
+static int update_fotaprop(void)
+{
+    int ret;
+    char *ver;
+
+    ui_print("update_fotaprop.\n");
+
+    ver = (char *)malloc(MAX_STRING_LEN);
+    if (ver == NULL) {
+        LOGI("Failed to allocate buffer\n");
+        return 0;
+    }
+    memset(ver, 0x0, MAX_STRING_LEN);
+    ret = read_buildprop(&ver);
+    if(ret != 0)
+    {
+       LOGI("Failed reading build version.\n");
+       return -1;
+    }
+    LOGI("Found build version:%s\n",ver);
+
+    ret = update_fotapropver(ver);
+    if(ret != 0)
+    {
+       LOGI("Failed update version.\n");
+       return -1;
+    }
+
+    return 0;
+}
+
+int start_deltaupdate(char* diff_pkg_path_name)
+{
+    int status;
+    int wipe_cache = 0;
+
+    LOGI("Start delta update...\n");
+
+    set_deltaupdate_recovery_bootmessage();
+
+    status = install_package(diff_pkg_path_name, &wipe_cache, TEMPORARY_INSTALL_FILE);
+
+    if (status != INSTALL_SUCCESS)
+    {
+        ui_set_background(BACKGROUND_ICON_ERROR);
+        ui_print("Delta update failed.\n");
+        finish_recovery("--send_intent=DELTA_UPDATE_FAILED");
+        set_deltaupdate_status(DELTA_UPDATE_FAILED, DELTA_UPDATE_FAILED_410);
+        reset_fota_cookie_mtd();
+        return -1;
+    }
+
+    // modem update starts only if android update is successful
+    status = start_delta_modemupdate(diff_pkg_path_name);
+    reset_fota_cookie_mtd();
+
+    // modem update is complete. Handle update result.
+    if (status != DELTA_UPDATE_SUCCESS_200)
+    {
+        ui_set_background(BACKGROUND_ICON_ERROR);
+        ui_print("Delta update failed(%d)\n",status);
+        finish_recovery("--send_intent=DELTA_UPDATE_FAILED");
+        set_deltaupdate_status(DELTA_UPDATE_FAILED, DELTA_UPDATE_FAILED_410);
+        return -1;
+    }
+
+    finish_recovery("--send_intent=DELTA_UPDATE_SUCCESSFUL");
+    set_deltaupdate_status(DELTA_UPDATE_SUCCESSFUL, DELTA_UPDATE_SUCCESS_200);
+
+    ui_print("\nAndroid Delta Update Completed \n");
+    remove_tempfiles(diff_pkg_path_name);
+    update_fotaprop();
+    return 0;
+}
+
+/* FOTA(Delta Update) INSTALL
+ * 1. main system downloads delta update package to location specified in
+ *    FOTA_PROP_FILE if it exists.
+ *    -- Otherwise, downloads into default package location -
+ *    cache/fota/DIFF_PACKAGE_NAME
+ * 2. main system reboots into recovery
+ * 3. get_args() writes BCB with "boot-recovery"
+ *    -- after this, fota cookie is set to enable modem image update --
+ *    -- rebooting into recovery to start android update --
+ * 4. main system reboots into recovery
+ * 5. get_args() writes BCB with "boot-recovery"
+ * 6. install_package() attempts to install android delta update
+ *    NOTE: the package install must itself be restartable from any point
+ * 7. If update succeeds, calls start_delta_modemupdate() to begin
+ *    modem update.
+ *    NOTE: the package install must itself be restartable from any point
+ * 8. If update succeeds, reset fota cookie.
+ * 9. finish_recovery() erases BCB
+ *    -- after this, rebooting will (try to) restart the main system --
+ * 10. ** if install failed **
+ *    10a. Show error icon, reset fota cookie.
+ *    10b. finish_recovery() erases BCB
+ *    -- after this, rebooting will (try to) restart the main system --
+ * 11. handle_deltaupdate_status() calls reboot() to boot main system
+ */
+static int handle_deltaupdate_status(void)
+{
+    int update_status;
+    struct stat status;
+
+    // Proceed with normal GOTA if return is -1
+    if (deltaupdate_pkg_location(diff_pkg_path_name) == -1 )
+        return -1;
+
+    //Increment count that indicates number of times device enters into recovery
+    //during delta update. This prevents the device recycling endlessly in recovery mode.
+    increment_deltaupdate_recoverycount();
+
+    update_status = get_deltaupdate_status();
+    LOGI("update_status = %d\n", update_status);
+
+    switch(update_status)
+    {
+    case START_DELTA_UPDATE:
+          set_deltaupdate_status(DELTA_UPDATE_IN_PROGRESS, 0);
+          set_fota_cookie_mtd();
+          break;
+
+    case DELTA_UPDATE_IN_PROGRESS:
+          start_deltaupdate(diff_pkg_path_name);
+          break;
+
+    default:
+          LOGI("No update set\n");
+          if (MAX_NUM_UPDATE_RECOVERY < get_deltaupdate_recoverycount()){
+             reset_deltaupdate_recovery_bootmessage();
+             reset_fota_cookie_mtd();
+          }
+          return EXIT_SUCCESS;
+    }
+    sync();
+    LOGI("android_reboot(ANDROID_RB_RESTART)\n");
+    android_reboot(ANDROID_RB_RESTART, 0, 0);
+    return EXIT_SUCCESS;
+}
+
 int
 main(int argc, char **argv) {
     time_t start = time(NULL);
@@ -747,6 +1304,9 @@ main(int argc, char **argv) {
     const char *send_intent = NULL;
     const char *update_package = NULL;
     int wipe_data = 0, wipe_cache = 0;
+
+    //check delta update first
+    handle_deltaupdate_status();
 
     int arg;
     while ((arg = getopt_long(argc, argv, "", OPTIONS, NULL)) != -1) {

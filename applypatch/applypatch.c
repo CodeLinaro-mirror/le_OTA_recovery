@@ -839,9 +839,13 @@ int applypatch(const char* source_filename,
             result = ApplyBSDiffPatch(source_to_use->data, source_to_use->size,
                                       patch, 0, sink, token, &ctx);
         } else if (header_bytes_read >= 8 &&
-                   memcmp(header, "IMGDIFF2", 8) == 0) {
+            memcmp(header, "IPDIFF10", 8) == 0) {
+            result = ApplyIPDiffPatch(source_to_use->data, source_to_use->size,
+                                      patch, 0, sink, token, &ctx);
+        } else if (header_bytes_read >= 8 &&
+            memcmp(header, "IMGDIFF2", 8) == 0) {
             result = ApplyImagePatch(source_to_use->data, source_to_use->size,
-                                     patch, sink, token, &ctx);
+                                      patch, sink, token, &ctx);
         } else {
             printf("Unknown patch file format\n");
             return 1;
