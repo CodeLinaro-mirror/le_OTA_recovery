@@ -66,6 +66,7 @@ int SaveFileContents(const char* filename, const FileContents* file);
 void FreeFileContents(FileContents* file);
 int FindMatchingPatch(uint8_t* sha1, const char** patch_sha1_str,
                       int num_patches);
+int CheckSymLink(const char* filename);
 
 // bsdiff.c
 void ShowBSDiffLicense();
@@ -80,6 +81,14 @@ int ApplyBSDiffPatchMem(const unsigned char* old_data, ssize_t old_size,
 int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size,
                     const Value* patch,
                     SinkFn sink, void* token, SHA_CTX* ctx);
+
+// delta update
+int ApplyIPDiffPatch(const unsigned char* old_data, ssize_t old_size,
+                    const Value* patch, ssize_t patch_offset,
+                    SinkFn sink, void* token, SHA_CTX* ctx);
+int ipth_UpdateOneFile(const unsigned char* old_buf, ssize_t old_len,
+                    const Value* patch, ssize_t patch_offset,
+                    unsigned char** new_buf, ssize_t* new_len);
 
 // freecache.c
 int MakeFreeSpaceOnCache(size_t bytes_needed);
