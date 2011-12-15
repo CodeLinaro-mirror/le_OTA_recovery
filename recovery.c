@@ -973,13 +973,13 @@ static int set_deltaupdate_status(int status, int error_code)
         case DELTA_UPDATE_SUCCESSFUL:
         case DELTA_UPDATE_FAILED:
             if ((snprintf(strbuf, sizeof(strbuf), "%s %d", DELTA_UPDATE_STATUS_DB[status].str, error_code)) >= sizeof(strbuf)) {
-               LOGI("Buffer overflow while setting error code\n");
+               LOGI("Output Truncated while setting error code\n");
             }
             fwrite(strbuf, sizeof(char), strlen(strbuf), f);
             break;
         default:
             if ((snprintf(strbuf, sizeof(strbuf), "DELTA_NO_UPDATE %d", error_code)) >= sizeof(strbuf)) {
-               LOGI("Buffer overflow while setting error code\n");
+               LOGI("Output Truncated while setting error code\n");
             }
             fwrite(strbuf, sizeof(char), strlen(strbuf), f);
             break;
@@ -1035,7 +1035,7 @@ static void increment_deltaupdate_recoverycount(void)
 
     num = get_deltaupdate_recoverycount();
     num += 1;
-    sprintf(numbuf, "%d", num);
+    snprintf(numbuf, sizeof(numbuf), "%d", num);
 
     memset(strbuf,0x0,sizeof(strbuf));
     strlcpy(strbuf,"numRecovery=",sizeof(strbuf));
@@ -1044,7 +1044,8 @@ static void increment_deltaupdate_recoverycount(void)
     f = fopen_path(NUM_OF_RECOVERY, "w");
     if(f == NULL)
     {
-       LOGI("Creating...\n");
+       LOGI("Error Creating file %s\n",NUM_OF_RECOVERY);
+       return;
     }
     fwrite(strbuf, sizeof(char), strlen(strbuf), f);
     check_and_fclose(f, NUM_OF_RECOVERY);
@@ -1103,10 +1104,14 @@ static char *delta_update_replace_str(char *str, char *org, char *rep)
     if(!(p = strstr(str, org)))
        return str;
 
-    strlcpy(buffer, str, MAX_STRING_LEN);
+    if ((strlcpy(buffer, str, MAX_STRING_LEN)) >= MAX_STRING_LEN) {
+        LOGI("Version Update string truncated\n");
+        return NULL;
+    }
     buffer[p-str] = '\0';
 
-    sprintf(buffer+(p-str), "%s%s", rep, p+strlen(org));
+    strlcat(buffer, rep, MAX_STRING_LEN);
+    strlcat(buffer, p + strlen(org), MAX_STRING_LEN);
 
     return buffer;
 }
@@ -1144,7 +1149,7 @@ static int update_fotapropver(char *ver)
     }
 
     //Build New Version
-    sprintf(newstr,"%s=%s",VERSION_STRING_NAME, ver);
+    snprintf(newstr, MAX_STRING_LEN, "%s=%s",VERSION_STRING_NAME, ver);
 
     //Read Org File
     fseek(b_fp, 0, SEEK_END);
@@ -1163,11 +1168,14 @@ static int update_fotapropver(char *ver)
     buff[size] = '\0';
     newbuff = delta_update_replace_str(buff, orgstr, newstr);
 
-    b_fp = fopen_path(FOTA_PROP_FILE, "w+");
-    fwrite(newbuff, sizeof(char), strlen(newbuff), b_fp);
-    fclose(b_fp);
+    if (newbuff) {
+        b_fp = fopen_path(FOTA_PROP_FILE, "w+");
+        fwrite(newbuff, sizeof(char), strlen(newbuff), b_fp);
+        fclose(b_fp);
+        return 0;
+    }
 
-    return 0;
+    return -1;
 }
 
 static int update_fotaprop(void)
