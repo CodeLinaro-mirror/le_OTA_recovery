@@ -450,7 +450,7 @@ Value* RetouchBinariesFn(const char* name, State* state,
     bool override_set = false;
     int32_t random_base = time(NULL) % 1024;
     // some more randomness from /dev/random
-    FILE *f_random = fopen("/dev/random", "rb");
+    FILE *f_random = fopen("/dev/urandom", "rb");
     uint16_t random_bits = 0;
     if (f_random != NULL) {
         fread(&random_bits, 2, 1, f_random);
