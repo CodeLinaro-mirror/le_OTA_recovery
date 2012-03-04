@@ -20,11 +20,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#include "cutils/log.h"
 #include "mtdutils.h"
-
 #define LOG_TAG "flash_image"
+
+#ifdef FEATURE_DS_LINUX_ANDROID
+#include <cutils/log.h>
+#else
+#define LOG(level, ...) \
+        ((void)printf("utils:" level "/" LOG_TAG ": " __VA_ARGS__))
+#define LOGV(...)   LOG("V", __VA_ARGS__)
+#define LOGD(...)   LOG("D", __VA_ARGS__)
+#define LOGI(...)   LOG("I", __VA_ARGS__)
+#define LOGW(...)   LOG("W", __VA_ARGS__)
+#define LOGE(...)   LOG("E", __VA_ARGS__)
+#define LOG_ALWAYS_FATAL(...)   do { LOGE(__VA_ARGS__); exit(1); } while (0)
+#endif
+
+#ifdef USE_GLIB
+#define strlcat g_strlcat
+#define strlcpy g_strlcpy
+#endif /* USE_GLIB */
 
 #define HEADER_SIZE 2048  // size of header to compare for equality
 
