@@ -20,12 +20,12 @@
 #include <getopt.h>
 #include <limits.h>
 #include <linux/input.h>
+#include <linux/reboot.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/reboot.h>
 #include <time.h>
 #include <unistd.h>
 #include <dirent.h>
@@ -33,7 +33,6 @@
 #include "bootloader.h"
 #include "common.h"
 #include "cutils/properties.h"
-#include "cutils/android_reboot.h"
 #include "install.h"
 #include "minui/minui.h"
 #include "minzip/DirUtil.h"
@@ -71,8 +70,6 @@ static const char *SDCARD_ROOT = "/sdcard";
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *SIDELOAD_TEMP_DIR = "/tmp/sideload";
-
-extern UIParameters ui_parameters;    // from ui.c
 
 /*
  * The recovery tool communicates with the main system through /cache files.
@@ -649,91 +646,9 @@ wipe_data(int confirm) {
     }
 
     ui_print("\n-- Wiping data...\n");
-    device_wipe_data();
     erase_volume("/data");
     erase_volume("/cache");
     ui_print("Data wipe complete.\n");
-}
-
-static void
-prompt_and_wait() {
-    char** headers = prepend_title((const char**)MENU_HEADERS);
-
-    for (;;) {
-        finish_recovery(NULL);
-        ui_reset_progress();
-
-        int chosen_item = get_menu_selection(headers, MENU_ITEMS, 0, 0);
-
-        // device-specific code may take some action here.  It may
-        // return one of the core actions handled in the switch
-        // statement below.
-        chosen_item = device_perform_action(chosen_item);
-
-        int status;
-        int wipe_cache;
-        switch (chosen_item) {
-            case ITEM_REBOOT:
-                return;
-
-            case ITEM_WIPE_DATA:
-                wipe_data(ui_text_visible());
-                if (!ui_text_visible()) return;
-                break;
-
-            case ITEM_WIPE_CACHE:
-                ui_print("\n-- Wiping cache...\n");
-                erase_volume("/cache");
-                ui_print("Cache wipe complete.\n");
-                if (!ui_text_visible()) return;
-                break;
-
-            case ITEM_APPLY_SDCARD:
-                status = update_directory(SDCARD_ROOT, SDCARD_ROOT, &wipe_cache);
-                if (status == INSTALL_SUCCESS && wipe_cache) {
-                    ui_print("\n-- Wiping cache (at package request)...\n");
-                    if (erase_volume("/cache")) {
-                        ui_print("Cache wipe failed.\n");
-                    } else {
-                        ui_print("Cache wipe complete.\n");
-                    }
-                }
-                if (status >= 0) {
-                    if (status != INSTALL_SUCCESS) {
-                        ui_set_background(BACKGROUND_ICON_ERROR);
-                        ui_print("Installation aborted.\n");
-                    } else if (!ui_text_visible()) {
-                        return;  // reboot if logs aren't visible
-                    } else {
-                        ui_print("\nInstall from sdcard complete.\n");
-                    }
-                }
-                break;
-            case ITEM_APPLY_CACHE:
-                // Don't unmount cache at the end of this.
-                status = update_directory(CACHE_ROOT, NULL, &wipe_cache);
-                if (status == INSTALL_SUCCESS && wipe_cache) {
-                    ui_print("\n-- Wiping cache (at package request)...\n");
-                    if (erase_volume("/cache")) {
-                        ui_print("Cache wipe failed.\n");
-                    } else {
-                        ui_print("Cache wipe complete.\n");
-                    }
-                }
-                if (status >= 0) {
-                    if (status != INSTALL_SUCCESS) {
-                        ui_set_background(BACKGROUND_ICON_ERROR);
-                        ui_print("Installation aborted.\n");
-                    } else if (!ui_text_visible()) {
-                        return;  // reboot if logs aren't visible
-                    } else {
-                        ui_print("\nInstall from cache complete.\n");
-                    }
-                }
-                break;
-
-        }
-    }
 }
 
 static void
@@ -1295,8 +1210,8 @@ static int handle_deltaupdate_status(void)
           return EXIT_SUCCESS;
     }
     sync();
-    LOGI("android_reboot(ANDROID_RB_RESTART)\n");
-    android_reboot(ANDROID_RB_RESTART, 0, 0);
+    LOGI("reboot\n");
+    __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
     return EXIT_SUCCESS;
 }
 
@@ -1309,7 +1224,6 @@ main(int argc, char **argv) {
     freopen(TEMPORARY_LOG_FILE, "a", stderr); setbuf(stderr, NULL);
     printf("Starting recovery on %s", ctime(&start));
 
-    device_ui_init(&ui_parameters);
     ui_init();
     ui_set_background(BACKGROUND_ICON_INSTALLING);
     load_volume_table();
@@ -1337,8 +1251,6 @@ main(int argc, char **argv) {
             continue;
         }
     }
-
-    device_recovery_start();
 
     printf("Command:");
     for (arg = 0; arg < argc; arg++) {
@@ -1376,7 +1288,6 @@ main(int argc, char **argv) {
         }
         if (status != INSTALL_SUCCESS) ui_print("Installation aborted.\n");
     } else if (wipe_data) {
-        if (device_wipe_data()) status = INSTALL_ERROR;
         if (erase_volume("/data")) status = INSTALL_ERROR;
         if (wipe_cache && erase_volume("/cache")) status = INSTALL_ERROR;
         if (status != INSTALL_SUCCESS) ui_print("Data wipe failed.\n");
@@ -1389,12 +1300,12 @@ main(int argc, char **argv) {
 
     if (status != INSTALL_SUCCESS) ui_set_background(BACKGROUND_ICON_ERROR);
     if (status != INSTALL_SUCCESS || ui_text_visible()) {
-        prompt_and_wait();
+        finish_recovery(NULL);
     }
 
     // Otherwise, get ready to boot the main system...
     finish_recovery(send_intent);
     ui_print("Rebooting...\n");
-    android_reboot(ANDROID_RB_RESTART, 0, 0);
+    __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
     return EXIT_SUCCESS;
 }

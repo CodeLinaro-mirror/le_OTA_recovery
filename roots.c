@@ -26,7 +26,6 @@
 #include "mtdutils/mounts.h"
 #include "roots.h"
 #include "common.h"
-#include "make_ext4fs.h"
 
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
@@ -269,15 +268,6 @@ int format_volume(const char* volume) {
             return -1;
         } else if (mtd_write_close(write)) {
             LOGW("format_volume: can't close MTD \"%s\"\n", v->device);
-            return -1;
-        }
-        return 0;
-    }
-
-    if (strcmp(v->fs_type, "ext4") == 0) {
-        int result = make_ext4fs(v->device, v->length);
-        if (result != 0) {
-            LOGE("format_volume: make_extf4fs failed on %s\n", v->device);
             return -1;
         }
         return 0;

@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
+#include <linux/reboot.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -29,7 +30,6 @@
 #include <unistd.h>
 
 #include "common.h"
-#include <cutils/android_reboot.h>
 #include "minui/minui.h"
 #include "recovery_ui.h"
 
@@ -41,6 +41,7 @@
 
 #define UI_WAIT_KEY_TIMEOUT_SEC    120
 
+#ifdef ENABLE_RECOVERY_UI
 UIParameters ui_parameters = {
     6,       // indeterminate progress bar frames
     20,      // fps
@@ -360,7 +361,7 @@ static int input_callback(int fd, short revents, void *data)
     }
 
     if (ev.value > 0 && device_reboot_now(key_pressed, ev.code)) {
-        android_reboot(ANDROID_RB_RESTART, 0, 0);
+	__reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
     }
 
     return 0;
@@ -375,9 +376,10 @@ static void *input_thread(void *cookie)
     }
     return NULL;
 }
-
+#endif
 void ui_init(void)
 {
+#ifdef ENABLE_RECOVERY_UI
     gr_init();
     ev_init(input_callback, NULL);
 
@@ -439,28 +441,34 @@ void ui_init(void)
     pthread_t t;
     pthread_create(&t, NULL, progress_thread, NULL);
     pthread_create(&t, NULL, input_thread, NULL);
+#endif
 }
 
 void ui_set_background(int icon)
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&gUpdateMutex);
     gCurrentIcon = icon;
     update_screen_locked();
     pthread_mutex_unlock(&gUpdateMutex);
+#endif
 }
 
 void ui_show_indeterminate_progress()
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&gUpdateMutex);
     if (gProgressBarType != PROGRESSBAR_TYPE_INDETERMINATE) {
         gProgressBarType = PROGRESSBAR_TYPE_INDETERMINATE;
         update_progress_locked();
     }
     pthread_mutex_unlock(&gUpdateMutex);
+#endif
 }
 
 void ui_show_progress(float portion, int seconds)
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&gUpdateMutex);
     gProgressBarType = PROGRESSBAR_TYPE_NORMAL;
     gProgressScopeStart += gProgressScopeSize;
@@ -470,10 +478,12 @@ void ui_show_progress(float portion, int seconds)
     gProgress = 0;
     update_progress_locked();
     pthread_mutex_unlock(&gUpdateMutex);
+#endif
 }
 
 void ui_set_progress(float fraction)
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&gUpdateMutex);
     if (fraction < 0.0) fraction = 0.0;
     if (fraction > 1.0) fraction = 1.0;
@@ -487,10 +497,12 @@ void ui_set_progress(float fraction)
         }
     }
     pthread_mutex_unlock(&gUpdateMutex);
+#endif
 }
 
 void ui_reset_progress()
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&gUpdateMutex);
     gProgressBarType = PROGRESSBAR_TYPE_NONE;
     gProgressScopeStart = gProgressScopeSize = 0;
@@ -498,10 +510,12 @@ void ui_reset_progress()
     gProgress = 0;
     update_screen_locked();
     pthread_mutex_unlock(&gUpdateMutex);
+#endif
 }
 
 void ui_print(const char *fmt, ...)
 {
+#ifdef ENABLE_RECOVERY_UI
     char buf[256];
     va_list ap;
     va_start(ap, fmt);
@@ -527,9 +541,11 @@ void ui_print(const char *fmt, ...)
         update_screen_locked();
     }
     pthread_mutex_unlock(&gUpdateMutex);
+#endif
 }
 
 void ui_start_menu(char** headers, char** items, int initial_selection) {
+#ifdef ENABLE_RECOVERY_UI
     int i;
     pthread_mutex_lock(&gUpdateMutex);
     if (text_rows > 0 && text_cols > 0) {
@@ -550,9 +566,11 @@ void ui_start_menu(char** headers, char** items, int initial_selection) {
         update_screen_locked();
     }
     pthread_mutex_unlock(&gUpdateMutex);
+#endif
 }
 
 int ui_menu_select(int sel) {
+#ifdef ENABLE_RECOVERY_UI
     int old_sel;
     pthread_mutex_lock(&gUpdateMutex);
     if (show_menu > 0) {
@@ -565,9 +583,11 @@ int ui_menu_select(int sel) {
     }
     pthread_mutex_unlock(&gUpdateMutex);
     return sel;
+#endif
 }
 
 void ui_end_menu() {
+#ifdef ENABLE_RECOVERY_UI
     int i;
     pthread_mutex_lock(&gUpdateMutex);
     if (show_menu > 0 && text_rows > 0 && text_cols > 0) {
@@ -575,35 +595,43 @@ void ui_end_menu() {
         update_screen_locked();
     }
     pthread_mutex_unlock(&gUpdateMutex);
+#endif
 }
 
 int ui_text_visible()
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&gUpdateMutex);
     int visible = show_text;
     pthread_mutex_unlock(&gUpdateMutex);
     return visible;
+#endif
 }
 
 int ui_text_ever_visible()
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&gUpdateMutex);
     int ever_visible = show_text_ever;
     pthread_mutex_unlock(&gUpdateMutex);
     return ever_visible;
+#endif
 }
 
 void ui_show_text(int visible)
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&gUpdateMutex);
     show_text = visible;
     if (show_text) show_text_ever = 1;
     update_screen_locked();
     pthread_mutex_unlock(&gUpdateMutex);
+#endif
 }
 
 // Return true if USB is connected.
 static int usb_connected() {
+#ifdef ENABLE_RECOVERY_UI
     int fd = open("/sys/class/android_usb/android0/state", O_RDONLY);
     if (fd < 0) {
         printf("failed to open /sys/class/android_usb/android0/state: %s\n",
@@ -619,10 +647,12 @@ static int usb_connected() {
                strerror(errno));
     }
     return connected;
+#endif
 }
 
 int ui_wait_key()
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&key_queue_mutex);
 
     // Time out after UI_WAIT_KEY_TIMEOUT_SEC, unless a USB cable is
@@ -649,16 +679,21 @@ int ui_wait_key()
     }
     pthread_mutex_unlock(&key_queue_mutex);
     return key;
+#endif
 }
 
 int ui_key_pressed(int key)
 {
+#ifdef ENABLE_RECOVERY_UI
     // This is a volatile static array, don't bother locking
     return key_pressed[key];
+#endif
 }
 
 void ui_clear_key_queue() {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&key_queue_mutex);
     key_queue_len = 0;
     pthread_mutex_unlock(&key_queue_mutex);
+#endif
 }
