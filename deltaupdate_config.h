@@ -47,10 +47,23 @@
 
 //Contains information about delta update package location
 #define FOTA_PROP_FILE    "/data/fota/ipth-muc.prop"
+#define BUILD_PROP_PATH  "/system/build.prop"
 
 //Contains information about radio delta update
 #define RADIO_DIFF_OUTPUT "/cache/fota/radio.diff"
+#define MAX_DSP_DIFF_IMAGES 3
 
+#define DSP1_DIFF_IMAGE_NAME "dsp1.diff"
+#define DSP2_DIFF_IMAGE_NAME "dsp2.diff"
+#define DSP3_DIFF_IMAGE_NAME "dsp3.diff"
+
+#define DSP1_DIFF_EXTRACT_PATH "/cache/fota/dsp1.diff"
+#define DSP2_DIFF_EXTRACT_PATH "/cache/fota/dsp2.diff"
+#define DSP3_DIFF_EXTRACT_PATH "/cache/fota/dsp3.diff"
+
+#define DUA_DSP1_HANDLE "dsp1"
+#define DUA_DSP2_HANDLE "dsp2"
+#define DUA_DSP3_HANDLE "dsp3"
 //Indicates device firmware version to be used by DM client
 //for server communication. Recovery mode updates this string
 //when delta update is complete.

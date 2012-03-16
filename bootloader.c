@@ -144,23 +144,23 @@ int set_fota_cookie_mtd(void)
     size_t write_size;
 
     mtd_scan_partitions();
-    const MtdPartition *part = mtd_find_partition_by_name("FOTA");
+    const MtdPartition *part = mtd_find_partition_by_name("fota");
 
     if (part == NULL || mtd_partition_info(part, NULL, NULL, &write_size)) {
-        LOGE("Can't find FOTA\n");
+        LOGI("Can't find FOTA\n");
         return -1;
     }
 
     MtdReadContext *read = mtd_read_partition(part);
     if (read == NULL) {
-        LOGE("Can't open FOTA\n(%s)\n", strerror(errno));
+        LOGI("Can't open FOTA\n(%s)\n", strerror(errno));
         return -1;
     }
 
     ssize_t size = write_size; //writing 1 page is enough
     char data[size];
     ssize_t r = mtd_read_data(read, data, size);
-    if (r != size) LOGE("Can't read FOTA\n(%s)\n", strerror(errno));
+    if (r != size) LOGI("Can't read FOTA\n(%s)\n", strerror(errno));
     mtd_read_close(read);
     if (r != size) return -1;
 
@@ -173,16 +173,16 @@ int set_fota_cookie_mtd(void)
 
     MtdWriteContext *write = mtd_write_partition(part);
     if (write == NULL) {
-        LOGE("Can't open FOTA\n(%s)\n", strerror(errno));
+        LOGI("Can't open FOTA\n(%s)\n", strerror(errno));
         return -1;
     }
     if (mtd_write_data(write, data, size) != size) {
-        LOGE("Can't write FOTA\n(%s)\n", strerror(errno));
+        LOGI("Can't write FOTA\n(%s)\n", strerror(errno));
         mtd_write_close(write);
         return -1;
     }
     if (mtd_write_close(write)) {
-        LOGE("Can't finish FOTA\n(%s)\n", strerror(errno));
+        LOGI("Can't finish FOTA\n(%s)\n", strerror(errno));
         return -1;
     }
 
@@ -195,22 +195,22 @@ int reset_fota_cookie_mtd(void)
     size_t write_size;
 
     mtd_scan_partitions();
-    const MtdPartition *part = mtd_find_partition_by_name("FOTA");
+    const MtdPartition *part = mtd_find_partition_by_name("fota");
     if (part == NULL || mtd_partition_info(part, NULL, NULL, &write_size)) {
-        LOGE("Can't find FOTA\n");
+        LOGI("Can't find FOTA\n");
         return -1;
     }
 
     MtdReadContext *read = mtd_read_partition(part);
     if (read == NULL) {
-        LOGE("Can't open FOTA\n(%s)\n", strerror(errno));
+        LOGI("Can't open FOTA\n(%s)\n", strerror(errno));
         return -1;
     }
 
     ssize_t size = write_size; //writing 1 page is enough
     char data[size];
     ssize_t r = mtd_read_data(read, data, size);
-    if (r != size) LOGE("Can't read FOTA\n(%s)\n", strerror(errno));
+    if (r != size) LOGI("Can't read FOTA\n(%s)\n", strerror(errno));
     mtd_read_close(read);
     if (r != size) return -1;
 
@@ -219,16 +219,16 @@ int reset_fota_cookie_mtd(void)
 
     MtdWriteContext *write = mtd_write_partition(part);
     if (write == NULL) {
-        LOGE("Can't open FOTA\n(%s)\n", strerror(errno));
+        LOGI("Can't open FOTA\n(%s)\n", strerror(errno));
         return -1;
     }
     if (mtd_write_data(write, data, size) != size) {
-        LOGE("Can't write FOTA\n(%s)\n", strerror(errno));
+        LOGI("Can't write FOTA\n(%s)\n", strerror(errno));
         mtd_write_close(write);
         return -1;
     }
     if (mtd_write_close(write)) {
-        LOGE("Can't finish FOTA\n(%s)\n", strerror(errno));
+        LOGI("Can't finish FOTA\n(%s)\n", strerror(errno));
         return -1;
     }
 

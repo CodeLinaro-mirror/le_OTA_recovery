@@ -41,12 +41,19 @@
 
 #define RADIO_DIFF_NAME "radio.diff"
 
-static const char *LAST_INSTALL_FILE = "/cache/recovery/last_install";
 
-const ZipEntry* radio_diff;
+static const char *LAST_INSTALL_FILE = "/cache/recovery/last_install";
+bool update_dsp_image[3];
+char *dsp_image_name[] = {DSP1_DIFF_IMAGE_NAME, DSP2_DIFF_IMAGE_NAME, DSP3_DIFF_IMAGE_NAME};
+char *dsp_image_output_path[] = { DSP1_DIFF_EXTRACT_PATH, DSP2_DIFF_EXTRACT_PATH, DSP3_DIFF_EXTRACT_PATH};
+char *dua_update_image_name[] = { DUA_DSP1_HANDLE, DUA_DSP2_HANDLE, DUA_DSP3_HANDLE };
+
+const ZipEntry* dsp_diff;
+bool diff_image_found;
 // If the package contains an update binary, extract it and run it.
 static int
 try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
+    int i;
     const ZipEntry* binary_entry =
             mzFindZipEntry(zip, ASSUMED_UPDATE_BINARY_NAME);
     if (binary_entry == NULL) {
@@ -55,31 +62,35 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
     }
     fprintf(stderr, "try_update_binary(path(%s))\n",path);
 
-    radio_diff = mzFindZipEntry(zip, RADIO_DIFF_NAME);
-
-    if (radio_diff == NULL) {
-        fprintf(stderr, "%s not found\n", RADIO_DIFF_NAME);
-    }
-    else
+    diff_image_found = false;
+    for(i = 0; i < MAX_DSP_DIFF_IMAGES; i++)
     {
-        char* diff_file = RADIO_DIFF_OUTPUT;
-        int fd_diff = creat(diff_file, 0777);
-
-        fprintf(stderr, "%s found\n", RADIO_DIFF_NAME);
-
-        if (fd_diff < 0) {
-            fprintf(stderr, "Can't make %s\n", diff_file);
-        }
-        else
+        dsp_diff = mzFindZipEntry(zip, dsp_image_name[i]);
+        update_dsp_image[i] = false;
+        if (dsp_diff)
         {
-            bool ok_diff = mzExtractZipEntryToFile(zip, radio_diff, fd_diff);
-            close(fd_diff);
+            diff_image_found = true;
+            update_dsp_image[i] = true;
+            fprintf(stderr, "%s found \n", dsp_image_name[i]);
+            char *diff_file = dsp_image_output_path[i];
+            int fd_diff = creat(diff_file, 0777);
 
-            if (!ok_diff) {
-                fprintf(stderr, "Can't copy %s\n", RADIO_DIFF_NAME);
+            if (fd_diff < 0){
+                fprintf(stderr, "cant make %s \n", diff_file);
+            }
+            else
+            {
+                bool ok_diff = mzExtractZipEntryToFile(zip, dsp_diff, fd_diff);
+                close(fd_diff);
+
+                if(!ok_diff)
+                    fprintf(stderr, "Cant copy %d \n", dsp_image_name[i]);
             }
         }
     }
+
+    if(!diff_image_found)
+        fprintf(stderr, "No radio diff images found \n");
 
     char* binary = "/tmp/update_binary";
     unlink(binary);
@@ -134,15 +145,14 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
     //
     //   - the name of the package zip file.
     //
-
+    char *recovery_version = "3";
     char** args = malloc(sizeof(char*) * 5);
     args[0] = binary;
-    args[1] = EXPAND(RECOVERY_API_VERSION);   // defined in Android.mk
+    args[1] = recovery_version;   // defined in Android.mk
     args[2] = malloc(10);
     sprintf(args[2], "%d", pipefd[1]);
     args[3] = (char*)path;
     args[4] = NULL;
-
     pid_t pid = fork();
     if (pid == 0) {
         close(pipefd[0]);
@@ -286,7 +296,7 @@ really_install_package(const char *path, int* wipe_cache)
     }
 
     ui_print("Opening update package...\n");
-
+#if ENABLE_SIGNATURE_CHECK
     int numKeys;
     RSAPublicKey* loadedKeys = load_keys(PUBLIC_KEYS_FILE, &numKeys);
     if (loadedKeys == NULL) {
@@ -309,9 +319,10 @@ really_install_package(const char *path, int* wipe_cache)
         LOGE("signature verification failed\n");
         return INSTALL_CORRUPT;
     }
-
+#endif
     /* Try to open the package.
      */
+    int err;
     ZipArchive zip;
     err = mzOpenZipArchive(path, &zip);
     if (err != 0) {
@@ -319,6 +330,18 @@ really_install_package(const char *path, int* wipe_cache)
         return INSTALL_CORRUPT;
     }
 
+    /*Do CRC check for files in zip package
+     */
+    int zip_file_count;
+    LOGI( "number of files in zip is %d \n",zip.numEntries);
+    for(zip_file_count = 0; zip_file_count < zip.numEntries; zip_file_count++)
+    {
+        LOGI("verifying file at index %d\n",zip_file_count);
+        if(!mzIsZipEntryIntact(&zip, &zip.pEntries[zip_file_count])){
+            LOGI("Zip archive corrupt at entry %d\n",zip_file_count);
+            return INSTALL_CORRUPT;
+        }
+    }
     /* Verify and install the contents of the package.
      */
     ui_print("Installing update...\n");
@@ -388,44 +411,76 @@ int extract_deltaupdate_binary(const char *path)
 int run_modem_deltaupdate(void)
 {
     int ret;
+    int pipefd[2];
+    int i;
+    if (pipe(pipefd) < 0){
+        fprintf(stderr, "pipe creation failure \n");
+        return INSTALL_ERROR;
+    }
 
-    pid_t duapid = fork();
-
-    if (duapid == -1)
+    for( i = 0; i < MAX_DSP_DIFF_IMAGES; i++)
     {
-        LOGE("fork failed. Returning error.\n");
-        return INSTALL_ERROR;
-    }
+        if( update_dsp_image[i]){
 
-    if (duapid == 0)
-    {//child process
-     /*
-      * argv[0] ipth_dua exeuable command itself
-      * argv[1] false(default) - old binary update as a block / true - old
-      * binary update as a file
-      * argv[2] old binary file name. Will be used as partition name if argv[1]
-      * is false
-      * argv[3] diff package name
-      * argv[4] flash memory block size in KB
-      */
-       char** args = malloc(sizeof(char*) * 5);
-       args[0] = RUN_DELTAUPDATE_AGENT;
-       args[1] = "false";
-       args[2] = "AMSS";
-       args[3] = RADIO_DIFF_OUTPUT;
-       args[4] = "256";
-       args[5] = NULL;
+            pid_t duapid = fork();
 
-       execv(RUN_DELTAUPDATE_AGENT, args);
-       fprintf(stdout, "E:Can't run %s (%s)\n", RUN_DELTAUPDATE_AGENT, strerror(errno));
-       _exit(-1);
-    }
+            if (duapid == -1)
+            {
+                LOGE("fork failed. Returning error.\n");
+                return INSTALL_ERROR;
+            }
 
-    //parents process
-    waitpid(duapid, &ret, 0);
-    if (!WIFEXITED(ret) || WEXITSTATUS(ret) != 0) {
-        LOGE("Error in %s\n(Status %d)\n", RUN_DELTAUPDATE_AGENT, WEXITSTATUS(ret));
-        return INSTALL_ERROR;
+            if (duapid == 0)
+            {   //child process
+                /*
+                * argv[0] ipth_dua exeuable command itself
+                * argv[1] false(default) - old binary update as a block / true - old
+                * binary update as a file
+                * argv[2] old binary file name. Will be used as partition name if argv[1]
+                * is false
+                * argv[3] diff package name
+                * argv[4] flash memory block size in KB
+                */
+                char current_image_name[20];
+                memset(current_image_name, '\0',sizeof(current_image_name));
+                if( read(pipefd[0], current_image_name, sizeof(current_image_name))< 0){
+                    fprintf(stderr," Unable to start %s : Pipe read fail \n", RUN_DELTAUPDATE_AGENT);
+                    _exit(-1);
+                }
+                char * current_output_file;
+                if(strcmp(current_image_name, DUA_DSP1_HANDLE)==0)
+                    current_output_file = DSP1_DIFF_EXTRACT_PATH;
+                else if(strcmp(current_image_name, DUA_DSP2_HANDLE) == 0)
+                    current_output_file =  DSP2_DIFF_EXTRACT_PATH;
+                else if(strcmp(current_image_name, DUA_DSP3_HANDLE ) == 0)
+                    current_output_file =  DSP3_DIFF_EXTRACT_PATH;
+
+                fprintf(stderr,"updating %s \n",current_image_name);
+                char** args = malloc(sizeof(char*) * 5);
+                args[0] = RUN_DELTAUPDATE_AGENT;
+                args[1] = "false";
+                args[2] = current_image_name;
+                args[3] = current_output_file;
+                args[4] = "128";
+                args[5] = NULL;
+
+                execv(RUN_DELTAUPDATE_AGENT, args);
+                fprintf(stdout, "E:Can't run %s (%s)\n", RUN_DELTAUPDATE_AGENT, strerror(errno));
+                _exit(-1);
+            }
+
+            //parents process
+            if (write(pipefd[1],dua_update_image_name[i], sizeof(dua_update_image_name[i])) < 0){
+                fprintf(stderr, "Failed to write dsp name parameter to pipe \n");
+                return INSTALL_ERROR;
+            }
+            waitpid(duapid, &ret, 0);
+            if (!WIFEXITED(ret) || WEXITSTATUS(ret) != 0) {
+                LOGE("Error in %s\n(Status %d)\n", RUN_DELTAUPDATE_AGENT, WEXITSTATUS(ret));
+                return INSTALL_ERROR;
+            }
+            fprintf(stderr, "dsp%d update done \n",i+1);
+        }
     }
 
     return INSTALL_SUCCESS;
@@ -435,7 +490,7 @@ int start_delta_modemupdate(const char *path)
 {
     int ret = 0;
 
-    if (radio_diff == NULL)
+    if (!diff_image_found)
     {
         LOGE("No modem package available.\n");
         LOGE("No modem update needed. returning O.K\n");

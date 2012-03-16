@@ -29,6 +29,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <syscall.h>
 
 #include "bootloader.h"
 #include "common.h"
@@ -709,7 +710,6 @@ static int deltaupdate_pkg_location(char* diff_pkg_path_name)
         if (fp)
             break;
     }
-
     if (fp == NULL)
     {
         LOGI("Failed to open %s, use default pkg location:%s\n",
@@ -750,6 +750,7 @@ static int deltaupdate_pkg_location(char* diff_pkg_path_name)
 
     if (access(diff_pkg_path_name, F_OK) != 0) {
         LOGI("Delta package does not exist %s\n", diff_pkg_path_name);
+        reset_fota_cookie_mtd();
         return -1;
     }
 
@@ -948,18 +949,16 @@ static void increment_deltaupdate_recoverycount(void)
 
 static int remove_tempfiles(char* diff_pkg_path_name)
 {
-   if (unlink(diff_pkg_path_name) && errno != ENOENT) {
-       LOGI("Cannot unlink %s\n", diff_pkg_path_name);
-       return -1;
-   }
-   if (unlink(NUM_OF_RECOVERY) && errno != ENOENT) {
-       LOGI("Cannot unlink %s\n", NUM_OF_RECOVERY);
-       return -1;
-   }
-   if (unlink(RADIO_DIFF_OUTPUT) && errno != ENOENT) {
-       LOGI("Cannot unlink %s\n", RADIO_DIFF_OUTPUT);
-       return -1;
-   }
+   if (unlink(diff_pkg_path_name) && errno != ENOENT)
+        LOGI("Cannot unlink %s\n", diff_pkg_path_name);
+   if (unlink(NUM_OF_RECOVERY) && errno != ENOENT) 
+        LOGI("Cannot unlink %s\n", NUM_OF_RECOVERY);
+   if (unlink(DSP1_DIFF_EXTRACT_PATH) && errno != ENOENT)
+        LOGI("Cannot unlink %s\n", RADIO_DIFF_OUTPUT);
+   if (unlink(DSP2_DIFF_EXTRACT_PATH) && errno != ENOENT)
+        LOGI("Cannot unlink %s\n", DSP2_DIFF_EXTRACT_PATH);
+   if (unlink(DSP3_DIFF_EXTRACT_PATH) && errno != ENOENT)
+        LOGI("Cannot unlink %s\n", DSP3_DIFF_EXTRACT_PATH);
    return 0;
 }
 
@@ -1086,6 +1085,10 @@ static int update_fotaprop(void)
         return 0;
     }
     memset(ver, 0x0, MAX_STRING_LEN);
+    if(ensure_path_mounted(FOTA_PROP_FILE) != 0)
+        fprintf(stderr, "failed to locate fota prop file \n");
+    if(ensure_path_mounted(BUILD_PROP_PATH) != 0)
+        fprintf(stderr, "failed to locate build.prop \n");
     ret = read_buildprop(&ver);
     if(ret != 0)
     {
@@ -1114,7 +1117,6 @@ int start_deltaupdate(char* diff_pkg_path_name)
     set_deltaupdate_recovery_bootmessage();
 
     status = install_package(diff_pkg_path_name, &wipe_cache, TEMPORARY_INSTALL_FILE);
-
     if (status != INSTALL_SUCCESS)
     {
         ui_set_background(BACKGROUND_ICON_ERROR);
@@ -1142,7 +1144,8 @@ int start_deltaupdate(char* diff_pkg_path_name)
     finish_recovery("--send_intent=DELTA_UPDATE_SUCCESSFUL");
     set_deltaupdate_status(DELTA_UPDATE_SUCCESSFUL, DELTA_UPDATE_SUCCESS_200);
 
-    ui_print("\nAndroid Delta Update Completed \n");
+    ui_print("\n Delta Update Completed \n");
+
     // Remove all temp files
     remove_tempfiles(diff_pkg_path_name);
     update_fotaprop();
@@ -1194,8 +1197,6 @@ static int handle_deltaupdate_status(void)
     {
     case START_DELTA_UPDATE:
           set_deltaupdate_status(DELTA_UPDATE_IN_PROGRESS, 0);
-          set_fota_cookie_mtd();
-          break;
 
     case DELTA_UPDATE_IN_PROGRESS:
           start_deltaupdate(diff_pkg_path_name);
@@ -1210,8 +1211,8 @@ static int handle_deltaupdate_status(void)
           return EXIT_SUCCESS;
     }
     sync();
-    LOGI("reboot\n");
-    __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
+    fprintf(stderr,"Rebooting after recovery\n");
+    syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
     return EXIT_SUCCESS;
 }
 
@@ -1219,15 +1220,11 @@ int
 main(int argc, char **argv) {
     time_t start = time(NULL);
 
-    // If these fail, there's not really anywhere to complain...
-    freopen(TEMPORARY_LOG_FILE, "a", stdout); setbuf(stdout, NULL);
-    freopen(TEMPORARY_LOG_FILE, "a", stderr); setbuf(stderr, NULL);
     printf("Starting recovery on %s", ctime(&start));
 
     ui_init();
     ui_set_background(BACKGROUND_ICON_INSTALLING);
     load_volume_table();
-    get_args(&argc, &argv);
 
     int previous_runs = 0;
     const char *send_intent = NULL;
@@ -1237,7 +1234,9 @@ main(int argc, char **argv) {
     //check delta update first
     handle_deltaupdate_status();
 
+#ifdef ENABLE_RECOVERY_COMMAND_LINE_ARG
     int arg;
+    get_args(&argc, &argv);
     while ((arg = getopt_long(argc, argv, "", OPTIONS, NULL)) != -1) {
         switch (arg) {
         case 'p': previous_runs = atoi(optarg); break;
@@ -1307,5 +1306,6 @@ main(int argc, char **argv) {
     finish_recovery(send_intent);
     ui_print("Rebooting...\n");
     __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
+#endif
     return EXIT_SUCCESS;
 }

@@ -58,15 +58,10 @@ void load_volume_table() {
     num_volumes = 1;
 
     FILE* fstab;
-    char emmc[64];
-    property_get("ro.emmc", emmc, "");
-    if(!strcmp(emmc, "1"))
-    {
-        fstab = fopen("/etc/recovery_mmc.fstab", "r");
-    }
-    else
-    {
-        fstab =fopen("/etc/recovery.fstab", "r");
+    fstab =fopen("/res/recovery_volume_config", "r");
+    if(!fstab){
+        fprintf(stderr, "/res/recovery_volume_config not found \n");
+        return;
     }
 
     char buffer[1024];
@@ -77,21 +72,9 @@ void load_volume_table() {
 
         char* original = strdup(buffer);
 
-        char* mount_point = strtok(buffer+i, " \t\n");
+        char* device = strtok(buffer+i, " \t\n");
+        char* mount_point = strtok(NULL, " \t\n");
         char* fs_type = strtok(NULL, " \t\n");
-        char* device = strtok(NULL, " \t\n");
-        // lines may optionally have a second device, to use if
-        // mounting the first one fails.
-        char* options = NULL;
-        char* device2 = strtok(NULL, " \t\n");
-        if (device2) {
-            if (device2[0] == '/') {
-                options = strtok(NULL, " \t\n");
-            } else {
-                options = device2;
-                device2 = NULL;
-            }
-        }
 
         if (mount_point && fs_type && device) {
             while (num_volumes >= alloc) {
@@ -101,15 +84,8 @@ void load_volume_table() {
             device_volumes[num_volumes].mount_point = strdup(mount_point);
             device_volumes[num_volumes].fs_type = strdup(fs_type);
             device_volumes[num_volumes].device = strdup(device);
-            device_volumes[num_volumes].device2 =
-                device2 ? strdup(device2) : NULL;
-
             device_volumes[num_volumes].length = 0;
-            if (parse_options(options, device_volumes + num_volumes) != 0) {
-                LOGE("skipping malformed recovery.fstab line: %s\n", original);
-            } else {
-                ++num_volumes;
-            }
+           ++num_volumes;
         } else {
             LOGE("skipping malformed recovery.fstab line: %s\n", original);
         }
@@ -172,7 +148,7 @@ int ensure_path_mounted(const char* path) {
         // mount an MTD partition as a YAFFS2 filesystem.
         mtd_scan_partitions();
         const MtdPartition* partition;
-        partition = mtd_find_partition_by_name(v->device);
+        partition = mtd_find_partition_by_device_name(v->device);
         if (partition == NULL) {
             LOGE("failed to find \"%s\" partition to mount at \"%s\"\n",
                  v->device, v->mount_point);
