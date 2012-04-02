@@ -420,13 +420,22 @@ int run_modem_deltaupdate(void)
       * argv[3] diff package name
       * argv[4] flash memory block size in KB
       */
-       char** args = (char **) malloc(sizeof(char*) * 5);
-       args[0] = RUN_DELTAUPDATE_AGENT;
-       args[1] = "false";
-       args[2] = "AMSS";
-       args[3] = RADIO_DIFF_OUTPUT;
-       args[4] = "256";
-       args[5] = NULL;
+       char** args = (char **)malloc(sizeof(char*) * 5);
+       if (target_is_emmc()) {
+           args[0] = RUN_DELTAUPDATE_AGENT;
+           args[1] = "true";
+           args[2] = RADIO_IMAGE_LOCATION;
+           args[3] = RADIO_DIFF_OUTPUT;
+           args[4] = "256";
+           args[5] = NULL;
+       } else {
+           args[0] = RUN_DELTAUPDATE_AGENT;
+           args[1] = "false";
+           args[2] = "AMSS";
+           args[3] = RADIO_DIFF_OUTPUT;
+           args[4] = "256";
+           args[5] = NULL;
+       }
 
        execv(RUN_DELTAUPDATE_AGENT, args);
        fprintf(stdout, "E:Can't run %s (%s)\n", RUN_DELTAUPDATE_AGENT, strerror(errno));
@@ -441,6 +450,30 @@ int run_modem_deltaupdate(void)
     }
 
     return INSTALL_SUCCESS;
+}
+
+int get_amss_location(const char* amss_path_name)
+{
+    FILE* fp;
+    int i = 0;
+
+    fp = fopen_path(amss_path_name, "r");
+
+    if (fp == NULL) {
+        LOGI("Failed to open %s\n",amss_path_name);
+        return -1;
+    } else {
+        fclose(fp);
+    }
+
+    if (access(amss_path_name, F_OK) != 0) {
+        LOGI("amss image does not exist %s\n", amss_path_name);
+        return -1;
+    }
+
+    LOGI("amss image path name: %s\n", amss_path_name);
+
+    return 0;
 }
 
 int start_delta_modemupdate(const char *path)
@@ -460,6 +493,15 @@ int start_delta_modemupdate(const char *path)
     {
        LOGE("idev_extractDua returned error(%d)\n", ret);
        return ret;
+    }
+
+    // Check and mount AMSS partition
+    if (target_is_emmc()) {
+        ret = get_amss_location(RADIO_IMAGE_LOCATION);
+        if (ret != 0) {
+            LOGE("get_amss_location returned error(%d)\n", ret);
+            return ret;
+        }
     }
 
     // Execute modem update using delta update binary
