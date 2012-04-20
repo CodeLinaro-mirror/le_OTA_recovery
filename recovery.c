@@ -278,7 +278,9 @@ finish_recovery(const char *send_intent) {
     // Copy logs to cache so the system can find out what happened.
     copy_log_file(TEMPORARY_LOG_FILE, LOG_FILE, true);
     copy_log_file(TEMPORARY_LOG_FILE, LAST_LOG_FILE, false);
+    unlink(TEMPORARY_LOG_FILE);
     copy_log_file(TEMPORARY_INSTALL_FILE, LAST_INSTALL_FILE, false);
+    unlink(TEMPORARY_INSTALL_FILE);
     chmod(LOG_FILE, 0600);
     chown(LOG_FILE, 1000, 1000);   // system user
     chmod(LAST_LOG_FILE, 0640);
@@ -742,6 +744,7 @@ static int deltaupdate_pkg_location(char* diff_pkg_path_name)
 
     if (ensure_path_mounted(diff_pkg_path_name) != 0) {
         LOGI("Cannot mount %s\n", diff_pkg_path_name);
+        reset_fota_cookie_mtd();
         return -1;
     }
 
@@ -1086,9 +1089,9 @@ static int update_fotaprop(void)
     }
     memset(ver, 0x0, MAX_STRING_LEN);
     if(ensure_path_mounted(FOTA_PROP_FILE) != 0)
-        fprintf(stderr, "failed to locate fota prop file \n");
+        LOGI("failed to locate fota prop file \n");
     if(ensure_path_mounted(BUILD_PROP_PATH) != 0)
-        fprintf(stderr, "failed to locate build.prop \n");
+        LOGI("failed to locate build.prop \n");
     ret = read_buildprop(&ver);
     if(ret != 0)
     {
@@ -1182,9 +1185,11 @@ static int handle_deltaupdate_status(void)
     int update_status;
     struct stat status;
 
-    // Proceed with normal GOTA if return is -1
     if (deltaupdate_pkg_location(diff_pkg_path_name) == -1 )
-        return -1;
+    {
+        finish_recovery(NULL);
+        syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
+    }
 
     //Increment count that indicates number of times device enters into recovery
     //during delta update. This prevents the device recycling endlessly in recovery mode.
@@ -1211,7 +1216,7 @@ static int handle_deltaupdate_status(void)
           return EXIT_SUCCESS;
     }
     sync();
-    fprintf(stderr,"Rebooting after recovery\n");
+    LOGI("Rebooting after recovery\n");
     syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
     return EXIT_SUCCESS;
 }
@@ -1219,7 +1224,8 @@ static int handle_deltaupdate_status(void)
 int
 main(int argc, char **argv) {
     time_t start = time(NULL);
-
+    freopen(TEMPORARY_LOG_FILE, "a", stdout);
+    freopen(TEMPORARY_LOG_FILE, "a", stderr);
     printf("Starting recovery on %s", ctime(&start));
 
     ui_init();

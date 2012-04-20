@@ -60,7 +60,7 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
         mzCloseZipArchive(zip);
         return INSTALL_CORRUPT;
     }
-    fprintf(stderr, "try_update_binary(path(%s))\n",path);
+    LOGI("try_update_binary(path(%s))\n",path);
 
     diff_image_found = false;
     for(i = 0; i < MAX_DSP_DIFF_IMAGES; i++)
@@ -71,26 +71,31 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
         {
             diff_image_found = true;
             update_dsp_image[i] = true;
-            fprintf(stderr, "%s found \n", dsp_image_name[i]);
+            LOGI("%s found \n", dsp_image_name[i]);
             char *diff_file = dsp_image_output_path[i];
             int fd_diff = creat(diff_file, 0777);
 
             if (fd_diff < 0){
-                fprintf(stderr, "cant make %s \n", diff_file);
+                LOGE("cant make %s \n", diff_file);
+                mzCloseZipArchive(zip);
+                return INSTALL_ERROR;
             }
             else
             {
                 bool ok_diff = mzExtractZipEntryToFile(zip, dsp_diff, fd_diff);
                 close(fd_diff);
 
-                if(!ok_diff)
-                    fprintf(stderr, "Cant copy %d \n", dsp_image_name[i]);
+                if(!ok_diff){
+                    LOGE("Cant copy %d \n", dsp_image_name[i]);
+                    mzCloseZipArchive(zip);
+                    return INSTALL_ERROR;
+                }
             }
         }
     }
 
     if(!diff_image_found)
-        fprintf(stderr, "No radio diff images found \n");
+        LOGI("No radio diff images found \n");
 
     char* binary = "/tmp/update_binary";
     unlink(binary);
@@ -157,7 +162,7 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
     if (pid == 0) {
         close(pipefd[0]);
         execv(binary, args);
-        fprintf(stdout, "E:Can't run %s (%s)\n", binary, strerror(errno));
+        LOGE("Can't run %s (%s)\n", binary, strerror(errno));
         _exit(-1);
     }
     close(pipefd[1]);
@@ -414,7 +419,7 @@ int run_modem_deltaupdate(void)
     int pipefd[2];
     int i;
     if (pipe(pipefd) < 0){
-        fprintf(stderr, "pipe creation failure \n");
+        LOGE("pipe creation failure \n");
         return INSTALL_ERROR;
     }
 
@@ -444,7 +449,7 @@ int run_modem_deltaupdate(void)
                 char current_image_name[20];
                 memset(current_image_name, '\0',sizeof(current_image_name));
                 if( read(pipefd[0], current_image_name, sizeof(current_image_name))< 0){
-                    fprintf(stderr," Unable to start %s : Pipe read fail \n", RUN_DELTAUPDATE_AGENT);
+                    LOGE(" Unable to start %s : Pipe read fail \n", RUN_DELTAUPDATE_AGENT);
                     _exit(-1);
                 }
                 char * current_output_file;
@@ -455,7 +460,7 @@ int run_modem_deltaupdate(void)
                 else if(strcmp(current_image_name, DUA_DSP3_HANDLE ) == 0)
                     current_output_file =  DSP3_DIFF_EXTRACT_PATH;
 
-                fprintf(stderr,"updating %s \n",current_image_name);
+                LOGI("updating %s \n",current_image_name);
                 char** args = malloc(sizeof(char*) * 5);
                 args[0] = RUN_DELTAUPDATE_AGENT;
                 args[1] = "false";
@@ -465,13 +470,13 @@ int run_modem_deltaupdate(void)
                 args[5] = NULL;
 
                 execv(RUN_DELTAUPDATE_AGENT, args);
-                fprintf(stdout, "E:Can't run %s (%s)\n", RUN_DELTAUPDATE_AGENT, strerror(errno));
+                LOGE("E:Can't run %s (%s)\n", RUN_DELTAUPDATE_AGENT, strerror(errno));
                 _exit(-1);
             }
 
             //parents process
             if (write(pipefd[1],dua_update_image_name[i], sizeof(dua_update_image_name[i])) < 0){
-                fprintf(stderr, "Failed to write dsp name parameter to pipe \n");
+                LOGE("Failed to write dsp name parameter to pipe \n");
                 return INSTALL_ERROR;
             }
             waitpid(duapid, &ret, 0);
@@ -479,7 +484,7 @@ int run_modem_deltaupdate(void)
                 LOGE("Error in %s\n(Status %d)\n", RUN_DELTAUPDATE_AGENT, WEXITSTATUS(ret));
                 return INSTALL_ERROR;
             }
-            fprintf(stderr, "dsp%d update done \n",i+1);
+            LOGI("dsp%d update done \n",i+1);
         }
     }
 
