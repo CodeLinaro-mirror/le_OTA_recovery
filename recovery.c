@@ -1187,8 +1187,7 @@ static int handle_deltaupdate_status(void)
 
     if (deltaupdate_pkg_location(diff_pkg_path_name) == -1 )
     {
-        finish_recovery(NULL);
-        syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
+        return -1;
     }
 
     //Increment count that indicates number of times device enters into recovery
@@ -1313,5 +1312,8 @@ main(int argc, char **argv) {
     ui_print("Rebooting...\n");
     __reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
 #endif
+    LOGI("Rebooting at the end of recovery module.\n");
+    finish_recovery(NULL);
+    syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
     return EXIT_SUCCESS;
 }
