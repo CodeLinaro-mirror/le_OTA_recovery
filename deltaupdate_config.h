@@ -51,6 +51,9 @@
 //Predefined AMSS image name
 #define RADIO_IMAGE_LOCATION "/sys_boot/image/AMSS.MBN"
 
+//Predefined AMSS backup image name
+#define RADIO_IMAGE_LOCAL "/sys_boot/image/AMSS_LOCAL.MBN"
+
 //Contains information about radio delta update
 #define RADIO_DIFF_OUTPUT "/cache/fota/radio.diff"
 
