@@ -550,14 +550,16 @@ int start_delta_modemupdate(const char *path)
     LOGE("modem update result(%d)\n", ret);
 
     if(ret == 0) {
-        if (remove(RADIO_IMAGE_LOCATION)) {
-            LOGE("Failed to remove amss binary: %s\n",strerror(errno));
-            return ret;
-         }
-        if (rename(RADIO_IMAGE_LOCAL, RADIO_IMAGE_LOCATION)) {
-            LOGI("Failed to restore amss binary: %s\n",strerror(errno));
-            return ret;
-         }
+        if (target_is_emmc()) {
+            if (remove(RADIO_IMAGE_LOCATION)) {
+                LOGE("Failed to remove amss binary: %s\n",strerror(errno));
+                return ret;
+            }
+            if (rename(RADIO_IMAGE_LOCAL, RADIO_IMAGE_LOCATION)) {
+                LOGI("Failed to restore amss binary: %s\n",strerror(errno));
+                return ret;
+            }
+        }
 	return DELTA_UPDATE_SUCCESS_200;
     }
     else
