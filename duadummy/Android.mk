@@ -20,7 +20,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := duadummy.c
 LOCAL_MODULE := libduadummy
-LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_TAGS := debug
 LOCAL_C_INCLUDES += bootable/recovery
 
 include $(BUILD_STATIC_LIBRARY)

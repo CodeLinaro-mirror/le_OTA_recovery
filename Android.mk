@@ -31,7 +31,7 @@ endif
 # a (redundant) copy of the binary in /system/bin for user builds.
 # TODO: Build the ramdisk image in a more principled way.
 
-LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_TAGS := debug
 
 ifeq ($(TARGET_RECOVERY_UI_LIB),)
   LOCAL_SRC_FILES += default_recovery_ui.c
