@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <cutils/properties.h>
 
 #include "mtdutils/mtdutils.h"
 #include "mtdutils/mounts.h"
@@ -60,7 +61,16 @@ void load_volume_table() {
     device_volumes[0].length = 0;
     num_volumes = 1;
 
-    FILE* fstab = fopen("/etc/recovery.fstab", "r");
+    char emmc[32];
+    property_get("ro.boot.emmc", emmc, "");
+    FILE* fstab;
+
+    if (!strncmp(emmc, "true", 4)) {
+        fstab = fopen("/etc/recovery.fstab", "r");
+    } else {
+        fstab = fopen("/etc/recovery_nand.fstab", "r");
+    }
+
     if (fstab == NULL) {
         LOGE("failed to open /etc/recovery.fstab (%s)\n", strerror(errno));
         return;
