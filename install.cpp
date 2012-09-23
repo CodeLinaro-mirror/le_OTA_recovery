@@ -33,6 +33,7 @@
 #include "roots.h"
 #include "verifier.h"
 #include "ui.h"
+#include "bootloader.h"
 
 #include "deltaupdate_config.h"
 
@@ -424,7 +425,7 @@ int run_modem_deltaupdate(void)
        if (target_is_emmc()) {
            args[0] = RUN_DELTAUPDATE_AGENT;
            args[1] = "true";
-           args[2] = RADIO_IMAGE_LOCATION;
+           args[2] = RADIO_IMAGE_LOCAL;
            args[3] = RADIO_DIFF_OUTPUT;
            args[4] = "256";
            args[5] = NULL;
@@ -452,12 +453,59 @@ int run_modem_deltaupdate(void)
     return INSTALL_SUCCESS;
 }
 
+int get_amss_backup(const char* amss_path_name1, const char* amss_path_name2)
+{
+    FILE *fp_read, *fp_write;
+    char *buffer;
+    unsigned max_size = (256 * 1024);
+    unsigned num_read = 0;
+    int ret = 0;
+
+    fp_read = fopen_path(amss_path_name1,"rb");
+    if (fp_read == NULL) {
+        LOGE("Failed to open %s\n",amss_path_name1);
+        return -1;
+    }
+
+    fp_write = fopen_path(amss_path_name2,"wb+");
+    if (fp_write == NULL) {
+        LOGE("Failed to open %s\n",amss_path_name2);
+        fclose(fp_read);
+        return -1;
+    }
+    buffer = (char *) malloc(sizeof(char)*max_size);
+    if (buffer == NULL) {
+        LOGE("Failed to allocate buffer\n");
+        fclose(fp_read);
+        fclose(fp_write);
+        return -1;
+    }
+    while (!feof(fp_read)) {
+           if ((num_read = fread(buffer, 1, max_size, fp_read)) < 0) {
+               LOGE("Failed to read from file :%s\n",amss_path_name1);
+               ret = -1;
+               goto fail;
+           }
+           if(fwrite(buffer, 1, num_read, fp_write) < 0) {
+               LOGE("Failed to write to file :%s\n",amss_path_name2);
+               ret = -1;
+               goto fail;
+           }
+    }
+
+fail:
+    fclose(fp_read);
+    fclose(fp_write);
+    free(buffer);
+    return ret;
+}
+
 int get_amss_location(const char* amss_path_name)
 {
     FILE* fp;
     int i = 0;
 
-    fp = fopen_path(amss_path_name, "r");
+    fp = fopen_path(amss_path_name, "rw");
 
     if (fp == NULL) {
         LOGI("Failed to open %s\n",amss_path_name);
@@ -502,14 +550,31 @@ int start_delta_modemupdate(const char *path)
             LOGE("get_amss_location returned error(%d)\n", ret);
             return ret;
         }
+        /* Backup radio image before proceeding with the update */
+        ret = get_amss_backup(RADIO_IMAGE_LOCATION, RADIO_IMAGE_LOCAL);
+        if (ret != 0) {
+            LOGI("Failed to get amss backup\n");
+            return ret;
+         }
     }
 
     // Execute modem update using delta update binary
     ret = run_modem_deltaupdate();
     LOGE("modem update result(%d)\n", ret);
 
-    if(ret == 0)
+    if(ret == 0) {
+        if (target_is_emmc()) {
+            if (remove(RADIO_IMAGE_LOCATION)) {
+                LOGE("Failed to remove amss binary: %s\n",strerror(errno));
+                return ret;
+            }
+            if (rename(RADIO_IMAGE_LOCAL, RADIO_IMAGE_LOCATION)) {
+                LOGI("Failed to restore amss binary: %s\n",strerror(errno));
+                return ret;
+            }
+        }
 	return DELTA_UPDATE_SUCCESS_200;
+    }
     else
-	return ret;
+       return ret;
 }
