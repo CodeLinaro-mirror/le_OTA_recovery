@@ -29,6 +29,23 @@
 #include "imgdiff.h"
 #include "utils.h"
 
+int CheckPatchHeader(const Value* patch, ssize_t patch_offset)
+{
+    unsigned char* header = (unsigned char*) patch->data + patch_offset;
+
+    if (memcmp(header, "BSDIFF40", 8) == 0) {
+        return 0;
+    }
+
+    // Use delta update mechanism
+    if (memcmp(header, "IPDIFF10", 8) == 0) {
+        return 1;
+    }
+
+    fprintf(stderr, "corrupt patch file header (magic number)\n");
+    return -1;
+}
+
 /*
  * Apply the patch given in 'patch_filename' to the source data given
  * by (old_data, old_size).  Write the patched output to the 'output'
@@ -77,8 +94,14 @@ int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size,
             size_t src_len = Read8(normal_header+8);
             size_t patch_offset = Read8(normal_header+16);
 
-            ApplyBSDiffPatch(old_data + src_start, src_len,
-                             patch, patch_offset, sink, token, ctx);
+            int patch_type = CheckPatchHeader(patch, patch_offset);
+
+            if (patch_type == 0)
+                ApplyBSDiffPatch(old_data + src_start, src_len,
+                                 patch, patch_offset, sink, token, ctx);
+            else if (patch_type == 1)
+              ApplyIPDiffPatch(old_data + src_start, src_len,
+                           patch, patch_offset, sink, token, ctx);
         } else if (type == CHUNK_RAW) {
             char* raw_header = patch->data + pos;
             pos += 4;
@@ -164,11 +187,23 @@ int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size,
             // data.
             unsigned char* uncompressed_target_data;
             ssize_t uncompressed_target_size;
-            if (ApplyBSDiffPatchMem(expanded_source, expanded_len,
-                                    patch, patch_offset,
-                                    &uncompressed_target_data,
-                                    &uncompressed_target_size) != 0) {
+
+            int patch_type = CheckPatchHeader(patch, patch_offset);
+
+            if (patch_type == 0) {
+                if (ApplyBSDiffPatchMem(expanded_source, expanded_len,
+                    patch, patch_offset,
+                    &uncompressed_target_data,
+                    &uncompressed_target_size) != 0) {
                 return -1;
+                }
+            } else /*patch_type == 1*/ {
+                if (ipth_UpdateOneFile(expanded_source, expanded_len,
+                    patch, patch_offset,
+                    &uncompressed_target_data,
+                    &uncompressed_target_size) != 0) {
+                return -1;
+                }
             }
 
             // Now compress the target data and append it to the output.
