@@ -33,18 +33,27 @@
 #include "roots.h"
 #include "verifier.h"
 #include "ui.h"
+#include "bootloader.h"
 
-extern RecoveryUI* ui;
+#include "deltaupdate_config.h"
 
 #define ASSUMED_UPDATE_BINARY_NAME  "META-INF/com/google/android/update-binary"
+#define ASSUMED_DELTAUPDATE_BINARY_NAME  "META-INF/com/google/android/ipth_dua"
+#define RUN_DELTAUPDATE_AGENT  "/tmp/ipth_dua"
 #define PUBLIC_KEYS_FILE "/res/keys"
+#define RADIO_DIFF_NAME "radio.diff"
 
+extern RecoveryUI* ui;
 // Default allocation of progress bar segments to operations
 static const int VERIFICATION_PROGRESS_TIME = 60;
 static const float VERIFICATION_PROGRESS_FRACTION = 0.25;
 static const float DEFAULT_FILES_PROGRESS_FRACTION = 0.4;
 static const float DEFAULT_IMAGE_PROGRESS_FRACTION = 0.1;
 
+
+static const char *LAST_INSTALL_FILE = "/cache/recovery/last_install";
+
+const ZipEntry* radio_diff;
 // If the package contains an update binary, extract it and run it.
 static int
 try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
@@ -53,6 +62,33 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
     if (binary_entry == NULL) {
         mzCloseZipArchive(zip);
         return INSTALL_CORRUPT;
+    }
+    fprintf(stderr, "try_update_binary(path(%s))\n",path);
+
+    radio_diff = mzFindZipEntry(zip, RADIO_DIFF_NAME);
+
+    if (radio_diff == NULL) {
+        fprintf(stderr, "%s not found\n", RADIO_DIFF_NAME);
+    }
+    else
+    {
+        char* diff_file = RADIO_DIFF_OUTPUT;
+        int fd_diff = creat(diff_file, 0777);
+
+        fprintf(stderr, "%s found\n", RADIO_DIFF_NAME);
+
+        if (fd_diff < 0) {
+            fprintf(stderr, "Can't make %s\n", diff_file);
+        }
+        else
+        {
+            bool ok_diff = mzExtractZipEntryToFile(zip, radio_diff, fd_diff);
+            close(fd_diff);
+
+            if (!ok_diff) {
+                fprintf(stderr, "Can't copy %s\n", RADIO_DIFF_NAME);
+            }
+        }
     }
 
     const char* binary = "/tmp/update_binary";
@@ -319,4 +355,226 @@ install_package(const char* path, int* wipe_cache, const char* install_file)
         fclose(install_log);
     }
     return result;
+}
+
+int extract_deltaupdate_binary(const char *path)
+{
+    int err;
+    ZipArchive zip;
+
+    // Try to open the package.
+    err = mzOpenZipArchive(path, &zip);
+    if (err != 0) {
+        LOGE("Can't open %s\n(%s)\n", path, err != -1 ? strerror(err) : "bad");
+        return INSTALL_ERROR;
+    }
+
+    const ZipEntry* dua_entry =
+            mzFindZipEntry(&zip, ASSUMED_DELTAUPDATE_BINARY_NAME);
+    if (dua_entry == NULL) {
+        mzCloseZipArchive(&zip);
+       LOGE("Can't find %s\n", ASSUMED_DELTAUPDATE_BINARY_NAME);
+        return INSTALL_ERROR;
+    }
+
+    char* deltaupdate_agent = RUN_DELTAUPDATE_AGENT;
+    unlink(deltaupdate_agent);
+    int fd = creat(deltaupdate_agent, 0755);
+    if (fd < 0) {
+        mzCloseZipArchive(&zip);
+        LOGE("Can't make %s\n", deltaupdate_agent);
+        return INSTALL_ERROR;
+    }
+
+    bool ok = mzExtractZipEntryToFile(&zip, dua_entry, fd);
+    close(fd);
+    mzCloseZipArchive(&zip);
+
+    if (!ok) {
+        LOGE("Can't copy %s\n", ASSUMED_DELTAUPDATE_BINARY_NAME);
+        return INSTALL_ERROR;
+    }
+
+    return 0;
+}
+
+int run_modem_deltaupdate(void)
+{
+    int ret;
+
+    pid_t duapid = fork();
+
+    if (duapid == -1)
+    {
+        LOGE("fork failed. Returning error.\n");
+        return INSTALL_ERROR;
+    }
+
+    if (duapid == 0)
+    {//child process
+     /*
+      * argv[0] ipth_dua exeuable command itself
+      * argv[1] false(default) - old binary update as a block / true - old
+      * binary update as a file
+      * argv[2] old binary file name. Will be used as partition name if argv[1]
+      * is false
+      * argv[3] diff package name
+      * argv[4] flash memory block size in KB
+      */
+       char** args = (char **)malloc(sizeof(char*) * 5);
+       if (target_is_emmc()) {
+           args[0] = RUN_DELTAUPDATE_AGENT;
+           args[1] = "true";
+           args[2] = RADIO_IMAGE_LOCAL;
+           args[3] = RADIO_DIFF_OUTPUT;
+           args[4] = "256";
+           args[5] = NULL;
+       } else {
+           args[0] = RUN_DELTAUPDATE_AGENT;
+           args[1] = "false";
+           args[2] = "AMSS";
+           args[3] = RADIO_DIFF_OUTPUT;
+           args[4] = "256";
+           args[5] = NULL;
+       }
+
+       execv(RUN_DELTAUPDATE_AGENT, args);
+       fprintf(stdout, "E:Can't run %s (%s)\n", RUN_DELTAUPDATE_AGENT, strerror(errno));
+       _exit(-1);
+    }
+
+    //parents process
+    waitpid(duapid, &ret, 0);
+    if (!WIFEXITED(ret) || WEXITSTATUS(ret) != 0) {
+        LOGE("Error in %s\n(Status %d)\n", RUN_DELTAUPDATE_AGENT, WEXITSTATUS(ret));
+        return INSTALL_ERROR;
+    }
+
+    return INSTALL_SUCCESS;
+}
+
+int get_amss_backup(const char* amss_path_name1, const char* amss_path_name2)
+{
+    FILE *fp_read, *fp_write;
+    char *buffer;
+    unsigned max_size = (256 * 1024);
+    unsigned num_read = 0;
+    int ret = 0;
+
+    fp_read = fopen_path(amss_path_name1,"rb");
+    if (fp_read == NULL) {
+        LOGE("Failed to open %s\n",amss_path_name1);
+        return -1;
+    }
+
+    fp_write = fopen_path(amss_path_name2,"wb+");
+    if (fp_write == NULL) {
+        LOGE("Failed to open %s\n",amss_path_name2);
+        fclose(fp_read);
+        return -1;
+    }
+    buffer = (char *) malloc(sizeof(char)*max_size);
+    if (buffer == NULL) {
+        LOGE("Failed to allocate buffer\n");
+        fclose(fp_read);
+        fclose(fp_write);
+        return -1;
+    }
+    while (!feof(fp_read)) {
+           if ((num_read = fread(buffer, 1, max_size, fp_read)) < 0) {
+               LOGE("Failed to read from file :%s\n",amss_path_name1);
+               ret = -1;
+               goto fail;
+           }
+           if(fwrite(buffer, 1, num_read, fp_write) < 0) {
+               LOGE("Failed to write to file :%s\n",amss_path_name2);
+               ret = -1;
+               goto fail;
+           }
+    }
+
+fail:
+    fclose(fp_read);
+    fclose(fp_write);
+    free(buffer);
+    return ret;
+}
+
+int get_amss_location(const char* amss_path_name)
+{
+    FILE* fp;
+    int i = 0;
+
+    fp = fopen_path(amss_path_name, "rw");
+
+    if (fp == NULL) {
+        LOGI("Failed to open %s\n",amss_path_name);
+        return -1;
+    } else {
+        fclose(fp);
+    }
+
+    if (access(amss_path_name, F_OK) != 0) {
+        LOGI("amss image does not exist %s\n", amss_path_name);
+        return -1;
+    }
+
+    LOGI("amss image path name: %s\n", amss_path_name);
+
+    return 0;
+}
+
+int start_delta_modemupdate(const char *path)
+{
+    int ret = 0;
+
+    if (radio_diff == NULL)
+    {
+        LOGE("No modem package available.\n");
+        LOGE("No modem update needed. returning O.K\n");
+        return DELTA_UPDATE_SUCCESS_200;
+    }
+
+    // If the package contains an delta update binary for modem update, extract it
+    ret = extract_deltaupdate_binary(path);
+    if(ret != 0)
+    {
+       LOGE("idev_extractDua returned error(%d)\n", ret);
+       return ret;
+    }
+
+    // Check and mount AMSS partition
+    if (target_is_emmc()) {
+        ret = get_amss_location(RADIO_IMAGE_LOCATION);
+        if (ret != 0) {
+            LOGE("get_amss_location returned error(%d)\n", ret);
+            return ret;
+        }
+        /* Backup radio image before proceeding with the update */
+        ret = get_amss_backup(RADIO_IMAGE_LOCATION, RADIO_IMAGE_LOCAL);
+        if (ret != 0) {
+            LOGI("Failed to get amss backup\n");
+            return ret;
+         }
+    }
+
+    // Execute modem update using delta update binary
+    ret = run_modem_deltaupdate();
+    LOGE("modem update result(%d)\n", ret);
+
+    if(ret == 0) {
+        if (target_is_emmc()) {
+            if (remove(RADIO_IMAGE_LOCATION)) {
+                LOGE("Failed to remove amss binary: %s\n",strerror(errno));
+                return ret;
+            }
+            if (rename(RADIO_IMAGE_LOCAL, RADIO_IMAGE_LOCATION)) {
+                LOGI("Failed to restore amss binary: %s\n",strerror(errno));
+                return ret;
+            }
+        }
+	return DELTA_UPDATE_SUCCESS_200;
+    }
+    else
+       return ret;
 }

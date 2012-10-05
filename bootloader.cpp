@@ -23,12 +23,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <cutils/properties.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 static int get_bootloader_message_mtd(struct bootloader_message *out, const Volume* v);
 static int set_bootloader_message_mtd(const struct bootloader_message *in, const Volume* v);
 static int get_bootloader_message_block(struct bootloader_message *out, const Volume* v);
 static int set_bootloader_message_block(const struct bootloader_message *in, const Volume* v);
+static void wait_for_device(const char* fn);
 
 int get_bootloader_message(struct bootloader_message *out) {
     Volume* v = volume_for_path("/misc");
@@ -137,6 +140,187 @@ static int set_bootloader_message_mtd(const struct bootloader_message *in,
     return 0;
 }
 
+int set_fota_cookie()
+{
+    if (target_is_emmc())
+        return set_fota_cookie_mmc();
+    else
+        return set_fota_cookie_mtd();
+}
+
+int reset_fota_cookie()
+{
+    if (target_is_emmc())
+        return reset_fota_cookie_mmc();
+    else
+        return reset_fota_cookie_mtd();
+}
+// FOTA cookie indicates that an android or modem image package
+// is available for delta update
+int set_fota_cookie_mtd(void)
+{
+    size_t write_size;
+
+    mtd_scan_partitions();
+    const MtdPartition *part = mtd_find_partition_by_name("FOTA");
+
+    if (part == NULL || mtd_partition_info(part, NULL, NULL, &write_size)) {
+        LOGE("Can't find FOTA\n");
+        return -1;
+    }
+
+    MtdReadContext *read = mtd_read_partition(part);
+    if (read == NULL) {
+        LOGE("Can't open FOTA\n(%s)\n", strerror(errno));
+        return -1;
+    }
+
+    ssize_t size = write_size; //writing 1 page is enough
+    char data[size];
+    ssize_t r = mtd_read_data(read, data, size);
+    if (r != size) LOGE("Can't read FOTA\n(%s)\n", strerror(errno));
+    mtd_read_close(read);
+    if (r != size) return -1;
+
+    //setting FOTA cookie value, 0x64645343
+    memset(data, 0x0, sizeof(data));
+    data[0] = 0x43;
+    data[1] = 0x53;
+    data[2] = 0x64;
+    data[3] = 0x64;
+
+    MtdWriteContext *write = mtd_write_partition(part);
+    if (write == NULL) {
+        LOGE("Can't open FOTA\n(%s)\n", strerror(errno));
+        return -1;
+    }
+    if (mtd_write_data(write, data, size) != size) {
+        LOGE("Can't write FOTA\n(%s)\n", strerror(errno));
+        mtd_write_close(write);
+        return -1;
+    }
+    if (mtd_write_close(write)) {
+        LOGE("Can't finish FOTA\n(%s)\n", strerror(errno));
+        return -1;
+    }
+
+    LOGI("Set FOTA cookie done.\n");
+    return 0;
+}
+
+//Write FOTA cookie for MMC device
+int set_fota_cookie_mmc(void)
+{
+    int count = 0;
+    Volume* v = volume_for_path("/FOTA");
+     if (v == NULL) {
+         LOGE("Cannot load volume /FOTA\n");
+         return -1;
+    }
+    wait_for_device(v->device);
+
+    int fd = open(v->device, O_RDWR|O_SYNC);
+    if (fd < 0) {
+        LOGE("Can't open %s\n(%s)\n", v->device, strerror(errno));
+        return -1;
+     }
+
+    char data[512];
+    memset(data, 0x0, sizeof(data));
+    data[0] = 0x43;
+    data[1] = 0x53;
+    data[2] = 0x64;
+    data[3] = 0x64;
+
+    count = write(fd,(char *)data,512);
+    if (count <= 0) {
+        LOGE("Failed writing %s\n(%s)\n", v->device, strerror(errno));
+        return -1;
+    }
+    if (close(fd) != 0) {
+        LOGE("Failed closing %s\n(%s)\n", v->device, strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
+int reset_fota_cookie_mtd(void)
+{
+    size_t write_size;
+
+    mtd_scan_partitions();
+    const MtdPartition *part = mtd_find_partition_by_name("FOTA");
+    if (part == NULL || mtd_partition_info(part, NULL, NULL, &write_size)) {
+        LOGE("Can't find FOTA\n");
+        return -1;
+    }
+
+    MtdReadContext *read = mtd_read_partition(part);
+    if (read == NULL) {
+        LOGE("Can't open FOTA\n(%s)\n", strerror(errno));
+        return -1;
+    }
+
+    ssize_t size = write_size; //writing 1 page is enough
+    char data[size];
+    ssize_t r = mtd_read_data(read, data, size);
+    if (r != size) LOGE("Can't read FOTA\n(%s)\n", strerror(errno));
+    mtd_read_close(read);
+    if (r != size) return -1;
+
+    //Resetting FOTA cookie value
+    memset(data, 0x0, sizeof(data));
+
+    MtdWriteContext *write = mtd_write_partition(part);
+    if (write == NULL) {
+        LOGE("Can't open FOTA\n(%s)\n", strerror(errno));
+        return -1;
+    }
+    if (mtd_write_data(write, data, size) != size) {
+        LOGE("Can't write FOTA\n(%s)\n", strerror(errno));
+        mtd_write_close(write);
+        return -1;
+    }
+    if (mtd_write_close(write)) {
+        LOGE("Can't finish FOTA\n(%s)\n", strerror(errno));
+        return -1;
+    }
+
+    LOGI("Reset FOTA cookie done.\n");
+    return 0;
+}
+
+int reset_fota_cookie_mmc(void)
+{
+    int count = 0;
+    Volume* v = volume_for_path("/FOTA");
+     if (v == NULL) {
+         LOGE("Cannot load volume /FOTA\n");
+         return -1;
+    }
+    wait_for_device(v->device);
+
+    int fd = open(v->device, O_RDWR|O_SYNC);
+    if (fd < 0) {
+        LOGE("Can't open %s\n(%s)\n", v->device, strerror(errno));
+        return -1;
+     }
+
+    char data[512];
+    memset(data, 0x0, sizeof(data));
+
+    count = write(fd,(char *)data,512);
+    if (count <= 0) {
+        LOGE("Failed writing %s\n(%s)\n", v->device, strerror(errno));
+        return -1;
+    }
+    if (close(fd) != 0) {
+        LOGE("Failed closing %s\n(%s)\n", v->device, strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
 
 // ------------------------------------
 // for misc partitions on block devices
@@ -199,4 +383,19 @@ static int set_bootloader_message_block(const struct bootloader_message *in,
         return -1;
     }
     return 0;
+}
+
+int target_is_emmc()
+{
+    char emmc[PROPERTY_VALUE_MAX];
+    int result = 0;
+
+    property_get("ro.boot.emmc", emmc, "");
+
+    if (!strncmp(emmc, "true", 4))
+        result = 1;
+    else
+        result = 0;
+
+    return result;
 }
