@@ -707,10 +707,10 @@ static int deltaupdate_pkg_location(char* diff_pkg_path_name)
     while (i++ < 3)
     {
         LOGI("fopen_path %d %s\n", i, FOTA_PROP_FILE);
-        sleep(1);
         fp = fopen_path(FOTA_PROP_FILE, "r");
         if (fp)
             break;
+        sleep(1);
     }
     if (fp == NULL)
     {
@@ -1225,6 +1225,9 @@ main(int argc, char **argv) {
     time_t start = time(NULL);
     freopen(TEMPORARY_LOG_FILE, "a", stdout);
     freopen(TEMPORARY_LOG_FILE, "a", stderr);
+    // Disable stream buffering (note that /tmp is a ramdisk)
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
     printf("Starting recovery on %s", ctime(&start));
 
     ui_init();
