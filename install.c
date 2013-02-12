@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -50,6 +51,86 @@ char *dua_update_image_name[] = { DUA_DSP1_HANDLE, DUA_DSP2_HANDLE, DUA_DSP3_HAN
 
 const ZipEntry* dsp_diff;
 bool diff_image_found;
+
+#define MAX_DSP_MBN_IMAGES 3
+
+// Callback invoked by mzProcessZipEntryContents to write uncompressed data to flash
+static bool flash_mbn_data(const unsigned char *data, int dataLen, void *cookie) {
+    ssize_t ret;
+    MtdWriteContext *ctx = (MtdWriteContext *) cookie;
+    if (cookie == NULL) {
+        LOGE("unexpected null ptr\n");
+        return false;
+    }
+
+    ret = mtd_write_data(ctx, data, dataLen);
+    if (ret != dataLen) {
+        LOGE("error writing buffer: return value %d, expected %d\n", ret, dataLen);
+        return false;
+    }
+    return true;
+}
+
+// Flash dsp*.mbn files included in the zip
+static bool install_mbns(const ZipArchive *zip)
+{
+    int i;
+    const char *mbn_names[MAX_DSP_MBN_IMAGES] = {"dsp1.mbn", "dsp2.mbn", "dsp3.mbn"};
+    const char *mbn_partitions[MAX_DSP_MBN_IMAGES] = {"dsp1", "dsp2", "dsp3"};
+    const ZipEntry *mbn_entry;
+    const MtdPartition *part;
+    size_t total_size, erase_size, write_size;
+    MtdWriteContext *ctx;
+
+    if (mtd_scan_partitions() < 0) {
+        LOGE("error scanning mtd partitions\n");
+        return false;
+    }
+
+    for (i = 0; i < MAX_DSP_MBN_IMAGES; i++)
+    {
+        mbn_entry = mzFindZipEntry(zip, mbn_names[i]);
+        if (mbn_entry != NULL)
+        {
+            LOGI("found full mbn %s\n", mbn_names[i]);
+            part = mtd_find_partition_by_name(mbn_partitions[i]);
+            if (part == NULL) {
+                LOGE("couldn't find partition %s\n", mbn_partitions[i]);
+                return false;
+            }
+            if (mtd_partition_info(part, &total_size, &erase_size, &write_size) < 0) {
+                LOGE("couldn't get partition info for %s\n", mbn_partitions[i]);
+                return false;
+            }
+            if (total_size < mbn_entry->uncompLen) {
+                LOGE("not enough room in partition %s for file of size %d "
+                     "(have %d bytes)!\n", mbn_partitions[i], total_size,
+                     mbn_entry->uncompLen);
+                return false;
+            }
+
+            ctx = mtd_write_partition(part);
+            if (ctx == NULL) {
+                LOGE("couldn't open write context for %s\n", mbn_partitions[i]);
+                return false;
+            }
+            if (!mzProcessZipEntryContents(zip, mbn_entry, flash_mbn_data, ctx)) {
+                LOGE("error writing image\n");
+                (void) mtd_write_close(ctx);
+                return false;
+            }
+            if (mtd_write_close(ctx) < 0) {
+                LOGE("error closing write context");
+                return false;
+            }
+            LOGI("updating %s complete: wrote %d bytes\n",
+                 mbn_partitions[i], mbn_entry->uncompLen);
+        }
+    }
+
+    return true;
+}
+
 // If the package contains an update binary, extract it and run it.
 static int
 try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
@@ -107,7 +188,6 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
     }
     bool ok = mzExtractZipEntryToFile(zip, binary_entry, fd);
     close(fd);
-    mzCloseZipArchive(zip);
 
     if (!ok) {
         LOGE("Can't copy %s\n", ASSUMED_UPDATE_BINARY_NAME);
@@ -210,6 +290,13 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
         return INSTALL_ERROR;
     }
 
+    if (!install_mbns(zip)) {
+        LOGE("Installing MBNs failed\n");
+        mzCloseZipArchive(zip);
+        return INSTALL_ERROR;
+    }
+
+    mzCloseZipArchive(zip);
     return INSTALL_SUCCESS;
 }
 

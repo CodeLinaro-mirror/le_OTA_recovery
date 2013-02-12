@@ -4,7 +4,8 @@ AM_CFLAGS := -Wundef \
         -g -O0 \
         -fno-inline \
         -fno-short-enums \
-        -fpic
+        -fpic \
+        -DNDEBUG
 
 AM_CPPFLAGS := \
               -I. \
