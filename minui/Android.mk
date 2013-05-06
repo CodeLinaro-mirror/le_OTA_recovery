@@ -4,6 +4,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := graphics.c events.c resources.c
 
 LOCAL_C_INCLUDES +=\
+    $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include\
     external/libpng\
     external/zlib
 
