@@ -144,7 +144,18 @@ mtd_scan_partitions()
             p->device_index = mtdnum;
             p->size = mtdsize;
             p->erase_size = mtderasesize;
-            p->name = strdup(mtdname);
+
+            /* Remap to standard Android partition naming
+             * convention if needed.
+             */
+            if( strncmp(mtdname, "appsbl", sizeof("appsbl")) == 0) {
+                p->name = strdup("aboot");
+            } else if( strncmp(mtdname, "apps", sizeof("apps")) == 0) {
+                p->name = strdup("boot");
+            } else {
+                p->name = strdup(mtdname);
+            }
+
             if (p->name == NULL) {
                 errno = ENOMEM;
                 goto bail;
