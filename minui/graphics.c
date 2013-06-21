@@ -33,18 +33,28 @@
 #include "font_10x18.h"
 #include "minui.h"
 
+#include <linux/msm_mdp.h>
+#include "linux/msm_ion.h"
+#include <errno.h>
+
+#define OVERLAY_EN
+
 #if defined(RECOVERY_BGRA)
 #define PIXEL_FORMAT GGL_PIXEL_FORMAT_BGRA_8888
 #define PIXEL_SIZE   4
+#define MDP_PIXEL_FORMAT MDP_BGRA_8888
 #elif defined(RECOVERY_RGBX)
 #define PIXEL_FORMAT GGL_PIXEL_FORMAT_RGBX_8888
 #define PIXEL_SIZE   4
+#define MDP_PIXEL_FORMAT MDP_RGBA_8888
 #else
 #define PIXEL_FORMAT GGL_PIXEL_FORMAT_RGB_565
 #define PIXEL_SIZE   2
+#define MDP_PIXEL_FORMAT MDP_RGB_565
 #endif
 
 #define NUM_BUFFERS 2
+#define SIZE 0x7E9000
 
 typedef struct {
     GGLSurface texture;
@@ -70,6 +80,179 @@ static struct fb_fix_screeninfo fi;
 inline size_t roundUpToPageSize(size_t x) {
     return (x + (PAGE_SIZE-1)) & ~(PAGE_SIZE-1);
 }
+
+#ifdef OVERLAY_EN
+static int overlay_id;
+unsigned char *mem_buf = NULL;
+static int ion_fd = -1;
+static int mem_fd = -1;
+
+struct ion_handle_data handle_data;
+
+int alloc_mem(unsigned int size, unsigned char **mem_buf)
+{
+    int result = -1;
+    struct ion_fd_data fd_data;
+    struct ion_allocation_data ionAllocData;
+    fd_data.fd = 0;
+
+    ion_fd = open("/dev/ion", O_RDWR|O_DSYNC);
+    if (ion_fd < 0) {
+            perror("ERROR: Can't open ion ");
+            return -1;
+    }
+
+    ionAllocData.flags = 0;
+    ionAllocData.len = size;
+    ionAllocData.align = sysconf(_SC_PAGESIZE);
+    ionAllocData.heap_mask =
+            ION_HEAP(ION_IOMMU_HEAP_ID) |
+            ION_HEAP(ION_CP_MM_HEAP_ID);
+
+    result = ioctl(ion_fd, ION_IOC_ALLOC,  &ionAllocData);
+    if(result){
+            perror("ERROR: ION_IOC_ALLOC Failed ");
+            return -1;
+    } else {
+
+        fd_data.handle = ionAllocData.handle;
+        handle_data.handle = ionAllocData.handle;
+        if(ioctl(ion_fd, ION_IOC_MAP, &fd_data)){
+            perror("ERROR: ION_IOC_MAP Failed ");
+        }else {
+            *mem_buf = (unsigned char *)mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_data.fd, 0);
+            mem_fd = fd_data.fd;
+            if (*mem_buf == MAP_FAILED) {
+                    perror("ERROR: mem_buf MAP_FAILED ");
+                    return -1;
+        }
+        printf("MEM Allocation successful \n");
+        }
+    }
+
+    return 0;
+}
+
+int free_mem (unsigned char *mem_buf) {
+
+    int ret = 0;
+
+	printf("Unmap and Free memory \n");
+
+    munmap(mem_buf, SIZE);
+
+    ret = ioctl(ion_fd, ION_IOC_FREE, &handle_data);
+    if (ret < 0) {
+        perror("free_mem failed ");
+    }
+
+    close(mem_fd);
+    close(ion_fd);
+    mem_buf = NULL;
+    return 0;
+}
+
+
+static int Setup_RGBPipe( int fd)
+{
+    struct mdp_overlay overlay;
+    int ret = 0;
+
+    memset(&overlay, 0 , sizeof (struct mdp_overlay));
+
+	/* Fill Overlay Data */
+
+	overlay.src.width  = gr_framebuffer[0].width;
+	overlay.src.height = gr_framebuffer[0].height;
+	overlay.src.format = MDP_PIXEL_FORMAT;
+	overlay.src_rect.x = 0;
+	overlay.src_rect.y = 0;
+	overlay.src_rect.w = gr_framebuffer[0].width;
+	overlay.src_rect.h = gr_framebuffer[0].height;
+	overlay.dst_rect.x = 0;
+	overlay.dst_rect.y = 0;
+	overlay.dst_rect.w = gr_framebuffer[0].width;
+	overlay.dst_rect.h = gr_framebuffer[0].height;
+	overlay.z_order = 0;
+	overlay.alpha = 0xFF;
+	overlay.is_fg = 0;
+	overlay.transp_mask = MDP_TRANSP_NOP;
+	overlay.flags = 0;
+	overlay.id = MSMFB_NEW_REQUEST;
+
+	ret = ioctl(fd, MSMFB_OVERLAY_SET, &overlay);
+	if (ret < 0) {
+        fprintf(stderr, " Overlay Set Failed ret: %d errno: %d \n", ret, errno);
+        ret = -1;
+        goto err;
+	}
+	overlay_id = overlay.id;
+	fprintf(stderr, " Setup_RGBPipe width: %d height: %d ovid: %d \n",
+		overlay.src.width, overlay.src.height, overlay_id);
+
+err:
+	return ret;
+}
+
+int Display_Frame(int fd, int memory_id) {
+
+	int ret = 0;
+	struct msmfb_overlay_data ovdata;
+	struct mdp_display_commit ext_commit;
+
+	if ( (fd != 0) && (memory_id != 0) && (overlay_id != 0)) {
+		ovdata.id = overlay_id;
+		ovdata.data.flags = 0;
+		ovdata.data.offset = 0;
+		ovdata.data.memory_id = memory_id;
+
+		ret = ioctl(fd, MSMFB_OVERLAY_PLAY, &ovdata);
+		if (ret < 0) {
+			perror("Overlay Play Failed ");
+			ret = -1;
+			goto err;
+		}
+
+		memset(&ext_commit, 0, sizeof(struct mdp_display_commit));
+		ext_commit.flags = MDP_DISPLAY_COMMIT_OVERLAY;
+		ext_commit.wait_for_finish = 1;
+		if (ioctl(fd, MSMFB_DISPLAY_COMMIT, &ext_commit) < 0) {
+			perror("ERROR: Display MSMFB_DISPLAY_COMMIT failed!");
+			ret = -1;
+			goto err;
+		}
+	}
+err:
+	return ret;
+}
+
+int Clear_MDPSetup(int fd) {
+
+    int ret = 0;
+	struct mdp_display_commit ext_commit;
+
+	if ( (fd != 0) && (overlay_id != 0)) {
+		ret = ioctl(fd, MSMFB_OVERLAY_UNSET, &overlay_id);
+		if (overlay_id < 0) {
+			perror("Overlay Unset Failed");
+			ret = -1;
+			goto err;
+		}
+
+		memset(&ext_commit, 0, sizeof(struct mdp_display_commit));
+		ext_commit.flags = MDP_DISPLAY_COMMIT_OVERLAY;
+		ext_commit.wait_for_finish = 1;
+		if (ioctl(fd, MSMFB_DISPLAY_COMMIT, &ext_commit) < 0) {
+			perror("ERROR: Clear MSMFB_DISPLAY_COMMIT failed!");
+			ret = -1;
+			goto err;
+		}
+		overlay_id = -1;
+	}
+err:
+    return ret;
+}
+#endif
 
 static int get_framebuffer(GGLSurface *fb)
 {
@@ -179,13 +362,11 @@ static void set_active_framebuffer(unsigned n)
     vi.yres_virtual = vi.yres * NUM_BUFFERS;
     vi.yoffset = n * vi.yres;
     vi.bits_per_pixel = PIXEL_SIZE * 8;
-    if (ioctl(gr_fb_fd, FBIOPUT_VSCREENINFO, &vi) < 0) {
-        perror("active fb swap failed");
-    }
 }
 
 void gr_flip(void)
 {
+#ifndef OVERLAY_EN
     GGLContext *gl = gr_context;
 
     /* swap front and back buffers */
@@ -199,6 +380,11 @@ void gr_flip(void)
 
     /* inform the display driver */
     set_active_framebuffer(gr_active_fb);
+#else
+	memcpy(mem_buf, gr_mem_surface.data,
+		   fi.line_length * vi.yres);
+	Display_Frame(gr_fb_fd, mem_fd);
+#endif
 }
 
 void gr_color(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
@@ -373,11 +559,21 @@ int gr_init(void)
     gr_fb_blank(true);
     gr_fb_blank(false);
 
+#ifdef OVERLAY_EN
+	alloc_mem(SIZE, &mem_buf);
+	Setup_RGBPipe(gr_fb_fd);
+#endif
+
     return 0;
 }
 
 void gr_exit(void)
 {
+
+#ifdef OVERLAY_EN
+	Clear_MDPSetup(gr_fb_fd);
+	free_mem(mem_buf);
+#endif
     close(gr_fb_fd);
     gr_fb_fd = -1;
 
