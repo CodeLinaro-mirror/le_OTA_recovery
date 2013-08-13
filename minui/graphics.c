@@ -46,7 +46,7 @@
 #elif defined(RECOVERY_RGBX)
 #define PIXEL_FORMAT GGL_PIXEL_FORMAT_RGBX_8888
 #define PIXEL_SIZE   4
-#define MDP_PIXEL_FORMAT MDP_RGBA_8888
+#define MDP_PIXEL_FORMAT MDP_RGBX_8888
 #else
 #define PIXEL_FORMAT GGL_PIXEL_FORMAT_RGB_565
 #define PIXEL_SIZE   2
@@ -54,7 +54,6 @@
 #endif
 
 #define NUM_BUFFERS 2
-#define SIZE 0x7E9000
 
 typedef struct {
     GGLSurface texture;
@@ -86,6 +85,7 @@ static int overlay_id;
 unsigned char *mem_buf = NULL;
 static int ion_fd = -1;
 static int mem_fd = -1;
+size_t size = 0;
 
 struct ion_handle_data handle_data;
 
@@ -139,7 +139,7 @@ int free_mem (unsigned char *mem_buf) {
 
 	printf("Unmap and Free memory \n");
 
-    munmap(mem_buf, SIZE);
+    munmap(mem_buf, size);
 
     ret = ioctl(ion_fd, ION_IOC_FREE, &handle_data);
     if (ret < 0) {
@@ -271,6 +271,18 @@ static int get_framebuffer(GGLSurface *fb)
         return -1;
     }
 
+#ifdef OVERLAY_EN
+
+	fb->version = sizeof(*fb);
+	fb->width = vi.xres;
+	fb->height = vi.yres;
+	fb->stride = vi.xres;
+	fb->data = NULL;
+	fb->format = PIXEL_FORMAT;
+	return fd;
+
+#endif
+
     vi.bits_per_pixel = PIXEL_SIZE * 8;
     if (PIXEL_FORMAT == GGL_PIXEL_FORMAT_BGRA_8888) {
       vi.red.offset     = 8;
@@ -351,8 +363,8 @@ static void get_memory_surface(GGLSurface* ms) {
   ms->version = sizeof(*ms);
   ms->width = vi.xres;
   ms->height = vi.yres;
-  ms->stride = fi.line_length/PIXEL_SIZE;
-  ms->data = malloc(fi.line_length * vi.yres);
+  ms->stride = vi.xres;
+  ms->data = malloc(vi.xres * vi.yres * PIXEL_SIZE);
   ms->format = PIXEL_FORMAT;
 }
 
@@ -382,7 +394,7 @@ void gr_flip(void)
     set_active_framebuffer(gr_active_fb);
 #else
 	memcpy(mem_buf, gr_mem_surface.data,
-		   fi.line_length * vi.yres);
+		vi.xres * vi.yres * PIXEL_SIZE);
 	Display_Frame(gr_fb_fd, mem_fd);
 #endif
 }
@@ -560,7 +572,11 @@ int gr_init(void)
     gr_fb_blank(false);
 
 #ifdef OVERLAY_EN
-	alloc_mem(SIZE, &mem_buf);
+	size = roundUpToPageSize(
+		(gr_framebuffer[0].width *
+		gr_framebuffer[0].height * PIXEL_SIZE));
+
+	alloc_mem(size, &mem_buf);
 	Setup_RGBPipe(gr_fb_fd);
 #endif
 
