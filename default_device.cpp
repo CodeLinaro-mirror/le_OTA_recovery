@@ -29,6 +29,7 @@ static const char* ITEMS[] =  {"reboot system now",
                                "apply update from ADB",
                                "wipe data/factory reset",
                                "wipe cache partition",
+			       "apply update from sdcard",
                                NULL };
 
 class DefaultUI : public ScreenRecoveryUI {
@@ -61,6 +62,7 @@ class DefaultDevice : public Device {
                 return kHighlightUp;
 
               case KEY_ENTER:
+              case KEY_POWER:
                 return kInvokeItem;
             }
         }
@@ -74,7 +76,8 @@ class DefaultDevice : public Device {
           case 1: return APPLY_ADB_SIDELOAD;
           case 2: return WIPE_DATA;
           case 3: return WIPE_CACHE;
-          default: return NO_ACTION;
+	  case 4: return APPLY_EXT;
+	  default: return NO_ACTION;
         }
     }
 
