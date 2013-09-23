@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2007 The Android Open Source Project
- *
+ * Copyright (c) 2012, The Linux Foundation. All rights reserved.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -58,6 +58,7 @@ static const struct option OPTIONS[] = {
   { "wipe_data", no_argument, NULL, 'w' },
   { "wipe_cache", no_argument, NULL, 'c' },
   { "show_text", no_argument, NULL, 't' },
+  { "radio_status", no_argument, NULL, 'r' },
   { NULL, 0, NULL, 0 },
 };
 
@@ -67,6 +68,7 @@ static const char *LOG_FILE = "/cache/recovery/log";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
 static const char *LAST_INSTALL_FILE = "/cache/recovery/last_install";
 static const char *CACHE_ROOT = "/cache";
+static const char *RADIO_DIR = "/sdcard/radio";
 static const char *SDCARD_ROOT = "/sdcard";
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
@@ -592,9 +594,12 @@ update_directory(const char* path, const char* unmount_when_done,
             ui_print("\n-- Install %s ...\n", path);
             set_sdcard_update_bootloader_message();
             char* copy = copy_sideloaded_package(new_path);
-            if (unmount_when_done != NULL) {
-                ensure_path_unmounted(unmount_when_done);
+            // create radio folder for QCOM radio image update
+            if((mkdir(RADIO_DIR,777) != 0) && (errno != EEXIST)) {  // In this case EEXIST is not a valid error
+                result = INSTALL_ERROR;
+                break;
             }
+
             if (copy) {
                 result = install_package(copy, wipe_cache, TEMPORARY_INSTALL_FILE);
                 free(copy);
@@ -1326,7 +1331,7 @@ main(int argc, char **argv) {
     const char *send_intent = NULL;
     const char *update_package = NULL;
     int wipe_data = 0, wipe_cache = 0;
-
+    int radio_status_present = 0;
     //check delta update first
     handle_deltaupdate_status();
 
@@ -1339,6 +1344,7 @@ main(int argc, char **argv) {
         case 'w': wipe_data = wipe_cache = 1; break;
         case 'c': wipe_cache = 1; break;
         case 't': ui_show_text(1); break;
+        case 'r': radio_status_present = 1; break;
         case '?':
             LOGE("Invalid command argument\n");
             continue;
@@ -1375,13 +1381,25 @@ main(int argc, char **argv) {
     int status = INSTALL_SUCCESS;
 
     if (update_package != NULL) {
-        status = install_package(update_package, &wipe_cache, TEMPORARY_INSTALL_FILE);
-        if (status == INSTALL_SUCCESS && wipe_cache) {
-            if (erase_volume("/cache")) {
-                LOGE("Cache wipe (requested by package) failed.");
+        if(ensure_path_mounted(SDCARD_ROOT) != 0) {
+            ui_print("ensure_path_mounted failed.\n");
+            status = INSTALL_ERROR;
+        } else if((mkdir(RADIO_DIR,777) != 0) && (errno != EEXIST)) {
+            //In this case EEXIST is not a valid error
+            ui_print("creating radio directory failed. errno = %d\n", errno);
+            status = INSTALL_ERROR;
+        } else {
+            finish_recovery(NULL);
+            status = install_package(update_package, &wipe_cache, TEMPORARY_INSTALL_FILE);
+            if (status == INSTALL_SUCCESS && wipe_cache) {
+                if (erase_volume("/cache")) {
+                    LOGE("Cache wipe (requested by package) failed.");
+                    status = INSTALL_ERROR;
+                }
             }
+            if (status != INSTALL_SUCCESS) ui_print("Installation aborted.\n");
+            ensure_path_unmounted(SDCARD_ROOT);
         }
-        if (status != INSTALL_SUCCESS) ui_print("Installation aborted.\n");
     } else if (wipe_data) {
         if (device_wipe_data()) status = INSTALL_ERROR;
         if (erase_volume("/data")) status = INSTALL_ERROR;
@@ -1390,6 +1408,9 @@ main(int argc, char **argv) {
     } else if (wipe_cache) {
         if (wipe_cache && erase_volume("/cache")) status = INSTALL_ERROR;
         if (status != INSTALL_SUCCESS) ui_print("Cache wipe failed.\n");
+    } else if (radio_status_present) {
+        //irrespective of radio_status value, request for a reboot
+        goto recovery_end;
     } else {
         status = INSTALL_ERROR;  // No command specified
     }
@@ -1399,6 +1420,7 @@ main(int argc, char **argv) {
         prompt_and_wait();
     }
 
+recovery_end:
     // Otherwise, get ready to boot the main system...
     finish_recovery(send_intent);
     ui_print("Rebooting...\n");
