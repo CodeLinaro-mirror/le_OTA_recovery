@@ -172,7 +172,7 @@ static int target_has_overlay(char *version)
     int ret;
     int mdp_version;
 
-    if (0 && strlen(version) >= 8) {
+    if (strlen(version) >= 8) {
         if(!strncmp(version, "msmfb", strlen("msmfb"))) {
             char str_ver[4];
             memcpy(str_ver, version + strlen("msmfb"), 3);
