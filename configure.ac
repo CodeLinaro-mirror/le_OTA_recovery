@@ -94,7 +94,6 @@ AC_ARG_WITH([core-headers],
 AC_SUBST(CFLAGS)
 AC_CONFIG_FILES([     \
         Makefile      \
-        duadummy/Makefile       \
         minelf/Makefile      \
         mtdutils/Makefile      \
         edify/Makefile  \

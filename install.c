@@ -18,7 +18,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -33,150 +32,19 @@
 #include "mtdutils/mtdutils.h"
 #include "roots.h"
 #include "verifier.h"
-#include "deltaupdate_config.h"
 
 #define ASSUMED_UPDATE_BINARY_NAME  "META-INF/com/google/android/update-binary"
-#define ASSUMED_DELTAUPDATE_BINARY_NAME  "META-INF/com/google/android/ipth_dua"
-#define RUN_DELTAUPDATE_AGENT  "/tmp/ipth_dua"
 #define PUBLIC_KEYS_FILE "/res/keys"
-
-#define RADIO_DIFF_NAME "radio.diff"
-
-
-static const char *LAST_INSTALL_FILE = "/cache/recovery/last_install";
-bool update_dsp_image[3];
-char *dsp_image_name[] = {DSP1_DIFF_IMAGE_NAME, DSP2_DIFF_IMAGE_NAME, DSP3_DIFF_IMAGE_NAME};
-char *dsp_image_output_path[] = { DSP1_DIFF_EXTRACT_PATH, DSP2_DIFF_EXTRACT_PATH, DSP3_DIFF_EXTRACT_PATH};
-char *dua_update_image_name[] = { DUA_DSP1_HANDLE, DUA_DSP2_HANDLE, DUA_DSP3_HANDLE };
-
-const ZipEntry* dsp_diff;
-bool diff_image_found;
-
-#define MAX_DSP_MBN_IMAGES 3
-
-// Callback invoked by mzProcessZipEntryContents to write uncompressed data to flash
-static bool flash_mbn_data(const unsigned char *data, int dataLen, void *cookie) {
-    ssize_t ret;
-    MtdWriteContext *ctx = (MtdWriteContext *) cookie;
-    if (cookie == NULL) {
-        LOGE("unexpected null ptr\n");
-        return false;
-    }
-
-    ret = mtd_write_data(ctx, data, dataLen);
-    if (ret != dataLen) {
-        LOGE("error writing buffer: return value %d, expected %d\n", ret, dataLen);
-        return false;
-    }
-    return true;
-}
-
-// Flash dsp*.mbn files included in the zip
-static bool install_mbns(const ZipArchive *zip)
-{
-    int i;
-    const char *mbn_names[MAX_DSP_MBN_IMAGES] = {"dsp1.mbn", "dsp2.mbn", "dsp3.mbn"};
-    const char *mbn_partitions[MAX_DSP_MBN_IMAGES] = {"dsp1", "dsp2", "dsp3"};
-    const ZipEntry *mbn_entry;
-    const MtdPartition *part;
-    size_t total_size, erase_size, write_size;
-    MtdWriteContext *ctx;
-
-    if (mtd_scan_partitions() < 0) {
-        LOGE("error scanning mtd partitions\n");
-        return false;
-    }
-
-    for (i = 0; i < MAX_DSP_MBN_IMAGES; i++)
-    {
-        mbn_entry = mzFindZipEntry(zip, mbn_names[i]);
-        if (mbn_entry != NULL)
-        {
-            LOGI("found full mbn %s\n", mbn_names[i]);
-            part = mtd_find_partition_by_name(mbn_partitions[i]);
-            if (part == NULL) {
-                LOGE("couldn't find partition %s\n", mbn_partitions[i]);
-                return false;
-            }
-            if (mtd_partition_info(part, &total_size, &erase_size, &write_size) < 0) {
-                LOGE("couldn't get partition info for %s\n", mbn_partitions[i]);
-                return false;
-            }
-            if (total_size < mbn_entry->uncompLen) {
-                LOGE("not enough room in partition %s for file of size %d "
-                     "(have %d bytes)!\n", mbn_partitions[i], total_size,
-                     mbn_entry->uncompLen);
-                return false;
-            }
-
-            ctx = mtd_write_partition(part);
-            if (ctx == NULL) {
-                LOGE("couldn't open write context for %s\n", mbn_partitions[i]);
-                return false;
-            }
-            if (!mzProcessZipEntryContents(zip, mbn_entry, flash_mbn_data, ctx)) {
-                LOGE("error writing image\n");
-                (void) mtd_write_close(ctx);
-                return false;
-            }
-            if (mtd_write_close(ctx) < 0) {
-                LOGE("error closing write context");
-                return false;
-            }
-            LOGI("updating %s complete: wrote %d bytes\n",
-                 mbn_partitions[i], mbn_entry->uncompLen);
-        }
-    }
-
-    return true;
-}
 
 // If the package contains an update binary, extract it and run it.
 static int
 try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
-    int i;
     const ZipEntry* binary_entry =
             mzFindZipEntry(zip, ASSUMED_UPDATE_BINARY_NAME);
     if (binary_entry == NULL) {
         mzCloseZipArchive(zip);
         return INSTALL_CORRUPT;
     }
-    LOGI("try_update_binary(path(%s))\n",path);
-
-    diff_image_found = false;
-    for(i = 0; i < MAX_DSP_DIFF_IMAGES; i++)
-    {
-        dsp_diff = mzFindZipEntry(zip, dsp_image_name[i]);
-        update_dsp_image[i] = false;
-        if (dsp_diff)
-        {
-            diff_image_found = true;
-            update_dsp_image[i] = true;
-            LOGI("%s found \n", dsp_image_name[i]);
-            char *diff_file = dsp_image_output_path[i];
-            int fd_diff = creat(diff_file, 0777);
-
-            if (fd_diff < 0){
-                LOGE("cant make %s \n", diff_file);
-                mzCloseZipArchive(zip);
-                return INSTALL_ERROR;
-            }
-            else
-            {
-                bool ok_diff = mzExtractZipEntryToFile(zip, dsp_diff, fd_diff);
-                close(fd_diff);
-
-                if(!ok_diff){
-                    LOGE("Cant copy %d \n", dsp_image_name[i]);
-                    mzCloseZipArchive(zip);
-                    return INSTALL_ERROR;
-                }
-            }
-        }
-    }
-
-    if(!diff_image_found)
-        LOGI("No radio diff images found \n");
 
     char* binary = "/tmp/update_binary";
     unlink(binary);
@@ -188,6 +56,7 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
     }
     bool ok = mzExtractZipEntryToFile(zip, binary_entry, fd);
     close(fd);
+    mzCloseZipArchive(zip);
 
     if (!ok) {
         LOGE("Can't copy %s\n", ASSUMED_UPDATE_BINARY_NAME);
@@ -238,11 +107,12 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
     sprintf(args[2], "%d", pipefd[1]);
     args[3] = (char*)path;
     args[4] = NULL;
+
     pid_t pid = fork();
     if (pid == 0) {
         close(pipefd[0]);
         execv(binary, args);
-        LOGE("Can't run %s (%s)\n", binary, strerror(errno));
+        fprintf(stdout, "E:Can't run %s (%s)\n", binary, strerror(errno));
         _exit(-1);
     }
     close(pipefd[1]);
@@ -290,13 +160,6 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
         return INSTALL_ERROR;
     }
 
-    if (!install_mbns(zip)) {
-        LOGE("Installing MBNs failed\n");
-        mzCloseZipArchive(zip);
-        return INSTALL_ERROR;
-    }
-
-    mzCloseZipArchive(zip);
     return INSTALL_SUCCESS;
 }
 
@@ -457,152 +320,4 @@ install_package(const char* path, int* wipe_cache, const char* install_file)
         fclose(install_log);
     }
     return result;
-}
-
-int extract_deltaupdate_binary(const char *path)
-{
-    int err;
-    ZipArchive zip;
-
-    // Try to open the package.
-    err = mzOpenZipArchive(path, &zip);
-    if (err != 0) {
-        LOGE("Can't open %s\n(%s)\n", path, err != -1 ? strerror(err) : "bad");
-        return INSTALL_ERROR;
-    }
-
-    const ZipEntry* dua_entry =
-            mzFindZipEntry(&zip, ASSUMED_DELTAUPDATE_BINARY_NAME);
-    if (dua_entry == NULL) {
-        mzCloseZipArchive(&zip);
-       LOGE("Can't find %s\n", ASSUMED_DELTAUPDATE_BINARY_NAME);
-        return INSTALL_ERROR;
-    }
-
-    char* deltaupdate_agent = RUN_DELTAUPDATE_AGENT;
-    unlink(deltaupdate_agent);
-    int fd = creat(deltaupdate_agent, 0755);
-    if (fd < 0) {
-        mzCloseZipArchive(&zip);
-        LOGE("Can't make %s\n", deltaupdate_agent);
-        return INSTALL_ERROR;
-    }
-
-    bool ok = mzExtractZipEntryToFile(&zip, dua_entry, fd);
-    close(fd);
-    mzCloseZipArchive(&zip);
-
-    if (!ok) {
-        LOGE("Can't copy %s\n", ASSUMED_DELTAUPDATE_BINARY_NAME);
-        return INSTALL_ERROR;
-    }
-
-    return 0;
-}
-
-int run_modem_deltaupdate(void)
-{
-    int ret;
-    int pipefd[2];
-    int i;
-    if (pipe(pipefd) < 0){
-        LOGE("pipe creation failure \n");
-        return INSTALL_ERROR;
-    }
-
-    for( i = 0; i < MAX_DSP_DIFF_IMAGES; i++)
-    {
-        if( update_dsp_image[i]){
-
-            pid_t duapid = fork();
-
-            if (duapid == -1)
-            {
-                LOGE("fork failed. Returning error.\n");
-                return INSTALL_ERROR;
-            }
-
-            if (duapid == 0)
-            {   //child process
-                /*
-                * argv[0] ipth_dua exeuable command itself
-                * argv[1] false(default) - old binary update as a block / true - old
-                * binary update as a file
-                * argv[2] old binary file name. Will be used as partition name if argv[1]
-                * is false
-                * argv[3] diff package name
-                * argv[4] flash memory block size in KB
-                */
-                char current_image_name[20];
-                memset(current_image_name, '\0',sizeof(current_image_name));
-                if( read(pipefd[0], current_image_name, sizeof(current_image_name))< 0){
-                    LOGE(" Unable to start %s : Pipe read fail \n", RUN_DELTAUPDATE_AGENT);
-                    _exit(-1);
-                }
-                char * current_output_file;
-                if(strcmp(current_image_name, DUA_DSP1_HANDLE)==0)
-                    current_output_file = DSP1_DIFF_EXTRACT_PATH;
-                else if(strcmp(current_image_name, DUA_DSP2_HANDLE) == 0)
-                    current_output_file =  DSP2_DIFF_EXTRACT_PATH;
-                else if(strcmp(current_image_name, DUA_DSP3_HANDLE ) == 0)
-                    current_output_file =  DSP3_DIFF_EXTRACT_PATH;
-
-                LOGI("updating %s \n",current_image_name);
-                char** args = malloc(sizeof(char*) * 5);
-                args[0] = RUN_DELTAUPDATE_AGENT;
-                args[1] = "false";
-                args[2] = current_image_name;
-                args[3] = current_output_file;
-                args[4] = "128";
-                args[5] = NULL;
-
-                execv(RUN_DELTAUPDATE_AGENT, args);
-                LOGE("E:Can't run %s (%s)\n", RUN_DELTAUPDATE_AGENT, strerror(errno));
-                _exit(-1);
-            }
-
-            //parents process
-            if (write(pipefd[1],dua_update_image_name[i], sizeof(dua_update_image_name[i])) < 0){
-                LOGE("Failed to write dsp name parameter to pipe \n");
-                return INSTALL_ERROR;
-            }
-            waitpid(duapid, &ret, 0);
-            if (!WIFEXITED(ret) || WEXITSTATUS(ret) != 0) {
-                LOGE("Error in %s\n(Status %d)\n", RUN_DELTAUPDATE_AGENT, WEXITSTATUS(ret));
-                return INSTALL_ERROR;
-            }
-            LOGI("dsp%d update done \n",i+1);
-        }
-    }
-
-    return INSTALL_SUCCESS;
-}
-
-int start_delta_modemupdate(const char *path)
-{
-    int ret = 0;
-
-    if (!diff_image_found)
-    {
-        LOGE("No modem package available.\n");
-        LOGE("No modem update needed. returning O.K\n");
-        return DELTA_UPDATE_SUCCESS_200;
-    }
-
-    // If the package contains an delta update binary for modem update, extract it
-    ret = extract_deltaupdate_binary(path);
-    if(ret != 0)
-    {
-       LOGE("idev_extractDua returned error(%d)\n", ret);
-       return ret;
-    }
-
-    // Execute modem update using delta update binary
-    ret = run_modem_deltaupdate();
-    LOGE("modem update result(%d)\n", ret);
-
-    if(ret == 0)
-	return DELTA_UPDATE_SUCCESS_200;
-    else
-	return ret;
 }

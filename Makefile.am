@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS := -I m4
 
-SUBDIRS := duadummy minelf mtdutils edify minzip applypatch updater
+SUBDIRS := minelf mtdutils edify minzip applypatch updater
 
 AM_CFLAGS := -Wundef \
 	    -Wstrict-prototypes \
@@ -32,7 +32,6 @@ requiredlibs := -lm \
                ./mtdutils/libmtdutils.la \
                ./edify/libedify.la \
                ./minzip/libminzip.la \
-               ./duadummy/libduadummy.la \
                ./applypatch/libapplypatch.la
 
 
