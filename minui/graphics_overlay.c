@@ -92,6 +92,8 @@ bool target_has_overlay(char *version)
             memcpy(str_ver, version + strlen("msmfb"), 3);
             str_ver[3] = '\0';
             mdp_version = atoi(str_ver);
+            if (mdp_version < 100)
+                mdp_version *= 10;
             if (mdp_version >= MDP_V4_0) {
                 overlay_supported = true;
             }
