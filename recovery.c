@@ -42,6 +42,7 @@
 
 #include "deltaupdate_config.h"
 
+#define MAX_STATUS_COOKIE_LEN 10
 static const deltaupdate_config_st DELTA_UPDATE_STATUS_DB[] = {
         {NO_DELTA_UPDATE, "IP_NO_UPDATE"},
         {START_DELTA_UPDATE, "IP_START_UPDATE"},
@@ -71,6 +72,9 @@ static const char *SDCARD_ROOT = "/sdcard";
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *SIDELOAD_TEMP_DIR = "/tmp/sideload";
+static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
+static const char *OTA_STATUS_SUCCESS = "SUCCESS";
+static const char *OTA_STATUS_FAIL = "FAIL";
 
 /*
  * The recovery tool communicates with the main system through /cache files.
@@ -1109,6 +1113,27 @@ static int update_fotaprop(void)
 
     return 0;
 }
+static int set_ota_status_cookie(const char *value)
+{
+        int fd,rcode;
+        fd = open(STATUS_COOKIE_FILE, O_WRONLY | O_CREAT, 0644);
+        if (fd < 0) {
+                LOGE("Failed to open status cookie file : %s",
+                                strerror(errno));
+                goto error;
+        }
+        if (write(fd, value, MAX_STATUS_COOKIE_LEN) < 0) {
+                LOGE("Failed to write to status cookie file: %s",
+                                strerror(errno));
+                goto error;
+        }
+        close(fd);
+        return 0;
+error:
+        if (fd >= 0)
+                close(fd);
+        return -1;
+}
 
 int start_deltaupdate(char* diff_pkg_path_name)
 {
@@ -1127,7 +1152,7 @@ int start_deltaupdate(char* diff_pkg_path_name)
         finish_recovery("--send_intent=DELTA_UPDATE_FAILED");
         set_deltaupdate_status(DELTA_UPDATE_FAILED, DELTA_UPDATE_FAILED_410);
         reset_fota_cookie_mtd();
-        return -1;
+        goto error;
     }
 
     // modem update starts only if android update is successful
@@ -1141,7 +1166,7 @@ int start_deltaupdate(char* diff_pkg_path_name)
         ui_print("Delta update failed(%d)\n",status);
         finish_recovery("--send_intent=DELTA_UPDATE_FAILED");
         set_deltaupdate_status(DELTA_UPDATE_FAILED, DELTA_UPDATE_FAILED_410);
-        return -1;
+        goto error;
     }
 
     finish_recovery("--send_intent=DELTA_UPDATE_SUCCESSFUL");
@@ -1152,7 +1177,12 @@ int start_deltaupdate(char* diff_pkg_path_name)
     // Remove all temp files
     remove_tempfiles(diff_pkg_path_name);
     update_fotaprop();
+    if (set_ota_status_cookie(OTA_STATUS_SUCCESS) != 0)
+            return -1;
     return 0;
+error:
+    set_ota_status_cookie(OTA_STATUS_FAIL);
+    return -1;
 }
 
 /* FOTA(Delta Update) INSTALL
