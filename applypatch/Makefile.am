@@ -29,7 +29,6 @@ requiredlibs := -lm \
                -lbz2 \
                -lmincrypt \
                -lcutils \
-               ../duadummy/libduadummy.la \
                ../minelf/libminelf.la \
                ../mtdutils/libmtdutils.la \
                ../edify/libedify.la \

@@ -24,7 +24,6 @@ requiredlibs = -lm \
                ../mtdutils/libmtdutils.la \
                ../edify/libedify.la \
                ../minzip/libminzip.la \
-               ../duadummy/libduadummy.la \
                ../applypatch/libapplypatch.la
 
 bin_PROGRAMS = updater
