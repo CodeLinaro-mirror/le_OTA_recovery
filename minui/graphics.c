@@ -419,9 +419,13 @@ unsigned int gr_get_height(gr_surface surface) {
     return ((GGLSurface*) surface)->height;
 }
 
-static void gr_init_font(void)
+static int gr_init_font(void)
 {
     gr_font = calloc(sizeof(*gr_font), 1);
+    if(gr_font==NULL){
+        printf("out of memory!\n");
+        return -1;
+    }
 
     int res = res_create_surface("font", (void**)&(gr_font->texture));
     if (res == 0) {
@@ -435,11 +439,28 @@ static void gr_init_font(void)
 
         // fall back to the compiled-in font.
         gr_font->texture = malloc(sizeof(*gr_font->texture));
+        if(gr_font->texture == NULL){
+            printf("out of memory!\n");
+            free(gr_font);
+            gr_font = NULL;
+            return -1;
+        }
         gr_font->texture->width = font.width;
         gr_font->texture->height = font.height;
         gr_font->texture->stride = font.width;
 
         unsigned char* bits = malloc(font.width * font.height);
+        if(bits == NULL){
+            printf("out of memory!\n");
+            if(gr_font!= NULL && gr_font->texture != NULL)
+                free(gr_font->texture);
+
+            if(gr_font!= NULL)
+                free(gr_font);
+
+            gr_font = NULL;
+            return -1;
+        }
         gr_font->texture->data = (void*) bits;
 
         unsigned char data;
@@ -455,6 +476,7 @@ static void gr_init_font(void)
 
     // interpret the grayscale as alpha
     gr_font->texture->format = GGL_PIXEL_FORMAT_A_8;
+    return 0;
 }
 
 int gr_init(void)
@@ -462,7 +484,10 @@ int gr_init(void)
     gglInit(&gr_context);
     GGLContext *gl = gr_context;
 
-    gr_init_font();
+    if(gr_init_font()<0){
+        perror("failed to init font \n");
+        return -1;
+    }
     gr_vt_fd = open("/dev/tty0", O_RDWR | O_SYNC);
     if (gr_vt_fd < 0) {
         // This is non-fatal; post-Cupcake kernels don't have tty0.
