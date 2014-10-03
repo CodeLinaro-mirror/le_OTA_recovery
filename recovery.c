@@ -248,6 +248,31 @@ copy_log_file(const char* source, const char* destination, int append) {
     }
 }
 
+static int set_ota_cookie()
+{
+        int fd = -1;
+        int rcode = 0;
+        fd = open(STATUS_COOKIE_FILE, O_CREAT | O_RDWR);
+        if (fd < 0) {
+                LOGE("Failed to open %s : %s\n",
+                                STATUS_COOKIE_FILE,
+                                strerror(errno));
+                goto error;
+        }
+        rcode = write(fd, "OTA_DONE", 8);
+        if (rcode < 0) {
+                LOGE("Failed to write to %s : %s\n", STATUS_COOKIE_FILE,
+                                strerror(errno));
+                goto error;
+        }
+        LOGI("ota_status cookie set");
+        close(fd);
+        return 0;
+error:
+        if (fd >= 0)
+                close(fd);
+        return -1;
+}
 
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
@@ -281,6 +306,7 @@ finish_recovery(const char *send_intent) {
     struct bootloader_message boot;
     memset(&boot, 0, sizeof(boot));
     set_bootloader_message(&boot);
+    set_ota_cookie();
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (ensure_path_mounted(COMMAND_FILE) != 0 ||
