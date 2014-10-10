@@ -368,12 +368,14 @@ int WriteToPartition(unsigned char* data, size_t len,
         type = EMMC;
     } else {
         printf("WriteToPartition called with bad target (%s)\n", target);
+        free(copy);
         return -1;
     }
     const char* partition = strtok(NULL, ":");
 
     if (partition == NULL) {
         printf("bad partition target name \"%s\"\n", target);
+        free(copy);
         return -1;
     }
 
@@ -388,6 +390,7 @@ int WriteToPartition(unsigned char* data, size_t len,
             if (mtd == NULL) {
                 printf("mtd partition \"%s\" not found for writing\n",
                        partition);
+                free(copy);
                 return -1;
             }
 
@@ -395,6 +398,7 @@ int WriteToPartition(unsigned char* data, size_t len,
             if (ctx == NULL) {
                 printf("failed to init mtd partition \"%s\" for writing\n",
                        partition);
+                free(copy);
                 return -1;
             }
 
@@ -403,17 +407,20 @@ int WriteToPartition(unsigned char* data, size_t len,
                 printf("only wrote %d of %d bytes to MTD %s\n",
                        written, len, partition);
                 mtd_write_close(ctx);
+                free(copy);
                 return -1;
             }
 
             if (mtd_erase_blocks(ctx, -1) < 0) {
                 printf("error finishing mtd write of %s\n", partition);
                 mtd_write_close(ctx);
+                free(copy);
                 return -1;
             }
 
             if (mtd_write_close(ctx)) {
                 printf("error closing mtd write of %s\n", partition);
+                free(copy);
                 return -1;
             }
             break;
@@ -421,13 +428,21 @@ int WriteToPartition(unsigned char* data, size_t len,
         case EMMC:
             ;
             FILE* f = fopen(partition, "wb");
+            if (f == NULL) {
+                printf("error to open %s\n", partition);
+                free(copy);
+                return -1;
+            }
+
             if (fwrite(data, 1, len, f) != len) {
                 printf("short write writing to %s (%s)\n",
                        partition, strerror(errno));
+                free(copy);
                 return -1;
             }
             if (fclose(f) != 0) {
                 printf("error closing %s (%s)\n", partition, strerror(errno));
+                free(copy);
                 return -1;
             }
             break;
@@ -814,6 +829,10 @@ int applypatch(const char* source_filename,
         } else {
             // We write the decoded output to "<tgt-file>.patch".
             outname = (char*)malloc(strlen(target_filename) + 10);
+            if (outname == NULL) {
+                printf("failed to alloc memory for %s\n", target_filename);
+                return 1;
+            }
             strcpy(outname, target_filename);
             strcat(outname, ".patch");
 
