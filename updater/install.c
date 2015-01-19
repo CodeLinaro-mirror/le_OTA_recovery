@@ -132,19 +132,7 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
         goto done;
     }
 
-    char *secontext = NULL;
-
-    if (sehandle) {
-        selabel_lookup(sehandle, &secontext, mount_point, 0755);
-        setfscreatecon(secontext);
-    }
-
     mkdir(mount_point, 0755);
-
-    if (secontext) {
-        freecon(secontext);
-        setfscreatecon(NULL);
-    }
 
     if (strcmp(partition_type, "MTD") == 0) {
         mtd_scan_partitions();
@@ -333,7 +321,7 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
         result = location;
 #ifdef USE_EXT4
     } else if (strcmp(fs_type, "ext4") == 0) {
-        int status = make_ext4fs(location, atoll(fs_size), mount_point, sehandle);
+        int status = make_ext4fs(location, atoll(fs_size), mount_point, NULL);
         if (status != 0) {
             printf("%s: make_ext4fs failed (%d) on %s",
                     name, status, location);
@@ -496,7 +484,7 @@ Value* PackageExtractDirFn(const char* name, State* state,
 
     bool success = mzExtractRecursive(za, zip_path, dest_path,
                                       MZ_EXTRACT_FILES_ONLY, &timestamp,
-                                      NULL, NULL, sehandle);
+                                      NULL, NULL, NULL);
     free(zip_path);
     free(dest_path);
     return StringValue(strdup(success ? "t" : ""));

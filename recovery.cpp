@@ -48,8 +48,6 @@ extern "C" {
 #include "fuse_sdcard_provider.h"
 }
 
-struct selabel_handle *sehandle;
-
 static const struct option OPTIONS[] = {
   { "send_intent", required_argument, NULL, 's' },
   { "update_package", required_argument, NULL, 'u' },
@@ -157,7 +155,7 @@ fopen_path(const char *path, const char *mode) {
 
     // When writing, try to create the containing directory, if necessary.
     // Use generous permissions, the system (init.rc) will reset them.
-    if (strchr("wa", mode[0])) dirCreateHierarchy(path, 0777, NULL, 1, sehandle);
+    if (strchr("wa", mode[0])) dirCreateHierarchy(path, 0777, NULL, 1, NULL);
 
     FILE *fp = fopen(path, mode);
     return fp;
@@ -969,16 +967,6 @@ main(int argc, char **argv) {
 
     ui->SetBackground(RecoveryUI::NONE);
     if (show_text) ui->ShowText(true);
-
-    struct selinux_opt seopts[] = {
-      { SELABEL_OPT_PATH, "/file_contexts" }
-    };
-
-    sehandle = selabel_open(SELABEL_CTX_FILE, seopts, 1);
-
-    if (!sehandle) {
-        ui->Print("Warning: No file_contexts\n");
-    }
 
     device->StartRecovery();
 
