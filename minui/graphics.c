@@ -283,6 +283,26 @@ void gr_blit(GRSurface* source, int sx, int sy, int w, int h, int dx, int dy) {
     icon_blend_alpha(src_p,source->row_bytes,dst_p,gr_draw->row_bytes,source->width,source->height);
 }
 
+void gr_blit_rgb(GRSurface* source,  int sx, int sy,int w, int h, int dx, int dy) {
+    int i,j;
+    if (source == NULL) return;
+
+    dx += overscan_offset_x;
+    dy += overscan_offset_y;
+
+    if (outside(dx, dy) || outside(dx+w-1, dy+h-1)) return;
+
+    unsigned char* src_p = source->data + sy*source->row_bytes + sx*source->pixel_bytes;
+    unsigned char* dst_p = gr_draw->data + dy*gr_draw->row_bytes + dx*gr_draw->pixel_bytes;
+
+    for (j = 0; j < source->height; ++j) {
+        memcpy(dst_p, src_p, source->width*4);
+        src_p += source->row_bytes;
+        dst_p += gr_draw->row_bytes;
+    }
+
+}
+
 unsigned int gr_get_width(GRSurface* surface) {
     if (surface == NULL) {
         return 0;
