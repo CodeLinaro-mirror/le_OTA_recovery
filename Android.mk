@@ -68,7 +68,6 @@ LOCAL_STATIC_LIBRARIES := \
     libfs_mgr \
     libcutils \
     liblog \
-    libselinux \
     libstdc++ \
     libm \
     libc
