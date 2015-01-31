@@ -26,6 +26,8 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 
+#include <cutils/properties.h>
+
 #include <linux/fb.h>
 #include <linux/kd.h>
 
@@ -173,6 +175,12 @@ static gr_surface fbdev_init(minui_backend* backend) {
 
     fbdev_blank(backend, true);
     fbdev_blank(backend, false);
+
+    char property[PROPERTY_VALUE_MAX];
+    property_get("persist.panel.inversemounted", property, "0");
+    if(atoi(property)) {
+        vi.rotate = FB_ROTATE_UD;
+    }
 
     return gr_draw;
 }
