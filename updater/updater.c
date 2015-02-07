@@ -64,18 +64,22 @@ int main(int argc, char** argv) {
     if (err != 0) {
         fprintf(stderr, "failed to open package %s: %s\n",
                 package_data, strerror(err));
+        fprintf(cmd_pipe, "ui_print failed to open package %s: %s\n",
+                package_data, strerror(err));
         return 3;
     }
 
     const ZipEntry* script_entry = mzFindZipEntry(&za, SCRIPT_NAME);
     if (script_entry == NULL) {
         fprintf(stderr, "failed to find %s in %s\n", SCRIPT_NAME, package_data);
+        fprintf(cmd_pipe, "ui_print failed to find %s in %s\n", SCRIPT_NAME, package_data);
         return 4;
     }
 
     char* script = malloc(script_entry->uncompLen+1);
     if (!mzReadZipEntry(&za, script_entry, script, script_entry->uncompLen)) {
         fprintf(stderr, "failed to read script from package\n");
+        fprintf(cmd_pipe, "ui_print failed to read script from package\n");
         return 5;
     }
     script[script_entry->uncompLen] = '\0';
@@ -94,8 +98,12 @@ int main(int argc, char** argv) {
     int error = yyparse(&root, &error_count);
     if (error != 0 || error_count > 0) {
         fprintf(stderr, "%d parse errors\n", error_count);
+        fprintf(cmd_pipe, "ui_print %d parse errors\n", error_count);
         return 6;
     }
+
+    // raad the partition mapping
+    load_volume_table(cmd_pipe);
 
     // Evaluate the parsed script.
 
@@ -126,9 +134,11 @@ int main(int argc, char** argv) {
             fprintf(cmd_pipe, "ui_print\n");
         }
         free(state.errmsg);
+        free_volume_table();
         return 7;
     } else {
         fprintf(stderr, "script result was [%s]\n", result);
+        fprintf(cmd_pipe, "ui_print script result was [%s]\n", result);
         free(result);
     }
 
@@ -136,6 +146,7 @@ int main(int argc, char** argv) {
         mzCloseZipArchive(updater_info.package_zip);
     }
     free(script);
+    free_volume_table();
 
     return 0;
 }
