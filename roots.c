@@ -45,23 +45,13 @@ static int parse_options(char* options, Volume* volume) {
     return 0;
 }
 
-void load_volume_table() {
-    int alloc = 2;
-    device_volumes = malloc(alloc * sizeof(Volume));
-
-    // Insert an entry for /tmp, which is the ramdisk and is always mounted.
-    device_volumes[0].mount_point = "/tmp";
-    device_volumes[0].fs_type = "ramdisk";
-    device_volumes[0].device = NULL;
-    device_volumes[0].device2 = NULL;
-    device_volumes[0].length = 0;
-    num_volumes = 1;
-
+int parse_fstab(char *name, int *alloc) {
     FILE* fstab;
-    fstab =fopen("/res/recovery_volume_config", "r");
+
+    fstab = fopen(name, "r");
     if(!fstab){
-        fprintf(stderr, "/res/recovery_volume_config not found \n");
-        return;
+        fprintf(stderr, "%s not found\n", name);
+        return -1;
     }
 
     char buffer[1024];
@@ -77,22 +67,58 @@ void load_volume_table() {
         char* fs_type = strtok(NULL, " \t\n");
 
         if (mount_point && fs_type && device) {
-            while (num_volumes >= alloc) {
-                alloc *= 2;
-                device_volumes = realloc(device_volumes, alloc*sizeof(Volume));
+            while (num_volumes >= *alloc) {
+                *alloc *= 2;
+                device_volumes = realloc(device_volumes, (*alloc)*sizeof(Volume));
+                if (!device_volumes) {
+                    LOGE("out of memory in partition storage\n");
+                    free(original);
+                    close(fstab);
+                    num_volumes = 0;
+                    return -1;
+                }
             }
             device_volumes[num_volumes].mount_point = strdup(mount_point);
             device_volumes[num_volumes].fs_type = strdup(fs_type);
             device_volumes[num_volumes].device = strdup(device);
             device_volumes[num_volumes].length = 0;
-           ++num_volumes;
+            ++num_volumes;
         } else {
-            LOGE("skipping malformed recovery.fstab line: %s\n", original);
+            LOGE("skipping malformed fstab (%s) line: %s\n", name, original);
         }
         free(original);
     }
 
     fclose(fstab);
+    return 0;
+}
+
+void load_volume_table() {
+    int alloc = 2;
+    int i;
+
+    device_volumes = malloc(alloc * sizeof(Volume));
+    if (!device_volumes) {
+        fprintf(stderr, "out of memory allocating partition info storage\n");
+        num_volumes = 0;
+        return;
+    }
+
+    // Insert an entry for /tmp, which is the ramdisk and is always mounted.
+    device_volumes[0].mount_point = "/tmp";
+    device_volumes[0].fs_type = "ramdisk";
+    device_volumes[0].device = NULL;
+    device_volumes[0].device2 = NULL;
+    device_volumes[0].length = 0;
+    num_volumes = 1;
+
+    if (parse_fstab("/res/recovery_volume_config", &alloc) < 0) {
+        fprintf(stderr, "required configuration not found\n");
+        return;
+    }
+    if (parse_fstab("/res/recovery_volume_detected", &alloc) < 0) {
+        fprintf(stderr, "optional configuration not found\n");
+    }
 
     printf("recovery filesystem table\n");
     printf("=========================\n");
@@ -156,16 +182,19 @@ int ensure_path_mounted(const char* path) {
         }
         return mtd_mount_partition(partition, v->mount_point, v->fs_type, 0);
     } else if (strcmp(v->fs_type, "ext4") == 0 ||
-               strcmp(v->fs_type, "vfat") == 0) {
+               strcmp(v->fs_type, "vfat") == 0 ||
+               strcmp(v->fs_type, "ubifs") == 0) {
         result = mount(v->device, v->mount_point, v->fs_type,
-                       MS_NOATIME | MS_NODEV | MS_NODIRATIME, "");
+                       MS_NOATIME | MS_NODEV | MS_NODIRATIME,
+                       (strcmp(v->fs_type, "ubifs") == 0) ? "bulk_read" : "");
         if (result == 0) return 0;
 
         if (v->device2) {
             LOGW("failed to mount %s (%s); trying %s\n",
                  v->device, strerror(errno), v->device2);
             result = mount(v->device2, v->mount_point, v->fs_type,
-                           MS_NOATIME | MS_NODEV | MS_NODIRATIME, "");
+                           MS_NOATIME | MS_NODEV | MS_NODIRATIME,
+                           (strcmp(v->fs_type, "ubifs") == 0) ? "bulk_read" : "");
             if (result == 0) return 0;
         }
 
