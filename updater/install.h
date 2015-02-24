@@ -19,4 +19,6 @@
 
 void RegisterInstallFunctions();
 
+void load_volume_table(FILE *);
+void free_volume_table();
 #endif

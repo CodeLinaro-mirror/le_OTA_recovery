@@ -43,6 +43,7 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
             mzFindZipEntry(zip, ASSUMED_UPDATE_BINARY_NAME);
     if (binary_entry == NULL) {
         mzCloseZipArchive(zip);
+        LOGE("File corrupted %s; can't find %s\n", path, ASSUMED_UPDATE_BINARY_NAME);
         return INSTALL_CORRUPT;
     }
 
@@ -108,11 +109,13 @@ try_update_binary(const char *path, ZipArchive *zip, int* wipe_cache) {
     args[3] = (char*)path;
     args[4] = NULL;
 
+    LOGI("Attempting to run %s\n", binary);
     pid_t pid = fork();
     if (pid == 0) {
         close(pipefd[0]);
         execv(binary, args);
         fprintf(stdout, "E:Can't run %s (%s)\n", binary, strerror(errno));
+        LOGE("Can't run %s (%s)\n", binary, strerror(errno));
         _exit(-1);
     }
     close(pipefd[1]);
@@ -262,6 +265,7 @@ really_install_package(const char *path, int* wipe_cache)
 
     // Give verification half the progress bar...
     ui_print("Verifying update package...\n");
+    LOGI("Verifying update package...\n");
     ui_show_progress(
             VERIFICATION_PROGRESS_FRACTION,
             VERIFICATION_PROGRESS_TIME);
@@ -300,6 +304,7 @@ really_install_package(const char *path, int* wipe_cache)
     /* Verify and install the contents of the package.
      */
     ui_print("Installing update...\n");
+    LOGI("Installing update...\n");
     return try_update_binary(path, &zip, wipe_cache);
 }
 
