@@ -241,7 +241,8 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
             goto done;
         }
         result = mount_point;
-    } else if (strcmp(fs_type, "ubifs") == 0) {
+    } else if ((strcmp(fs_type, "ubifs") == 0)
+               || (strcmp(fs_type, "ext4") == 0)) {
         Volume *v = 0;;
         if (strcmp(location, "userdata") == 0) {
             v = volume_for_path("/data");
@@ -249,12 +250,13 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
             v = volume_for_path("/system");
         }
         if (!v) {
-            fprintf(stderr, "%s: failed to locate ubifs volume \"%s\"", name, location);
+            fprintf(stderr, "%s: failed to locate %s \"%s\"",
+                    name, fs_type, location);
             result = strdup("");
             goto done;
         }
         if (mount(v->device, mount_point, fs_type,
-                  MS_NOATIME | MS_NODEV | MS_NODIRATIME, "bulk_read") < 0) {
+                  MS_NOATIME | MS_NODEV | MS_NODIRATIME, "") < 0) {
             fprintf(stderr, "%s: failed to mount %s at %s: %s\n",
                     name, location, mount_point, strerror(errno));
             result = strdup("");
@@ -415,7 +417,7 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
             result = strdup("");
             goto done;
         }
-        char *argv[4] = {"mkfs.ubifs", "-y", v->device, 0};
+        char *argv[] = {"mkfs.ubifs", "-y", v->device, 0};
         if (exec_command(ui->cmd_pipe, "/usr/sbin/mkfs.ubifs", argv) != 0) {
             fprintf(stderr, "%s: failed to create ubifs volume \"%s\"", name, location);
             fprintf(ui->cmd_pipe, "ui_print %s: failed to format ubifs volume \"%s\"\n", name, location);
@@ -423,12 +425,34 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
             goto done;
         }
         result = location;
-#ifdef USE_EXT4
+#ifdef USE_EXT4  /* Use linked in ext4fs generation tool */
     } else if (strcmp(fs_type, "ext4") == 0) {
         int status = make_ext4fs(location, atoll(fs_size));
         if (status != 0) {
             fprintf(stderr, "%s: make_ext4fs failed (%d) on %s",
                     name, status, location);
+            result = strdup("");
+            goto done;
+        }
+        result = location;
+#else  /* Use e2fsprogs modules */
+    } else if (strcmp(fs_type, "ext4") == 0) {
+        Volume *v = 0;;
+        UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+        if (strcmp(location, "userdata") == 0) {
+            v = volume_for_path("/data");
+        } else if (strcmp(location, "system") == 0) {
+            v = volume_for_path("/system");
+        }
+        if (!v) {
+            fprintf(stderr, "%s: failed to locate ext4 filesystem \"%s\"", name, location);
+            result = strdup("");
+            goto done;
+        }
+        char *argv[] = {"mkfs.ext4", "-b", "4096", "-O", "extent,uninit_bg,dir_index,has_journal,sparse_super", v->device, 0};
+        if (exec_command(ui->cmd_pipe, "/sbin/mkfs.ext4", argv) != 0) {
+            fprintf(stderr, "%s: failed to create ext4 filesystem \"%s\"", name, location);
+            fprintf(ui->cmd_pipe, "ui_print %s: failed to format ubifs volume \"%s\"\n", name, location);
             result = strdup("");
             goto done;
         }
