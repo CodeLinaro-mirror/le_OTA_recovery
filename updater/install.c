@@ -1670,4 +1670,5 @@ void RegisterInstallFunctions() {
 
     RegisterFunction("enable_reboot", EnableRebootFn);
     RegisterFunction("tune2fs", Tune2FsFn);
+    RegisterFunction("get_device_compatible", ConfirmDevVariant);
 }
