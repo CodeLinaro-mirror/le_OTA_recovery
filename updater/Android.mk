@@ -34,6 +34,16 @@ LOCAL_STATIC_LIBRARIES += libapplypatch libedify libmtdutils libminzip libz
 LOCAL_STATIC_LIBRARIES += libmincrypt libbz
 LOCAL_STATIC_LIBRARIES += libcutils liblog libstdc++ libc
 LOCAL_STATIC_LIBRARIES += libselinux
+tune2fs_static_libraries := \
+ libext2_com_err \
+ libext2_blkid \
+ libext2_quota \
+ libext2_uuid_static \
+ libext2_e2p \
+ libext2fs
+LOCAL_STATIC_LIBRARIES += libtune2fs $(tune2fs_static_libraries)
+
+LOCAL_C_INCLUDES += external/e2fsprogs/misc
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/..
 
 # Each library in TARGET_RECOVERY_UPDATER_LIBS should have a function
@@ -47,8 +57,11 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/..
 # any subsidiary static libraries required for your registered
 # extension libs.
 
+ifeq ($(TARGET_ARCH),arm64)
+inc := $(call intermediates-dir-for,PACKAGING,updater_extensions,,,32)/register.inc
+else
 inc := $(call intermediates-dir-for,PACKAGING,updater_extensions)/register.inc
-
+endif
 # Encode the value of TARGET_RECOVERY_UPDATER_LIBS into the filename of the dependency.
 # So if TARGET_RECOVERY_UPDATER_LIBS is changed, a new dependency file will be generated.
 # Note that we have to remove any existing depency files before creating new one,
@@ -68,14 +81,18 @@ $(inc) : $(inc_dep_file)
 	$(hide) echo "void RegisterDeviceExtensions() {" >> $@
 	$(hide) $(foreach lib,$(libs),echo "  Register_$(lib)();" >> $@;)
 	$(hide) echo "}" >> $@
-
+ifeq ($(TARGET_ARCH),arm64)
+$(call intermediates-dir-for,EXECUTABLES,updater,,,32)/updater.o : $(inc)
+else
 $(call intermediates-dir-for,EXECUTABLES,updater)/updater.o : $(inc)
+endif
 LOCAL_C_INCLUDES += $(dir $(inc))
 
 inc :=
 inc_dep_file :=
 
 LOCAL_MODULE := updater
+LOCAL_32_BIT_ONLY := true
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 

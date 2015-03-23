@@ -46,6 +46,7 @@
 #include "mtdutils/mtdutils.h"
 #include "updater.h"
 #include "install.h"
+#include "tune2fs.h"
 
 #ifdef USE_EXT4
 #include "make_ext4fs.h"
@@ -930,8 +931,72 @@ Value* GetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
     return StringValue(strdup(value));
 }
 
+//Check to confirm if this is the same hardware as the one the package was
+//generated on or not. 32 vs 64 bit variants are upgrade compatible but have
+//names such as msmWXYZ msmWXYZ_32 vs msmWXYZ_64.Input to this
+//function is the BuildProp value that gets stored in the update package
+//at the time it it created.
+Value* ConfirmDevVariant(const char* name, State* state, int argc, Expr* argv[])
+{
+    //ro.product.device that was on the build that the update package was made
+    //from
+    char* package_dev_variant;
+    //ro.product.device on the current hardware
+    char current_dev_variant[PROPERTY_VALUE_MAX];
+    int comparison_len;
+    int package_dev_variant_len;
+    int current_dev_variant_len;
+    if (argc != 1) {
+        return ErrorAbort(state, "%s() expects 1 arg, got %d", name, argc);
+    }
+    package_dev_variant = Evaluate(state, argv[0]);
+    if (!package_dev_variant) goto error;
+    property_get("ro.product.device", current_dev_variant, "n/a");
+    if (!strncmp(current_dev_variant,"n/a",3)) {
+          ErrorAbort(state, "Failed to get valid ro.product.device");
+          goto error;
+    }
+    package_dev_variant_len = strlen(package_dev_variant);
+    current_dev_variant_len = strlen(current_dev_variant);
+    //Length of the largest string - 3(for _32/64)
+    comparison_len =
+	    (package_dev_variant_len >= current_dev_variant_len ?
+	    package_dev_variant_len :
+	    current_dev_variant_len) - 3;
+    //Complete match
+    if (!strncmp(current_dev_variant, package_dev_variant,
+			    strlen(current_dev_variant)))
+	    goto success;
+    //Match except for the last 3 char's of either string which are _32 or _64
+    if (!strncmp(current_dev_variant, package_dev_variant, comparison_len)) {
+	    if (package_dev_variant_len >= current_dev_variant_len) {
+		    if (!strncmp(&package_dev_variant[package_dev_variant_len-3],
+					    "_32", 3) ||
+                        !strncmp(&package_dev_variant[package_dev_variant_len-3],
+					    "_64", 3))
+			    goto success;
+	    } else {
+		    if (!strncmp(&current_dev_variant[current_dev_variant_len-3],
+					    "_32", 3) ||
+                        !strncmp(&current_dev_variant[current_dev_variant_len-3],
+					    "_64", 3))
+			    goto success;
 
-// file_getprop(file, key)
+	    }
+	    ErrorAbort(state, "Invalid target for update package");
+	    goto error;
+    }
+success:
+    free(package_dev_variant);
+    return StringValue(strdup("OK"));
+error:
+    if (package_dev_variant) {
+          free(package_dev_variant);
+    }
+    return StringValue(strdup("ERROR"));
+}
+
+	// file_getprop(file, key)
 //
 //   interprets 'file' as a getprop-style file (key=value pairs, one
 //   per line. # comment lines,blank lines, lines without '=' ignored),
@@ -1539,6 +1604,37 @@ Value* EnableRebootFn(const char* name, State* state, int argc, Expr* argv[]) {
     return StringValue(strdup("t"));
 }
 
+Value* Tune2FsFn(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc == 0) {
+        return ErrorAbort(state, "%s() expects args, got %d", name, argc);
+    }
+
+    char** args = ReadVarArgs(state, argc, argv);
+    if (args == NULL) {
+        return ErrorAbort(state, "%s() could not read args", name);
+    }
+
+    int i;
+    char** args2 = malloc(sizeof(char*) * (argc+1));
+    // Tune2fs expects the program name as its args[0]
+    args2[0] = strdup(name);
+    for (i = 0; i < argc; ++i) {
+       args2[i + 1] = args[i];
+    }
+    int result = tune2fs_main(argc + 1, args2);
+    for (i = 0; i < argc; ++i) {
+        free(args[i]);
+    }
+    free(args);
+
+    free(args2[0]);
+    free(args2);
+    if (result != 0) {
+        return ErrorAbort(state, "%s() returned error code %d", name, result);
+    }
+    return StringValue(strdup("t"));
+}
+
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
     RegisterFunction("is_mounted", IsMountedFn);
@@ -1589,4 +1685,6 @@ void RegisterInstallFunctions() {
     RegisterFunction("set_stage", SetStageFn);
 
     RegisterFunction("enable_reboot", EnableRebootFn);
+    RegisterFunction("tune2fs", Tune2FsFn);
+    RegisterFunction("get_device_compatible", ConfirmDevVariant);
 }
