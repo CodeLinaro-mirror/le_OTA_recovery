@@ -4,12 +4,12 @@ set -e
 
 case "$1" in
   start)
-    echo -n "Starting Recovery "
+    echo "Starting Recovery "
     /usr/bin/recovery
     echo "done"
     ;;
   stop)
-    echo -n "No need to stop recovery "
+    echo "No need to stop recovery "
     ;;
 
 *)
