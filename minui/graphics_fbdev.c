@@ -171,8 +171,11 @@ static gr_surface fbdev_init(minui_backend* backend) {
 
     printf("framebuffer: %d (%d x %d)\n", fb_fd, gr_draw->width, gr_draw->height);
 
-    fbdev_blank(backend, true);
-    fbdev_blank(backend, false);
+    /* Check for the splash status before blank/unblank */
+    if (!vi.reserved[3]) {
+        fbdev_blank(backend, true);
+        fbdev_blank(backend, false);
+    }
 
     return gr_draw;
 }
