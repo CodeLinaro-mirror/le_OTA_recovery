@@ -39,6 +39,48 @@
 
 #define UI_WAIT_KEY_TIMEOUT_SEC    120
 
+#ifdef USE_MDTP
+
+#define MAX_CMD_LINE_LEN         (2048)
+
+static int is_mdtp_activated()
+{
+    char cmdline[MAX_CMD_LINE_LEN];
+    char *ptr;
+    int fd;
+    int mdtp_activated = 0;
+
+    fd = open("/proc/cmdline", O_RDONLY);
+    if (fd >= 0) {
+        int n = read(fd, cmdline, sizeof(cmdline) - 1);
+        if (n < 0)
+            n = 0;
+        /* get rid of trailing newline, it happens */
+        if (n > 0 && cmdline[n-1] == '\n') n--;
+        cmdline[n] = 0;
+        close(fd);
+    } else {
+        cmdline[0] = 0;
+    }
+
+    /* Look for the string "mdtp" in kernel cmdline, indicating that MDTP is activated.*/
+    ptr = cmdline;
+    while (ptr && *ptr) {
+        char *x = strchr(ptr, ' ');
+        if (x != 0)
+            *x++ = 0;
+        if (!strcmp(ptr,"mdtp")) {
+            mdtp_activated = 1;
+            break;
+        }
+
+        ptr = x;
+    }
+
+    return mdtp_activated;
+}
+#endif /* USE_MDTP */
+
 // There's only (at most) one of these objects, and global callbacks
 // (for pthread_create, and the input event system) need to find it,
 // so use a global variable.
@@ -165,8 +207,16 @@ void RecoveryUI::process_key(int key_code, int updown) {
 
           case RecoveryUI::MOUNT_SYSTEM:
 #ifndef NO_RECOVERY_MOUNT
-            ensure_path_mounted("/system");
-            Print("Mounted /system.");
+#ifdef USE_MDTP
+            if (!is_mdtp_activated()) {
+#endif
+                ensure_path_mounted("/system");
+                Print("Mounted /system.");
+#ifdef USE_MDTP
+            } else {
+                Print("Mounting /system forbidden by MDTP.");
+            }
+#endif
 #endif
             break;
         }
