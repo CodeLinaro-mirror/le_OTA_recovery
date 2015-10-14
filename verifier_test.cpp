@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <string.h>
 
 #include "common.h"
 #include "verifier.h"
@@ -161,7 +162,9 @@ int main(int argc, char **argv) {
         ++argv;
     }
 
+#ifdef RECOVERY_UI
     ui = new FakeUI();
+#endif
 
     int result = verify_file(*argv, cert, num_keys);
     if (result == VERIFY_SUCCESS) {

@@ -24,9 +24,9 @@
 extern "C" {
 #endif
 
-#define LOGE(...) ui_print("E:" __VA_ARGS__)
-#define LOGW(...) fprintf(stdout, "W:" __VA_ARGS__)
-#define LOGI(...) fprintf(stdout, "I:" __VA_ARGS__)
+#define LOGE(...) printf("E:" __VA_ARGS__)
+#define LOGW(...) printf("W:" __VA_ARGS__)
+#define LOGI(...) printf("I:" __VA_ARGS__)
 
 #if 0
 #define LOGV(...) fprintf(stdout, "V:" __VA_ARGS__)

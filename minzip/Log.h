@@ -18,6 +18,10 @@
 
 // ---------------------------------------------------------------------
 
+// Do not print minzip logs.
+// Remove this flag to enable logging of zip processing.
+#define NDEBUG
+
 /*
  * Normally we strip LOGV (VERBOSE messages) from release builds.
  * You can modify this (for example with "#define LOG_NDEBUG 0"

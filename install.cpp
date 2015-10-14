@@ -21,6 +21,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "common.h"
 #include "install.h"
@@ -192,6 +193,8 @@ really_install_package(const char *path, int* wipe_cache)
 
     ui->Print("Opening update package...\n");
 
+    int err;
+#ifdef ENABLE_SIGNING
     int numKeys;
     Certificate* loadedKeys = load_keys(PUBLIC_KEYS_FILE, &numKeys);
     if (loadedKeys == NULL) {
@@ -202,7 +205,6 @@ really_install_package(const char *path, int* wipe_cache)
 
     ui->Print("Verifying update package...\n");
 
-    int err;
     err = verify_file(path, loadedKeys, numKeys);
     free(loadedKeys);
     LOGI("verify_file returned %d\n", err);
@@ -210,6 +212,7 @@ really_install_package(const char *path, int* wipe_cache)
         LOGE("signature verification failed\n");
         return INSTALL_CORRUPT;
     }
+#endif
 
     /* Try to open the package.
      */

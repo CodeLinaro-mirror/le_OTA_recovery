@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <string.h>
 
 #include <fs_mgr.h>
 #include "mtdutils/mtdutils.h"

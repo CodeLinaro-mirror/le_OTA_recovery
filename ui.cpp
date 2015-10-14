@@ -48,19 +48,24 @@ RecoveryUI::RecoveryUI() :
     key_last_down(-1),
     key_long_press(false),
     key_down_count(0) {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_init(&key_queue_mutex, NULL);
     pthread_cond_init(&key_queue_cond, NULL);
     self = this;
+#endif
 }
 
 void RecoveryUI::Init() {
+#ifdef ENABLE_RECOVERY_UI
     ev_init(input_callback, NULL);
     pthread_create(&input_t, NULL, input_thread, NULL);
+#endif
 }
 
 
 int RecoveryUI::input_callback(int fd, short revents, void* data)
 {
+#ifdef ENABLE_RECOVERY_UI
     struct input_event ev;
     int ret;
 
@@ -94,6 +99,7 @@ int RecoveryUI::input_callback(int fd, short revents, void* data)
     if (ev.type == EV_KEY && ev.code <= KEY_MAX)
         self->process_key(ev.code, ev.value);
 
+#endif
     return 0;
 }
 
@@ -110,6 +116,7 @@ int RecoveryUI::input_callback(int fd, short revents, void* data)
 //
 // updown == 1 for key down events; 0 for key up events
 void RecoveryUI::process_key(int key_code, int updown) {
+#ifdef ENABLE_RECOVERY_UI
     bool register_key = false;
     bool long_press = false;
 
@@ -154,16 +161,21 @@ void RecoveryUI::process_key(int key_code, int updown) {
             break;
         }
     }
+#endif
 }
 
 void* RecoveryUI::time_key_helper(void* cookie) {
+#ifdef ENABLE_RECOVERY_UI
     key_timer_t* info = (key_timer_t*) cookie;
     info->ui->time_key(info->key_code, info->count);
     delete info;
+#else
     return NULL;
+#endif
 }
 
 void RecoveryUI::time_key(int key_code, int count) {
+#ifdef ENABLE_RECOVERY_UI
     usleep(750000);  // 750 ms == "long"
     bool long_press = false;
     pthread_mutex_lock(&key_queue_mutex);
@@ -172,9 +184,11 @@ void RecoveryUI::time_key(int key_code, int count) {
     }
     pthread_mutex_unlock(&key_queue_mutex);
     if (long_press) KeyLongPress(key_code);
+#endif
 }
 
 void RecoveryUI::EnqueueKey(int key_code) {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&key_queue_mutex);
     const int queue_max = sizeof(key_queue) / sizeof(key_queue[0]);
     if (key_queue_len < queue_max) {
@@ -182,21 +196,26 @@ void RecoveryUI::EnqueueKey(int key_code) {
         pthread_cond_signal(&key_queue_cond);
     }
     pthread_mutex_unlock(&key_queue_mutex);
+#endif
 }
 
 
 // Reads input events, handles special hot keys, and adds to the key queue.
 void* RecoveryUI::input_thread(void *cookie)
 {
+#ifdef ENABLE_RECOVERY_UI
     for (;;) {
         if (!ev_wait(-1))
             ev_dispatch();
     }
+#else
     return NULL;
+#endif
 }
 
 int RecoveryUI::WaitKey()
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&key_queue_mutex);
 
     // Time out after UI_WAIT_KEY_TIMEOUT_SEC, unless a USB cable is
@@ -223,10 +242,14 @@ int RecoveryUI::WaitKey()
     }
     pthread_mutex_unlock(&key_queue_mutex);
     return key;
+#else
+    return 0;
+#endif
 }
 
 // Return true if USB is connected.
 bool RecoveryUI::usb_connected() {
+#ifdef ENABLE_RECOVERY_UI
     int fd = open("/sys/class/android_usb/android0/state", O_RDONLY);
     if (fd < 0) {
         printf("failed to open /sys/class/android_usb/android0/state: %s\n",
@@ -242,20 +265,29 @@ bool RecoveryUI::usb_connected() {
                strerror(errno));
     }
     return connected;
+#else
+    return false;
+#endif
 }
 
 bool RecoveryUI::IsKeyPressed(int key)
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&key_queue_mutex);
     int pressed = key_pressed[key];
     pthread_mutex_unlock(&key_queue_mutex);
     return pressed;
+#else
+    return false;
+#endif
 }
 
 void RecoveryUI::FlushKeys() {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&key_queue_mutex);
     key_queue_len = 0;
     pthread_mutex_unlock(&key_queue_mutex);
+#endif
 }
 
 RecoveryUI::KeyAction RecoveryUI::CheckKey(int key) {

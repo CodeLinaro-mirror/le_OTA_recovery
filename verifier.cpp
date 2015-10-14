@@ -25,6 +25,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include <stdlib.h>
 
 extern RecoveryUI* ui;
 
@@ -197,8 +198,8 @@ int verify_file(const char* path, const Certificate* pKeys, unsigned int numKeys
 
         // The 6 bytes is the "(signature_start) $ff $ff (comment_size)" that
         // the signing tool appends after the signature itself.
-        if (RSA_verify(pKeys[i].public_key, eocd + eocd_size - 6 - RSANUMBYTES,
-                       RSANUMBYTES, hash, pKeys[i].hash_len)) {
+        if (RSA_verify_hash(pKeys[i].public_key, eocd + eocd_size - 6 - RSANUMBYTES,
+                            RSANUMBYTES, hash, pKeys[i].hash_len)) {
             LOGI("whole-file signature verified against key %d\n", i);
             free(eocd);
             return VERIFY_SUCCESS;

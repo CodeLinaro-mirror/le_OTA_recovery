@@ -85,11 +85,13 @@ ScreenRecoveryUI::ScreenRecoveryUI() :
     stage(-1),
     max_stage(-1) {
 
+#ifdef ENABLE_RECOVERY_UI
     for (int i = 0; i < 5; i++)
         backgroundIcon[i] = NULL;
 
     pthread_mutex_init(&updateMutex, NULL);
     self = this;
+#endif
 }
 
 // Draw the given frame over the installation overlay animation.  The
@@ -98,18 +100,21 @@ ScreenRecoveryUI::ScreenRecoveryUI() :
 // animation.  Does nothing if no overlay animation is defined.
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::draw_install_overlay_locked(int frame) {
+#ifdef ENABLE_RECOVERY_UI
     if (installationOverlay == NULL || overlay_offset_x < 0) return;
     gr_surface surface = installationOverlay[frame];
     int iconWidth = gr_get_width(surface);
     int iconHeight = gr_get_height(surface);
     gr_blit(surface, 0, 0, iconWidth, iconHeight,
             overlay_offset_x, overlay_offset_y);
+#endif
 }
 
 // Clear the screen and draw the currently selected background icon (if any).
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::draw_background_locked(Icon icon)
 {
+#ifdef ENABLE_RECOVERY_UI
     pagesIdentical = false;
     gr_color(0, 0, 0, 255);
     gr_fill(0, 0, gr_fb_width(), gr_fb_height());
@@ -151,12 +156,14 @@ void ScreenRecoveryUI::draw_background_locked(Icon icon)
         gr_color(255, 255, 255, 255);
         gr_texticon(textX, textY, text_surface);
     }
+#endif
 }
 
 // Draw the progress bar (if any) on the screen.  Does not flip pages.
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::draw_progress_locked()
 {
+#ifdef ENABLE_RECOVERY_UI
     if (currentIcon == ERROR) return;
 
     if (currentIcon == INSTALLING_UPDATE || currentIcon == ERASING) {
@@ -210,9 +217,11 @@ void ScreenRecoveryUI::draw_progress_locked()
             }
         }
     }
+#endif
 }
 
 void ScreenRecoveryUI::SetColor(UIElement e) {
+#ifdef ENABLE_RECOVERY_UI
     switch (e) {
         case HEADER:
             gr_color(247, 0, 6, 255);
@@ -234,12 +243,14 @@ void ScreenRecoveryUI::SetColor(UIElement e) {
             gr_color(255, 255, 255, 255);
             break;
     }
+#endif
 }
 
 // Redraw everything on the screen.  Does not flip pages.
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::draw_screen_locked()
 {
+#ifdef ENABLE_RECOVERY_UI
     draw_background_locked(currentIcon);
     draw_progress_locked();
 
@@ -290,20 +301,24 @@ void ScreenRecoveryUI::draw_screen_locked()
             if (row < 0) row = text_rows-1;
         }
     }
+#endif
 }
 
 // Redraw everything on the screen and flip the screen (make it visible).
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::update_screen_locked()
 {
+#ifdef ENABLE_RECOVERY_UI
     draw_screen_locked();
     gr_flip();
+#endif
 }
 
 // Updates only the progress bar, if possible, otherwise redraws the screen.
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::update_progress_locked()
 {
+#ifdef ENABLE_RECOVERY_UI
     if (show_text || !pagesIdentical) {
         draw_screen_locked();    // Must redraw the whole screen
         pagesIdentical = true;
@@ -311,15 +326,19 @@ void ScreenRecoveryUI::update_progress_locked()
         draw_progress_locked();  // Draw only the progress bar and overlays
     }
     gr_flip();
+#endif
 }
 
 // Keeps the progress bar updated, even when the process is otherwise busy.
 void* ScreenRecoveryUI::progress_thread(void *cookie) {
+#ifdef ENABLE_RECOVERY_UI
     self->progress_loop();
+#endif
     return NULL;
 }
 
 void ScreenRecoveryUI::progress_loop() {
+#ifdef ENABLE_RECOVERY_UI
     double interval = 1.0 / animation_fps;
     for (;;) {
         double start = now();
@@ -362,24 +381,30 @@ void ScreenRecoveryUI::progress_loop() {
         if (delay < 0.02) delay = 0.02;
         usleep((long)(delay * 1000000));
     }
+#endif
 }
 
 void ScreenRecoveryUI::LoadBitmap(const char* filename, gr_surface* surface) {
+#ifdef ENABLE_RECOVERY_UI
     int result = res_create_surface(filename, surface);
     if (result < 0) {
         LOGE("missing bitmap %s\n(Code %d)\n", filename, result);
     }
+#endif
 }
 
 void ScreenRecoveryUI::LoadLocalizedBitmap(const char* filename, gr_surface* surface) {
+#ifdef ENABLE_RECOVERY_UI
     int result = res_create_localized_surface(filename, surface);
     if (result < 0) {
         LOGE("missing bitmap %s\n(Code %d)\n", filename, result);
     }
+#endif
 }
 
 void ScreenRecoveryUI::Init()
 {
+#ifdef ENABLE_RECOVERY_UI
     gr_init();
 
     gr_font_size(&char_width, &char_height);
@@ -433,11 +458,13 @@ void ScreenRecoveryUI::Init()
     }
 
     pthread_create(&progress_t, NULL, progress_thread, NULL);
+#endif
 
     RecoveryUI::Init();
 }
 
 void ScreenRecoveryUI::SetLocale(const char* locale) {
+#ifdef ENABLE_RECOVERY_UI
     if (locale) {
         char* lang = strdup(locale);
         for (char* p = lang; *p; ++p) {
@@ -458,10 +485,12 @@ void ScreenRecoveryUI::SetLocale(const char* locale) {
         }
         free(lang);
     }
+#endif
 }
 
 void ScreenRecoveryUI::SetBackground(Icon icon)
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&updateMutex);
 
     // Adjust the offset to account for the positioning of the
@@ -481,10 +510,12 @@ void ScreenRecoveryUI::SetBackground(Icon icon)
     update_screen_locked();
 
     pthread_mutex_unlock(&updateMutex);
+#endif
 }
 
 void ScreenRecoveryUI::SetProgressType(ProgressType type)
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&updateMutex);
     if (progressBarType != type) {
         progressBarType = type;
@@ -494,10 +525,12 @@ void ScreenRecoveryUI::SetProgressType(ProgressType type)
     progress = 0;
     update_progress_locked();
     pthread_mutex_unlock(&updateMutex);
+#endif
 }
 
 void ScreenRecoveryUI::ShowProgress(float portion, float seconds)
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&updateMutex);
     progressBarType = DETERMINATE;
     progressScopeStart += progressScopeSize;
@@ -507,10 +540,12 @@ void ScreenRecoveryUI::ShowProgress(float portion, float seconds)
     progress = 0;
     update_progress_locked();
     pthread_mutex_unlock(&updateMutex);
+#endif
 }
 
 void ScreenRecoveryUI::SetProgress(float fraction)
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&updateMutex);
     if (fraction < 0.0) fraction = 0.0;
     if (fraction > 1.0) fraction = 1.0;
@@ -524,13 +559,16 @@ void ScreenRecoveryUI::SetProgress(float fraction)
         }
     }
     pthread_mutex_unlock(&updateMutex);
+#endif
 }
 
 void ScreenRecoveryUI::SetStage(int current, int max) {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&updateMutex);
     stage = current;
     max_stage = max;
     pthread_mutex_unlock(&updateMutex);
+#endif
 }
 
 void ScreenRecoveryUI::Print(const char *fmt, ...)
@@ -538,9 +576,10 @@ void ScreenRecoveryUI::Print(const char *fmt, ...)
     char buf[256];
     va_list ap;
     va_start(ap, fmt);
-    vsnprintf(buf, 256, fmt, ap);
+    vfprintf(stdout, fmt, ap);
     va_end(ap);
 
+#ifdef ENABLE_RECOVERY_UI
     fputs(buf, stdout);
 
     // This can get called before ui_init(), so be careful.
@@ -560,10 +599,12 @@ void ScreenRecoveryUI::Print(const char *fmt, ...)
         update_screen_locked();
     }
     pthread_mutex_unlock(&updateMutex);
+#endif
 }
 
 void ScreenRecoveryUI::StartMenu(const char* const * headers, const char* const * items,
                                  int initial_selection) {
+#ifdef ENABLE_RECOVERY_UI
     int i;
     pthread_mutex_lock(&updateMutex);
     if (text_rows > 0 && text_cols > 0) {
@@ -584,9 +625,11 @@ void ScreenRecoveryUI::StartMenu(const char* const * headers, const char* const 
         update_screen_locked();
     }
     pthread_mutex_unlock(&updateMutex);
+#endif
 }
 
 int ScreenRecoveryUI::SelectMenu(int sel) {
+#ifdef ENABLE_RECOVERY_UI
     int old_sel;
     pthread_mutex_lock(&updateMutex);
     if (show_menu > 0) {
@@ -599,9 +642,13 @@ int ScreenRecoveryUI::SelectMenu(int sel) {
     }
     pthread_mutex_unlock(&updateMutex);
     return sel;
+#else
+    return 0;
+#endif
 }
 
 void ScreenRecoveryUI::EndMenu() {
+#ifdef ENABLE_RECOVERY_UI
     int i;
     pthread_mutex_lock(&updateMutex);
     if (show_menu > 0 && text_rows > 0 && text_cols > 0) {
@@ -609,36 +656,49 @@ void ScreenRecoveryUI::EndMenu() {
         update_screen_locked();
     }
     pthread_mutex_unlock(&updateMutex);
+#endif
 }
 
 bool ScreenRecoveryUI::IsTextVisible()
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&updateMutex);
     int visible = show_text;
     pthread_mutex_unlock(&updateMutex);
     return visible;
+#else
+    return false;
+#endif
 }
 
 bool ScreenRecoveryUI::WasTextEverVisible()
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&updateMutex);
     int ever_visible = show_text_ever;
     pthread_mutex_unlock(&updateMutex);
     return ever_visible;
+#else
+    return false;
+#endif
 }
 
 void ScreenRecoveryUI::ShowText(bool visible)
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&updateMutex);
     show_text = visible;
     if (show_text) show_text_ever = 1;
     update_screen_locked();
     pthread_mutex_unlock(&updateMutex);
+#endif
 }
 
 void ScreenRecoveryUI::Redraw()
 {
+#ifdef ENABLE_RECOVERY_UI
     pthread_mutex_lock(&updateMutex);
     update_screen_locked();
     pthread_mutex_unlock(&updateMutex);
+#endif
 }

@@ -678,6 +678,7 @@ retry:
     return result;
 }
 
+#ifndef _LINUX_
 void register_socket_transport(int s, const char *serial, int port, int local)
 {
     atransport *t = calloc(1, sizeof(atransport));
@@ -698,6 +699,7 @@ void register_socket_transport(int s, const char *serial, int port, int local)
     }
     register_transport(t);
 }
+#endif
 
 void register_usb_transport(usb_handle *usb, const char *serial, unsigned writeable)
 {

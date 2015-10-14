@@ -39,6 +39,7 @@
 
 #include <fcntl.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <sys/stat.h>
 #include <sys/ioctl.h>
@@ -145,7 +146,7 @@ static int set_bootselect_info_rw(const struct boot_selection_info *in) {
     struct mmc_ioc_cmd idata;
     const uint32_t BLK_SIZE = 512;
     char *data;
-    const char* DEVFS = "/dev/block/mmcblk0";
+    const char* DEVFS = "/dev/mmcblk0";
     Volume* v = volume_for_path("/bootselect");
     if (v == NULL) {
       LOGE("Cannot load volume /bootselect!\n");

@@ -52,6 +52,19 @@ extern "C" {
 #define RESERVED_MEMORY_SIZE (sysconf(_SC_PAGESIZE) * 1024 * 5)
 #define GET_AVPHYS_MEM() ((long long)sysconf(_SC_AVPHYS_PAGES) * sysconf(_SC_PAGESIZE))
 
+// Read properties from a file
+#define property_get property_get_file
+#define property_list property_list_file
+extern "C" {
+int property_list_file(void (*propfn)(const char *key, const char *value, void *cookie),
+                       void *cookie)
+{
+    return 0;
+}
+
+int property_get_file(const char *key, char *value, const char *default_value);
+}
+
 struct selabel_handle *sehandle;
 
 static const struct option OPTIONS[] = {
@@ -332,6 +345,15 @@ copy_logs() {
     sync();
 }
 
+// Reset to normal system boot so recovery won't cycle indefinitely.
+static void
+clear_bootloader_message() {
+    struct bootloader_message boot;
+    memset(&boot, 0, sizeof(boot));
+    set_bootloader_message(&boot);
+    sync();  // For good measure.
+}
+
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
 // record any intent we were asked to communicate back to the system.
@@ -363,10 +385,7 @@ finish_recovery(const char *send_intent) {
 
     copy_logs();
 
-    // Reset to normal system boot so recovery won't cycle indefinitely.
-    struct bootloader_message boot;
-    memset(&boot, 0, sizeof(boot));
-    set_bootloader_message(&boot);
+    clear_bootloader_message();
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (ensure_path_mounted(COMMAND_FILE) != 0 ||
@@ -1147,14 +1166,14 @@ main(int argc, char **argv) {
         copy_logs();
         ui->SetBackground(RecoveryUI::ERROR);
     }
-    if (status != INSTALL_SUCCESS || ui->IsTextVisible()) {
-        ui->ShowText(true);
-        prompt_and_wait(device, status);
+    if (status != INSTALL_SUCCESS) {
+        ui->Print("Install failed, staying in recovery...\n");
+        clear_bootloader_message();
+        return EXIT_FAILURE;
     }
 
     // Otherwise, get ready to boot the main system...
     finish_recovery(send_intent);
     ui->Print("Rebooting...\n");
-    property_set(ANDROID_RB_PROPERTY, "reboot,");
     return EXIT_SUCCESS;
 }

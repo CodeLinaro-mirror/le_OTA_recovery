@@ -17,6 +17,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,7 +30,7 @@
 #include <time.h>
 #include <selinux/selinux.h>
 #include <ftw.h>
-#include <sys/capability.h>
+#include <linux/capability.h>
 #include <sys/xattr.h>
 #include <linux/xattr.h>
 #include <inttypes.h>
@@ -843,6 +844,7 @@ static int ApplyParsedPerms(
     return bad;
 }
 
+#ifndef NO_NFTW
 // nftw doesn't allow us to pass along context, so we need to use
 // global variables.  *sigh*
 static struct perm_parsed_args recursive_parsed_args;
@@ -900,67 +902,55 @@ done:
 
     return StringValue(strdup(""));
 }
+#endif /* NO_NFTW */
 
-Value* GetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
-    if (argc != 1) {
-        return ErrorAbort(state, "%s() expects 1 arg, got %d", name, argc);
-    }
-    char* key;
-    key = Evaluate(state, argv[0]);
-    if (key == NULL) return NULL;
+#define MAX_FILE_GETPROP_SIZE    65536
+#define BUILD_PROP_FILENAME "/tmp/build.prop"
 
-    char value[PROPERTY_VALUE_MAX];
-    property_get(key, value, "");
-    free(key);
-
-    return StringValue(strdup(value));
-}
-
-
-// file_getprop(file, key)
-//
-//   interprets 'file' as a getprop-style file (key=value pairs, one
-//   per line, # comment lines and blank lines okay), and returns the value
-//   for 'key' (or "" if it isn't defined).
-Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
-    char* result = NULL;
+/*
+ * Read a property from a key=value file and return it's value.
+ * Return the default_value if the key is not found in the file.
+ * This function is added to implement property_get from libcutils because
+ * the backend bionic libc function is not available in Linux. Usually,
+ * callers will provide a build.prop file that contains key-value pairs with
+ * information about the device such as board name and build version.
+ */
+int property_get_file(const char *key, char *value, const char *default_value) {
+    const char *name = "recovery";
+    const char* filename = BUILD_PROP_FILENAME;
+    int len = 0;
     char* buffer = NULL;
-    char* filename;
-    char* key;
-    if (ReadArgs(state, argv, 2, &filename, &key) < 0) {
-        return NULL;
-    }
+    char* line;
+    FILE* f;
 
     struct stat st;
     if (stat(filename, &st) < 0) {
-        ErrorAbort(state, "%s: failed to stat \"%s\": %s",
-                   name, filename, strerror(errno));
+        printf("%s: failed to stat \"%s\": %s\n", name,
+               filename, strerror(errno));
         goto done;
     }
-
-#define MAX_FILE_GETPROP_SIZE    65536
 
     if (st.st_size > MAX_FILE_GETPROP_SIZE) {
-        ErrorAbort(state, "%s too large for %s (max %d)",
-                   filename, name, MAX_FILE_GETPROP_SIZE);
+        printf("%s too large for %s (max %d)\n", filename,
+               name, MAX_FILE_GETPROP_SIZE);
         goto done;
     }
 
-    buffer = malloc(st.st_size+1);
+    buffer = (char *)malloc(st.st_size+1);
     if (buffer == NULL) {
-        ErrorAbort(state, "%s: failed to alloc %lld bytes", name, st.st_size+1);
+        printf("%s: failed to alloc %lld bytes\n", name, st.st_size+1);
         goto done;
     }
 
-    FILE* f = fopen(filename, "rb");
+    f = fopen(filename, "rb");
     if (f == NULL) {
-        ErrorAbort(state, "%s: failed to open %s: %s",
+        printf("%s: failed to open %s: %s\n",
                    name, filename, strerror(errno));
         goto done;
     }
 
     if (fread(buffer, 1, st.st_size, f) != st.st_size) {
-        ErrorAbort(state, "%s: failed to read %lld bytes from %s",
+        printf("%s: failed to read %lld bytes from %s\n",
                    name, st.st_size+1, filename);
         fclose(f);
         goto done;
@@ -969,7 +959,7 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     fclose(f);
 
-    char* line = strtok(buffer, "\n");
+    line = strtok(buffer, "\n");
     do {
         // skip whitespace at start of line
         while (*line && isspace(*line)) ++line;
@@ -979,7 +969,7 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
 
         char* equal = strchr(line, '=');
         if (equal == NULL) {
-            ErrorAbort(state, "%s: malformed line \"%s\": %s not a prop file?",
+            printf("%s: malformed line \"%s\": %s not a prop file?\n",
                        name, line, filename);
             goto done;
         }
@@ -1001,17 +991,55 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
         while (val_end > val_start && isspace(*val_end)) --val_end;
         val_end[1] = '\0';
 
-        result = strdup(val_start);
+        strcpy(value, val_start);
+        len = strlen(value);
         break;
 
     } while ((line = strtok(NULL, "\n")));
 
-    if (result == NULL) result = strdup("");
+    if (len == 0) {
+        strcpy(value, default_value);
+        len = strlen(value);
+    }
+
+done:
+    free(buffer);
+    return len;
+}
+
+Value* GetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 1) {
+        return ErrorAbort(state, "%s() expects 1 arg, got %d", name, argc);
+    }
+    char* key;
+    key = Evaluate(state, argv[0]);
+    if (key == NULL) return NULL;
+
+    char value[PROPERTY_VALUE_MAX];
+    property_get_file(key, value, "");
+    free(key);
+
+    return StringValue(strdup(value));
+}
+
+// file_getprop(file, key)
+//
+//   interprets 'file' as a getprop-style file (key=value pairs, one
+//   per line, # comment lines and blank lines okay), and returns the value
+//   for 'key' (or "" if it isn't defined).
+Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
+    char result[PROPERTY_VALUE_MAX+1];
+    char* filename;
+    char* key;
+    if (ReadArgs(state, argv, 2, &filename, &key) < 0) {
+        return NULL;
+    }
+
+    property_get_file(key, result, "");
 
   done:
     free(filename);
     free(key);
-    free(buffer);
     return StringValue(result);
 }
 
@@ -1536,6 +1564,7 @@ void RegisterInstallFunctions() {
     RegisterFunction("set_perm", SetPermFn);
     RegisterFunction("set_perm_recursive", SetPermFn);
 
+#ifndef NO_NFTW
     // Usage:
     //   set_metadata("filename", "key1", "value1", "key2", "value2", ...)
     // Example:
@@ -1547,6 +1576,7 @@ void RegisterInstallFunctions() {
     // Example:
     //   set_metadata_recursive("/system", "uid", 0, "gid", 0, "fmode", 0644, "dmode", 0755, "selabel", "u:object_r:system_file:s0", "capabilities", 0x0);
     RegisterFunction("set_metadata_recursive", SetMetadataFn);
+#endif
 
     RegisterFunction("getprop", GetPropFn);
     RegisterFunction("file_getprop", FileGetPropFn);

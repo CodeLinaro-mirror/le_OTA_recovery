@@ -165,14 +165,15 @@ static int validFilename(const char *fileName, unsigned int fileNameLen)
         return 0;
     }
 
+    // ATL: Some files have UTF-8 names, skip ASCII check
     // Require all characters to be printable ASCII (no NUL, no UTF-8, etc).
-    unsigned int i;
-    for (i = 0; i < fileNameLen; ++i) {
-        if (fileName[i] < 32 || fileName[i] >= 127) {
-            LOGW("Filename contains invalid character '\%03o'\n", fileName[i]);
-            return 0;
-        }
-    }
+    //unsigned int i;
+    //for (i = 0; i < fileNameLen; ++i) {
+    //    if (fileName[i] < 32 || fileName[i] >= 127) {
+    //        LOGW("Filename contains invalid character '\%03o'\n", fileName[i]);
+    //        return 0;
+    //    }
+    //}
 
     return 1;
 }

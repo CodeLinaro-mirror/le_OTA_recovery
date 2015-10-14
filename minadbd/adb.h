@@ -250,8 +250,10 @@ void init_usb_transport(atransport *t, usb_handle *usb, int state);
 /* for MacOS X cleanup */
 void close_usb_devices();
 
+#ifndef _LINUX_
 /* cause new transports to be init'd and added to the list */
 void register_socket_transport(int s, const char *serial, int port, int local);
+#endif
 
 /* these should only be used for the "adb disconnect" command */
 void unregister_transport(atransport *t);

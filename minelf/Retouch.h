@@ -19,6 +19,7 @@
 
 #include <stdbool.h>
 #include <sys/types.h>
+#include <inttypes.h>
 
 typedef struct {
   char tag[8];        /* "RETOUCH ", not zero-terminated */

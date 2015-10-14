@@ -28,7 +28,9 @@
 #include "sysdeps.h"
 #include "adb.h"
 
+#ifndef _LINUX_
 #include <private/android_filesystem_config.h>
+#endif
 
 #if ADB_TRACE
 ADB_MUTEX_DEFINE( D_lock );
@@ -392,6 +394,7 @@ int adb_main()
         usb_init();
     }
 
+#ifndef _LINUX_
     if (setgid(AID_SHELL) != 0) {
         fprintf(stderr, "failed to setgid to shell\n");
         exit(1);
@@ -400,6 +403,7 @@ int adb_main()
         fprintf(stderr, "failed to setuid to shell\n");
         exit(1);
     }
+#endif
     fprintf(stderr, "userid is %d\n", getuid());
 
     D("Event loop starting\n");
