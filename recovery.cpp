@@ -43,6 +43,7 @@
 #include "screen_ui.h"
 #include "device.h"
 #include "adb_install.h"
+#include "notifier/leds.h"
 extern "C" {
 #include "minadbd/adb.h"
 #include "fuse_sideload.h"
@@ -988,6 +989,7 @@ main(int argc, char **argv) {
     int wipe_data = 0, wipe_cache = 0, show_text = 0;
     bool just_exit = false;
     bool shutdown_after = false;
+    bool led_on = false;
 
     int arg;
     while ((arg = getopt_long(argc, argv, "", OPTIONS, NULL)) != -1) {
@@ -1048,6 +1050,8 @@ main(int argc, char **argv) {
     }
 
     device->StartRecovery();
+
+    led_on = leds_entry();
 
     printf("Command:");
     for (arg = 0; arg < argc; arg++) {
@@ -1115,10 +1119,14 @@ main(int argc, char **argv) {
         ui->SetBackground(RecoveryUI::ERROR);
     }
     Device::BuiltinAction after = shutdown_after ? Device::SHUTDOWN : Device::REBOOT;
+    LOGE("INSTALL action after (%d) status (%d) \n", after, status);
+
     if (status != INSTALL_SUCCESS || ui->IsTextVisible()) {
-        ui->ShowText(true);
-        Device::BuiltinAction temp = prompt_and_wait(device, status);
-        if (temp != Device::NO_ACTION) after = temp;
+        if (!is_platform_match((char*)TARGET_HW_PLATFORM) || (status == INSTALL_NONE)) {
+            ui->ShowText(true);
+            Device::BuiltinAction temp = prompt_and_wait(device, status);
+            if (temp != Device::NO_ACTION) after = temp;
+        }
     }
 
     // Save logs and clean up before rebooting or shutting down.
@@ -1141,5 +1149,9 @@ main(int argc, char **argv) {
             break;
     }
     sleep(5); // should reboot before this finishes
+
+    if (led_on)
+        leds_exit();
+
     return EXIT_SUCCESS;
 }

@@ -95,6 +95,11 @@ else
   LOCAL_STATIC_LIBRARIES += $(TARGET_RECOVERY_UI_LIB)
 endif
 
+ifeq ($(TARGET_RECOVERY_NOTIFIER_LIB),librecovery_notifier_qcom)
+  LOCAL_STATIC_LIBRARIES += libnotifier_qti
+endif
+
+LOCAL_C_INCLUDES += bootable/recovery/notifier
 LOCAL_C_INCLUDES += system/extras/ext4_utils
 LOCAL_C_INCLUDES += external/openssl/include
 
