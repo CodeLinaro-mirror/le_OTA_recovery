@@ -95,7 +95,7 @@ else
   LOCAL_STATIC_LIBRARIES += $(TARGET_RECOVERY_UI_LIB)
 endif
 
-ifeq ($(TARGET_RECOVERY_NOTIFIER_LIB),librecovery_notifier_qcom)
+ifeq ($(TARGET_RECOVERY_NOTIFIER_LIB),librecovery_notifier_qti)
   LOCAL_STATIC_LIBRARIES += libnotifier_qti
 endif
 
