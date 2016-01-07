@@ -69,6 +69,7 @@ LOCAL_STATIC_LIBRARIES := \
     libcutils \
     liblog \
     libstdc++ \
+    libutils \
     libm \
     libc
 
