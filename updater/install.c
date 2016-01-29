@@ -1028,7 +1028,7 @@ Value* GetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
 //   per line, # comment lines and blank lines okay), and returns the value
 //   for 'key' (or "" if it isn't defined).
 Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
-    char result[PROPERTY_VALUE_MAX+1];
+    char result[PROPERTY_VALUE_MAX];
     char* filename;
     char* key;
     if (ReadArgs(state, argv, 2, &filename, &key) < 0) {
@@ -1037,10 +1037,9 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     property_get_file(key, result, "");
 
-  done:
     free(filename);
     free(key);
-    return StringValue(result);
+    return StringValue(strdup(result));
 }
 
 
