@@ -963,6 +963,10 @@ static int GenerateTarget(FileContents* source_file,
                    memcmp(header, "IMGDIFF2", 8) == 0) {
             result = ApplyImagePatch(source_to_use->data, source_to_use->size,
                                      patch, sink, token, &ctx, bonus_data);
+        } else if (header_bytes_read >= 8 &&
+                   memcmp(header, "DEBIFF10", 8) == 0) {
+            result = ApplyDebiffPatch(source_to_use->data, source_to_use->size,
+                                      patch, sink, token, &ctx);
         } else {
             printf("Unknown patch file format\n");
             return 1;

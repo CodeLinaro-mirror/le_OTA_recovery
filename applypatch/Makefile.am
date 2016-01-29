@@ -16,7 +16,8 @@ c_sources := applypatch.c \
 	    imgdiff.c \
 	    imgpatch.c \
 	    freecache.c \
-	    utils.c
+	    utils.c \
+	    debiff.c
 
 h_sources := applypatch.h
 
@@ -55,7 +56,8 @@ applypatch_c_sources := applypatch.c \
 	    imgpatch.c \
 	    freecache.c \
 	    utils.c \
-	    main.c
+	    main.c \
+	    debiff.c
 
 applypatch_h_sources := applypatch.h utils.h
 

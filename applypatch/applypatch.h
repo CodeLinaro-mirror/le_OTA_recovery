@@ -86,4 +86,9 @@ int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size,
 // freecache.c
 int MakeFreeSpaceOnCache(size_t bytes_needed);
 
+// debiff.c
+int ApplyDebiffPatch(const unsigned char* old_data, ssize_t old_size,
+                     const Value* patch,
+                     SinkFn sink, void* token, SHA_CTX* ctx);
+
 #endif
