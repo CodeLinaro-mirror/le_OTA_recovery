@@ -34,6 +34,7 @@
 #include <sys/xattr.h>
 #include <linux/xattr.h>
 #include <inttypes.h>
+#include <sys/reboot.h>
 
 #include "bootloader.h"
 #include "applypatch/applypatch.h"
@@ -1480,8 +1481,19 @@ Value* RebootNowFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     property_set(ANDROID_RB_PROPERTY, buffer);
-
     sleep(5);
+
+    // If property set fails, use the manual linux commands
+    if (strcmp("recovery", property) == 0) {
+        // If we need to reboot to recovery we use reboot2fastboot with arg
+        execl("/bin/reboot2fastboot", "/bin/reboot2fastboot", "recovery", (char *) 0);
+    } else if(strcmp("bootloader", property) == 0) {
+        execl("/bin/reboot2fastboot", "/bin/reboot2fastboot", (char *) 0);
+    } else {
+        reboot(RB_AUTOBOOT);
+    }
+    sleep(5);
+
     free(property);
     ErrorAbort(state, "%s() failed to reboot", name);
     return NULL;
