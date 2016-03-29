@@ -13,6 +13,7 @@ AM_CPPFLAGS := -Wundef \
 	    -Dstrlcat=strncat \
 	    -Dstrlcpy=strncpy \
 	    -DRECOVERY_API_VERSION=3 \
+	    -DENABLE_SIGNING \
 	    -DUSE_EXT4 \
 	    -I. \
 	    -I$(WORKSPACE)/system/core/include \
