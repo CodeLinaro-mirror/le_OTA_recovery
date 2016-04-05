@@ -27,6 +27,9 @@ on init
     write /proc/sys/vm/max_map_count 1000000
 
 on fs
+    wait /dev/block/platform/soc/7824900.sdhci/mmcblk0
+    symlink /dev/block/platform/soc/7824900.sdhci/ dev/block/bootdevice
+
     mkdir /dev/usb-ffs 0770 shell shell
     mkdir /dev/usb-ffs/adb 0770 shell shell
     mount functionfs adb /dev/usb-ffs/adb uid=2000,gid=2000
