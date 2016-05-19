@@ -71,7 +71,7 @@ static int get_bootloader_message_mtd(struct bootloader_message *out,
                                       const Volume* v) {
     size_t write_size;
     mtd_scan_partitions();
-    const MtdPartition *part = mtd_find_partition_by_name(v->device);
+    const MtdPartition *part = mtd_find_partition_by_device_name(v->device);
     if (part == NULL || mtd_partition_info(part, NULL, NULL, &write_size)) {
         LOGE("Can't find %s\n", v->device);
         return -1;
@@ -97,7 +97,7 @@ static int set_bootloader_message_mtd(const struct bootloader_message *in,
                                       const Volume* v) {
     size_t write_size;
     mtd_scan_partitions();
-    const MtdPartition *part = mtd_find_partition_by_name(v->device);
+    const MtdPartition *part = mtd_find_partition_by_device_name(v->device);
     if (part == NULL || mtd_partition_info(part, NULL, NULL, &write_size)) {
         LOGE("Can't find %s\n", v->device);
         return -1;
