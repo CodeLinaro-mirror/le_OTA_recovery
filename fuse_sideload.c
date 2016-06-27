@@ -63,6 +63,7 @@
 
 #include "mincrypt/sha256.h"
 #include "fuse_sideload.h"
+#include "common.h"
 
 #define PACKAGE_FILE_ID   (FUSE_ROOT_ID+1)
 #define EXIT_FLAG_ID      (FUSE_ROOT_ID+2)

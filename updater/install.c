@@ -46,7 +46,9 @@
 #include "mtdutils/mtdutils.h"
 #include "updater.h"
 #include "install.h"
-#include "tune2fs.h"
+
+/* Need tune2fs to enable */
+/* #include "tune2fs.h" */
 
 #ifdef USE_EXT4
 #include "make_ext4fs.h"
@@ -1608,6 +1610,8 @@ Value* EnableRebootFn(const char* name, State* state, int argc, Expr* argv[]) {
     return StringValue(strdup("t"));
 }
 
+/* Need tune2fs to enable */
+/*
 Value* Tune2FsFn(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc == 0) {
         return ErrorAbort(state, "%s() expects args, got %d", name, argc);
@@ -1638,6 +1642,7 @@ Value* Tune2FsFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
     return StringValue(strdup("t"));
 }
+*/
 
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
@@ -1689,6 +1694,7 @@ void RegisterInstallFunctions() {
     RegisterFunction("set_stage", SetStageFn);
 
     RegisterFunction("enable_reboot", EnableRebootFn);
-    RegisterFunction("tune2fs", Tune2FsFn);
+    /* Need tune2fs to enable */
+    /*RegisterFunction("tune2fs", Tune2FsFn); */
     RegisterFunction("get_device_compatible", ConfirmDevVariant);
 }

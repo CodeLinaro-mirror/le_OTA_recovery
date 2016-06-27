@@ -37,7 +37,7 @@
  * file, and update the SHA context with the output data as well.
  * Return 0 on success.
  */
-int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size __unused,
+int ApplyImagePatch(const unsigned char* old_data, ssize_t old_size __attribute__ ((__unused)),
                     const Value* patch,
                     SinkFn sink, void* token, SHA_CTX* ctx,
                     const Value* bonus_data) {

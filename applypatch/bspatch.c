@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include <bzlib.h>
+#include <sys/types.h>
 
 #include "mincrypt/sha.h"
 #include "applypatch.h"

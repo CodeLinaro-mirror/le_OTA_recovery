@@ -38,6 +38,7 @@
 #include "common.h"
 #include "cutils/properties.h"
 #include "cutils/android_reboot.h"
+#include "cutils/memory.h"
 #include "install.h"
 #include "minui/minui.h"
 #include "minzip/DirUtil.h"
@@ -49,6 +50,7 @@
 #include "adb.h"
 #include "fuse_sideload.h"
 #include "fuse_sdcard_provider.h"
+#include "klog.h"
 
 struct selabel_handle *sehandle;
 
@@ -1069,7 +1071,9 @@ main(int argc, char **argv) {
     }
     printf("\n");
 
-    property_list(print_property, NULL);
+    // fixme - enable this
+    //property_list(print_property, NULL);
+
     printf("\n");
 
     ui->Print("Supported API: %d\n", RECOVERY_API_VERSION);

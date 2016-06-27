@@ -17,9 +17,11 @@
 #ifndef RECOVERY_UI_H
 #define RECOVERY_UI_H
 
+#include <inttypes.h>
 #include <linux/input.h>
 #include <pthread.h>
 #include <time.h>
+#include "common.h"
 
 // Abstract class for controlling the user interface during recovery.
 class RecoveryUI {

@@ -18,6 +18,7 @@
 #define _UPDATER_UPDATER_H_
 
 #include <stdio.h>
+#include <inttypes.h>
 #include "minzip/Zip.h"
 
 #include <selinux/selinux.h>

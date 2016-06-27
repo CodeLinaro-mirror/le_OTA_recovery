@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include <stddef.h>
+
 #include "asn1_decoder.h"
 #include "common.h"
 #include "ui.h"

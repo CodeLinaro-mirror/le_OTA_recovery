@@ -18,6 +18,7 @@
 #define __FUSE_SIDELOAD_H
 
 #include <sys/cdefs.h>
+#include <inttypes.h>
 
 __BEGIN_DECLS
 

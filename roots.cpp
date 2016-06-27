@@ -32,8 +32,11 @@
 #include "make_ext4fs.h"
 extern "C" {
 #include "wipe.h"
-#include "cryptfs.h"
+  //#include "cryptfs.h" //Needs vold to enable
 }
+
+//From vold/cryptfs.h
+#define CRYPT_FOOTER_OFFSET 0x4000
 
 static struct fstab *fstab = NULL;
 
