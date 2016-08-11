@@ -598,3 +598,11 @@ off_t mtd_find_write_start(MtdWriteContext *ctx, off_t pos) {
     }
     return pos;
 }
+
+int mtd_get_partition_device_index(const MtdPartition* mtd) {
+    if (mtd == NULL) {
+        return -1;
+    }
+
+    return mtd->device_index;
+}

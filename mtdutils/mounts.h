@@ -26,6 +26,9 @@ const MountedVolume *find_mounted_volume_by_device(const char *device);
 const MountedVolume *
 find_mounted_volume_by_mount_point(const char *mount_point);
 
+const char *
+find_device_name_by_mount_point(const char *mount_point);
+
 int unmount_mounted_volume(const MountedVolume *volume);
 
 int remount_read_only(const MountedVolume* volume);

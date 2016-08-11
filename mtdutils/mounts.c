@@ -198,6 +198,16 @@ find_mounted_volume_by_mount_point(const char *mount_point)
     return NULL;
 }
 
+const char *
+find_device_name_by_mount_point(const char *mount_point)
+{
+    const MountedVolume* v = find_mounted_volume_by_mount_point(mount_point);
+    if (v == NULL){
+        return NULL;
+    }
+    return v->device;
+}
+
 int
 unmount_mounted_volume(const MountedVolume *volume)
 {

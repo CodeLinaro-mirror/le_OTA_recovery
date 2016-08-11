@@ -595,8 +595,10 @@ Value* PackageExtractFileFn(const char* name, State* state,
                     name, dest_path, strerror(errno));
             goto done2;
         }
+
         success = mzExtractZipEntryToFile(za, entry, fileno(f));
         fclose(f);
+
 
       done2:
         free(zip_path);
@@ -1005,11 +1007,13 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         ErrorAbort(state, "partition argument to %s must be string", name);
         goto done;
     }
+
     char* partition = partition_value->data;
     if (strlen(partition) == 0) {
         ErrorAbort(state, "partition argument to %s can't be empty", name);
         goto done;
     }
+
     if (contents->type == VAL_STRING && strlen((char*) contents->data) == 0) {
         ErrorAbort(state, "file argument to %s can't be empty", name);
         goto done;
@@ -1078,6 +1082,137 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
 done:
     if (result != partition) FreeValue(partition_value);
     FreeValue(contents);
+    return StringValue(result);
+}
+
+// write_formatted_raw_image(blob, partition, fs_type)
+Value* WriteFormattedRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
+    char* result = NULL;
+    Value* partition_value = NULL;
+    Value* contents = NULL;
+    Value* fs_type = NULL;
+
+    if ((name == NULL) || (state == NULL)) {
+        return NULL;
+    }
+
+    if (ReadValueArgs(state, argv, 3, &contents, &partition_value, &fs_type) < 0) {
+        return NULL;
+    }
+
+    if (partition_value->type != VAL_STRING) {
+        ErrorAbort(state, "partition argument to %s must be string", name);
+        goto done;
+    }
+    char* partition = partition_value->data;
+    if (partition == NULL) {
+        ErrorAbort(state, "partition name argument to %s must not NULL", name);
+        goto done;
+    }
+    if (strlen(partition) == 0) {
+        ErrorAbort(state, "partition argument to %s can't be empty", name);
+        goto done;
+    }
+    if (contents->type != VAL_STRING) {
+        ErrorAbort(state, "content argument to %s must be string", name);
+        goto done;
+    }
+    char* tmp_filename = contents->data;
+    if (tmp_filename == NULL) {
+        ErrorAbort(state, "tmp_filename argument to %s must not NULL", name);
+        goto done;
+    }
+    if (strlen(tmp_filename) == 0) {
+        ErrorAbort(state, "content argument to %s can't be empty", name);
+        goto done;
+    }
+    if (fs_type->type != VAL_STRING) {
+        ErrorAbort(state, "fs_type argument to %s must be string", name);
+        goto done;
+    }
+    char* fs_type_string = fs_type->data;
+    if (fs_type_string == NULL) {
+        ErrorAbort(state, "fs_type_string argument to %s must not NULL", name);
+        goto done;
+    }
+    if (strlen(fs_type_string) == 0) {
+        ErrorAbort(state, "fs_type argument to %s can't be empty", name);
+        goto done;
+    }
+    if (strncmp(fs_type_string, "ubi",strlen("ubi")) != 0 && strncmp(fs_type_string, "ubifs",strlen("ubifs")) != 0) {
+        ErrorAbort(state, "fs_type argument %s to %s is unsupported", fs_type_string, name);
+        goto done;
+    }
+
+    // get mtd device location
+    mtd_scan_partitions();
+    const MtdPartition* mtd = mtd_find_partition_by_name(partition);
+    if (mtd == NULL) {
+        fprintf(stderr, "%s: no mtd partition named \"%s\"\n", name, partition);
+        result = NULL;
+        goto done;
+    }
+
+    int mtd_device_index = mtd_get_partition_device_index(mtd);
+    if (mtd_device_index < 0) {
+        fprintf(stderr, "%s: mtd partition number %d is invalid\n", name, mtd_device_index);
+        result = NULL;
+        goto done;
+    }
+
+    char mtd_device_location[32] = {0,};
+    snprintf(mtd_device_location, sizeof(mtd_device_location),"/dev/mtd%d", mtd_device_index);
+
+    // invoke image format command to write raw image
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+    if (ui == NULL) {
+        fprintf(stderr, "%s: ui is NULL\n", name);
+        result = NULL;
+        goto done;
+    }
+
+    char* argv_exec1[] = { "umount", "/firmware", 0};
+    if (exec_command(ui->cmd_pipe, "/bin/umount", argv_exec1) !=0) {
+        fprintf(ui->cmd_pipe, "ui_print %s: failed to run umount on firmware \n", name);
+        goto done;
+    }
+
+    char* argv_exec2[] = {"ubidetach", "-p", mtd_device_location, 0};
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubidetach", argv_exec2) != 0) {
+        fprintf(ui->cmd_pipe, "ui_print %s: failed to run ubidetach on %s\n", name, mtd_device_location);
+        goto done;
+    }
+
+    char* argv_exec3[] = { "ubiformat", mtd_device_location, "-f", tmp_filename, "-y", 0};
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiformat", argv_exec3) != 0) {
+        fprintf(ui->cmd_pipe, "ui_print %s: failed to run ubiformat on %s\n", name, mtd_device_location);
+        result = NULL;
+        goto done;
+    }
+
+    char* argv_exec4[] = { "ubiattach", "-p", mtd_device_location , 0};
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiattach", argv_exec4) != 0) {
+        fprintf(ui->cmd_pipe, "ui_print %s: failed to run ubiattach on %s\n", name, mtd_device_location);
+        goto done;
+    }
+
+    const char* device = find_device_name_by_mount_point("/firmware");
+    char* argv_exec5[] = {"mount", "-t", "ubifs", device , "/firmware", 0};
+    if (exec_command(ui->cmd_pipe, "/bin/mount", argv_exec5) != 0) {
+        fprintf(ui->cmd_pipe, "ui_print %s: failed to mount firmware \n", name);
+        goto done;
+    }
+
+    result = partition;
+done:
+    if (result != partition) FreeValue(partition_value);
+    unlink(tmp_filename);
+    char* argv_exec6[] = {"rm", "-f", tmp_filename, 0};
+    if (exec_command(ui->cmd_pipe, "/bin/rm", argv_exec6) != 0) {
+        fprintf(ui->cmd_pipe, "ui_print %s: failed to remove tmp_filename:%s \n", name, tmp_filename);
+    }
+    FreeValue(contents);
+    FreeValue(fs_type);
     return StringValue(result);
 }
 
@@ -1420,4 +1555,5 @@ void RegisterInstallFunctions() {
     RegisterFunction("ui_print", UIPrintFn);
 
     RegisterFunction("run_program", RunProgramFn);
+    RegisterFunction("write_formatted_raw_image", WriteFormattedRawImageFn);
 }
