@@ -3,6 +3,9 @@
  *
  * Simple Zip file support.
  */
+
+#define LOG_NDEBUG 0
+
 #include "safe_iop.h"
 #include "zlib.h"
 

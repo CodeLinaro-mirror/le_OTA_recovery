@@ -54,6 +54,7 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache) {
             mzFindZipEntry(zip, ASSUMED_UPDATE_BINARY_NAME);
     if (binary_entry == NULL) {
         mzCloseZipArchive(zip);
+        LOGE("File corrupted %s; can't find %s\n", path, ASSUMED_UPDATE_BINARY_NAME);
         return INSTALL_CORRUPT;
     }
 
@@ -132,12 +133,14 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache) {
     args[3] = (char*)path;
     args[4] = NULL;
 
+    LOGI("Attempting to run %s\n", binary);
     pid_t pid = fork();
     if (pid == 0) {
         umask(022);
         close(pipefd[0]);
         execv(binary, (char* const*)args);
         fprintf(stdout, "E:Can't run %s (%s)\n", binary, strerror(errno));
+        LOGE("Can't run %s (%s)\n", binary, strerror(errno));
         _exit(-1);
     }
     close(pipefd[1]);
@@ -274,6 +277,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
         return INSTALL_CORRUPT;
     }
 
+#if ENABLE_SIGNATURE_CHECK
     int numKeys;
     Certificate* loadedKeys = load_keys(PUBLIC_KEYS_FILE, &numKeys);
     if (loadedKeys == NULL) {
@@ -283,6 +287,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
     LOGI("%d key(s) loaded from %s\n", numKeys, PUBLIC_KEYS_FILE);
 
     ui->Print("Verifying update package...\n");
+    LOGI("Verifying update package...\n");
 
     int err;
     err = verify_file(map.addr, map.length, loadedKeys, numKeys);
@@ -293,9 +298,11 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
         sysReleaseMap(&map);
         return INSTALL_CORRUPT;
     }
+#endif
 
     /* Try to open the package.
      */
+    int err;
     ZipArchive zip;
     err = mzOpenZipArchive(map.addr, map.length, &zip);
     if (err != 0) {
@@ -307,6 +314,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
     /* Verify and install the contents of the package.
      */
     ui->Print("Installing update...\n");
+    LOGI("Installing update...\n");
     ui->SetEnableReboot(false);
     int result = try_update_binary(path, &zip, wipe_cache);
     ui->SetEnableReboot(true);

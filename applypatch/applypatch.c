@@ -360,12 +360,14 @@ int WriteToPartition(unsigned char* data, size_t len,
         type = EMMC;
     } else {
         printf("WriteToPartition called with bad target (%s)\n", target);
+        free(copy);
         return -1;
     }
     const char* partition = strtok(NULL, ":");
 
     if (partition == NULL) {
         printf("bad partition target name \"%s\"\n", target);
+        free(copy);
         return -1;
     }
 
@@ -380,6 +382,7 @@ int WriteToPartition(unsigned char* data, size_t len,
             if (mtd == NULL) {
                 printf("mtd partition \"%s\" not found for writing\n",
                        partition);
+                free(copy);
                 return -1;
             }
 
@@ -387,6 +390,7 @@ int WriteToPartition(unsigned char* data, size_t len,
             if (ctx == NULL) {
                 printf("failed to init mtd partition \"%s\" for writing\n",
                        partition);
+                free(copy);
                 return -1;
             }
 
@@ -395,17 +399,20 @@ int WriteToPartition(unsigned char* data, size_t len,
                 printf("only wrote %zu of %zu bytes to MTD %s\n",
                        written, len, partition);
                 mtd_write_close(ctx);
+                free(copy);
                 return -1;
             }
 
             if (mtd_erase_blocks(ctx, -1) < 0) {
                 printf("error finishing mtd write of %s\n", partition);
                 mtd_write_close(ctx);
+                free(copy);
                 return -1;
             }
 
             if (mtd_write_close(ctx)) {
                 printf("error closing mtd write of %s\n", partition);
+                free(copy);
                 return -1;
             }
             break;
@@ -417,6 +424,7 @@ int WriteToPartition(unsigned char* data, size_t len,
             int fd = open(partition, O_RDWR | O_SYNC);
             if (fd < 0) {
                 printf("failed to open %s: %s\n", partition, strerror(errno));
+                free(copy);
                 return -1;
             }
             int attempt;
@@ -425,6 +433,7 @@ int WriteToPartition(unsigned char* data, size_t len,
                 if (TEMP_FAILURE_RETRY(lseek(fd, start, SEEK_SET)) == -1) {
                     printf("failed seek on %s: %s\n",
                            partition, strerror(errno));
+                    free(copy);
                     return -1;
                 }
                 while (start < len) {
@@ -434,6 +443,7 @@ int WriteToPartition(unsigned char* data, size_t len,
                     ssize_t written = TEMP_FAILURE_RETRY(write(fd, data+start, to_write));
                     if (written == -1) {
                         printf("failed write writing to %s: %s\n", partition, strerror(errno));
+                        free(copy);
                         return -1;
                     }
                     start += written;
@@ -441,17 +451,20 @@ int WriteToPartition(unsigned char* data, size_t len,
                 if (fsync(fd) != 0) {
                    printf("failed to sync to %s (%s)\n",
                           partition, strerror(errno));
+                   free(copy);
                    return -1;
                 }
                 if (close(fd) != 0) {
                    printf("failed to close %s (%s)\n",
                           partition, strerror(errno));
+                   free(copy);
                    return -1;
                 }
                 fd = open(partition, O_RDONLY);
                 if (fd < 0) {
                    printf("failed to reopen %s for verify (%s)\n",
                           partition, strerror(errno));
+                   free(copy);
                    return -1;
                 }
 
@@ -471,6 +484,7 @@ int WriteToPartition(unsigned char* data, size_t len,
                 if (TEMP_FAILURE_RETRY(lseek(fd, 0, SEEK_SET)) == -1) {
                     printf("failed to seek back to beginning of %s: %s\n",
                            partition, strerror(errno));
+                    free(copy);
                     return -1;
                 }
                 unsigned char buffer[4096];
@@ -512,11 +526,13 @@ int WriteToPartition(unsigned char* data, size_t len,
 
             if (!success) {
                 printf("failed to verify after all attempts\n");
+                free(copy);
                 return -1;
             }
 
             if (close(fd) != 0) {
                 printf("error closing %s (%s)\n", partition, strerror(errno));
+                free(copy);
                 return -1;
             }
             sync();
@@ -940,6 +956,10 @@ static int GenerateTarget(FileContents* source_file,
         } else {
             // We write the decoded output to "<tgt-file>.patch".
             outname = (char*)malloc(strlen(target_filename) + 10);
+            if (outname == NULL) {
+                printf("failed to alloc memory for %s\n", target_filename);
+                return 1;
+            }
             strcpy(outname, target_filename);
             strcat(outname, ".patch");
 

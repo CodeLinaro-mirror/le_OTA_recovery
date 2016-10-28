@@ -20,5 +20,7 @@
 void RegisterInstallFunctions();
 
 static int make_parents(char* name);
+void load_volume_table(FILE *);
+void free_volume_table();
 
 #endif

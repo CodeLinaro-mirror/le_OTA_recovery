@@ -741,6 +741,7 @@ bool ScreenRecoveryUI::IsTextVisible() {
     pthread_mutex_unlock(&updateMutex);
     return visible;
 #endif
+    return false;
 }
 
 bool ScreenRecoveryUI::WasTextEverVisible() {
@@ -750,6 +751,7 @@ bool ScreenRecoveryUI::WasTextEverVisible() {
     pthread_mutex_unlock(&updateMutex);
     return ever_visible;
 #endif
+    return false;
 }
 
 void ScreenRecoveryUI::ShowText(bool visible) {

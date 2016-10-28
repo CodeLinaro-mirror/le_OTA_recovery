@@ -25,11 +25,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/klog.h>
+#include <cutils/klog.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <linux/reboot.h>
+#include <syscall.h>
 
 #include <base/file.h>
 #include <base/stringprintf.h>
@@ -50,7 +52,6 @@
 #include "adb.h"
 #include "fuse_sideload.h"
 #include "fuse_sdcard_provider.h"
-#include "klog.h"
 
 struct selabel_handle *sehandle;
 
@@ -82,6 +83,7 @@ static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
+static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
 static const int KEEP_LOG_COUNT = 10;
 
 RecoveryUI* ui = NULL;
@@ -408,6 +410,30 @@ static void copy_logs() {
     sync();
 }
 
+static int set_ota_cookie() {
+    int fd = -1;
+    int rcode = 0;
+    fd = open(STATUS_COOKIE_FILE, O_CREAT | O_RDWR);
+    if (fd < 0) {
+        LOGE("Failed to open %s : %s\n",
+             STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    rcode = write(fd, "OTA_DONE", 8);
+    if (rcode < 0) {
+        LOGE("Failed to write to %s : %s\n", STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    LOGI("ota_status cookie set");
+    close(fd);
+    return 0;
+error:
+    if (fd >= 0) close(fd);
+    return -1;
+}
+
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
 // record any intent we were asked to communicate back to the system.
@@ -443,6 +469,7 @@ finish_recovery(const char *send_intent) {
     struct bootloader_message boot;
     memset(&boot, 0, sizeof(boot));
     set_bootloader_message(&boot);
+    set_ota_cookie();
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (ensure_path_mounted(COMMAND_FILE) != 0 ||
@@ -972,7 +999,7 @@ main(int argc, char **argv) {
         return 0;
     }
 
-    printf("Starting recovery (pid %d) on %s", getpid(), ctime(&start));
+    printf("Starting recovery (pid %d) on %s\n", getpid(), ctime(&start));
 
     load_volume_table();
     get_args(&argc, &argv);
@@ -1151,6 +1178,7 @@ main(int argc, char **argv) {
 
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
+    bool reboot = false;
 
     switch (after) {
         case Device::SHUTDOWN:
@@ -1161,6 +1189,7 @@ main(int argc, char **argv) {
         case Device::REBOOT_BOOTLOADER:
             ui->Print("Rebooting to bootloader...\n");
             property_set(ANDROID_RB_PROPERTY, "reboot,bootloader");
+            reboot = true;
             break;
 
         default:
@@ -1168,8 +1197,16 @@ main(int argc, char **argv) {
             snprintf(reason, PROPERTY_VALUE_MAX, "reboot,%s", device->GetRebootReason());
             ui->Print("Rebooting...\n");
             property_set(ANDROID_RB_PROPERTY, reason);
+            reboot = true;
             break;
     }
+
+    sync();
+    if (reboot) {
+        printf("invoking reboot\n"); fflush(stdout);
+        syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
+    }
+
     sleep(5); // should reboot before this finishes
     return EXIT_SUCCESS;
 }

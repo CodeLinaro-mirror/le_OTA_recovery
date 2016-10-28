@@ -5,15 +5,17 @@ AM_CFLAGS = -Wundef \
             -fno-inline \
             -fno-short-enums \
             -fpic \
-            -DUSE_EXT4 \
             $(LIBSELINUX_CFLAGS) \
             -I$(WORKSPACE)/system/core/include \
+            -I$(WORKSPACE)/system/core/fs_mgr/include \
             -I$(WORKSPACE)/system/extras/ext4_utils \
             -D_GNU_SOURCE \
-            -D_LARGEFILE64_SOURCE
+            -D_LARGEFILE64_SOURCE \
+            -I..
 
 AM_CPPFLAGS = \
-              -I.
+              -I.\
+              -I..
 
 AM_LDFLAGS = -shared -version-info 1:0:0
 c_sources = install.c \
