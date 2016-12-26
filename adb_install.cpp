@@ -33,17 +33,39 @@
 #include "minadbd/fuse_adb_provider.h"
 #include "fuse_sideload.h"
 
+#define SYSFS_USB_ENABLE_NODE "/sys/class/android_usb/android0/enable"
+#define CONFIGFS_USB_ENABLE_NODE "/config/usb_gadget/g1/UDC"
 static RecoveryUI* ui = NULL;
 
 static void
 set_usb_driver(bool enabled) {
-    int fd = open("/sys/class/android_usb/android0/enable", O_WRONLY);
+    int fd = open(SYSFS_USB_ENABLE_NODE, O_WRONLY);
+    int configfs_enabled = 0;
+    char controller_name[PROPERTY_VALUE_MAX + 1] = {0};
+    property_get("sys.usb.controller", controller_name, "none");
     if (fd < 0) {
-        ui->Print("failed to open driver control: %s\n", strerror(errno));
-        return;
+        ui->Print("Unable to open sysfs usb node( %s ). Trying configfs\n",
+                       strerror(errno));
+        fd = open(CONFIGFS_USB_ENABLE_NODE, O_WRONLY);
+        if (fd < 0) {
+                ui->Print("Failed to open configfs node (%s)\n",
+                                strerror(errno));
+                return;
+        }
+        configfs_enabled = 1;
     }
-    if (TEMP_FAILURE_RETRY(write(fd, enabled ? "1" : "0", 1)) == -1) {
-        ui->Print("failed to set driver control: %s\n", strerror(errno));
+    if (!configfs_enabled) {
+             if (TEMP_FAILURE_RETRY(write(fd, enabled ? "1" : "0", 1)) == -1) {
+                    ui->Print("failed to set driver control: %s\n",
+                                 strerror(errno));
+             }
+    } else {
+             if (TEMP_FAILURE_RETRY(write(fd,
+                                           enabled ? controller_name : "none",
+                                           PROPERTY_VALUE_MAX))) {
+                  ui->Print("failed to set driver control: %s\n",
+                                 strerror(errno));
+           }
     }
     if (close(fd) < 0) {
         ui->Print("failed to close driver control: %s\n", strerror(errno));
@@ -113,7 +135,7 @@ apply_from_adb(RecoveryUI* ui_, bool* wipe_cache, const char* install_file) {
                 break;
             }
         }
-        result = install_package(FUSE_SIDELOAD_HOST_PATHNAME, wipe_cache, install_file, false, 0);
+        result = install_package(FUSE_SIDELOAD_HOST_PATHNAME, wipe_cache, install_file, true, 0);
         break;
     }
 
