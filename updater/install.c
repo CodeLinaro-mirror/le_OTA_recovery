@@ -754,6 +754,9 @@ Value* PackageExtractFileFn(const char* name, State* state,
         success = mzExtractZipEntryToFile(za, entry, fileno(f));
         fclose(f);
 
+        printf("%s %s to %s\n",
+               success ? "extracted" : "failed to extract", zip_path, dest_path);
+
       done2:
         free(zip_path);
         free(dest_path);
