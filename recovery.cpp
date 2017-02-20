@@ -87,6 +87,7 @@ char* locale = NULL;
 char* stage = NULL;
 char* reason = NULL;
 bool modified_flash = false;
+static bool ota_completed;
 
 /*
  * The recovery tool communicates with the main system through /cache files.
@@ -450,6 +451,9 @@ finish_recovery(const char *send_intent) {
 
     ensure_path_unmounted(CACHE_ROOT);
     sync();  // For good measure.
+    if (ota_completed) {
+        property_set(ANDROID_RB_PROPERTY, "reboot,dm-verity enforcing");
+    }
 }
 
 typedef struct _saved_log_file {
@@ -872,6 +876,9 @@ prompt_and_wait(Device* device, int status) {
                         status = apply_from_sdcard(device, &should_wipe_cache);
                     }
 
+                    if (status == INSTALL_SUCCESS) {
+                        ota_completed = true;
+                    }
                     if (status == INSTALL_SUCCESS && should_wipe_cache) {
                         if (!wipe_cache(false, device)) {
                             status = INSTALL_ERROR;
@@ -1078,6 +1085,9 @@ main(int argc, char **argv) {
 
     if (update_package != NULL) {
         status = install_package(update_package, &should_wipe_cache, TEMPORARY_INSTALL_FILE, true);
+        if (status == INSTALL_SUCCESS) {
+            ota_completed = true;
+        }
         if (status == INSTALL_SUCCESS && should_wipe_cache) {
             wipe_cache(false, device);
         }
@@ -1110,6 +1120,9 @@ main(int argc, char **argv) {
             ui->ShowText(true);
         }
         status = apply_from_adb(ui, &should_wipe_cache, TEMPORARY_INSTALL_FILE);
+        if (status == INSTALL_SUCCESS) {
+            ota_completed = true;
+        }
         if (status == INSTALL_SUCCESS && should_wipe_cache) {
             if (!wipe_cache(false, device)) {
                 status = INSTALL_ERROR;
