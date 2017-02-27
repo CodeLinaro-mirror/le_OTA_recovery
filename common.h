@@ -46,4 +46,12 @@ void ui_print(const char* format, ...);
 
 bool is_ro_debuggable();
 
+// used in fuse_sideload.c
+typedef unsigned long long __u64;
+
+// used in ui.h
+#define __printflike(x, y) __attribute__((__format__(printf, x, y))) __nonnull((x))
+
+int adb_server_main(int is_daemon, int server_port, int /* reply_fd */);
+
 #endif  // RECOVERY_COMMON_H

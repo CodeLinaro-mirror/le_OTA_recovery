@@ -24,19 +24,23 @@
 #include <string>
 #include <vector>
 
-#include <android-base/file.h>
-#include <android-base/stringprintf.h>
-#include <android-base/unique_fd.h>
+#include <base/file.h>
+#include <base/stringprintf.h>
+#include <base/unique_fd.h>
 #include <fs_mgr.h>
+#include <cutils/memory.h>
 
 static struct fstab* read_fstab(std::string* err) {
   // The fstab path is always "/fstab.${ro.hardware}".
   std::string fstab_path = "/fstab.";
-  char value[PROP_VALUE_MAX];
+  char value[PROP_VALUE_MAX] = "";
+  // FIXME: not available in LE
+#if 0
   if (__system_property_get("ro.hardware", value) == 0) {
     *err = "failed to get ro.hardware";
     return nullptr;
   }
+#endif
   fstab_path += value;
   struct fstab* fstab = fs_mgr_read_fstab(fstab_path.c_str());
   if (fstab == nullptr) {
@@ -179,3 +183,4 @@ extern "C" bool write_bootloader_message(const char* options) {
   std::string err;
   return write_bootloader_message({options}, &err);
 }
+

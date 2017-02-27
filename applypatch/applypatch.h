@@ -18,6 +18,7 @@
 #define _APPLYPATCH_H
 
 #include <sys/stat.h>
+#include <inttypes.h>
 
 #include <vector>
 

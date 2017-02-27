@@ -19,15 +19,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <inttypes.h>
 #include <limits.h>
-#include <linux/fs.h>
 #include <linux/input.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/klog.h>
+#include <cutils/klog.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -35,6 +33,10 @@
 #include <fs_mgr.h>
 #include <time.h>
 #include <unistd.h>
+#include <linux/reboot.h>
+#include <syscall.h>
+#include <inttypes.h>
+#include <linux/fs.h>
 
 #include <chrono>
 #include <string>
@@ -42,20 +44,23 @@
 
 #include <adb.h>
 #include <android/log.h> /* Android Log Priority Tags */
-#include <android-base/file.h>
-#include <android-base/parseint.h>
-#include <android-base/stringprintf.h>
-#include <android-base/strings.h>
+#include <base/file.h>
+#include <base/parseint.h>
+#include <base/stringprintf.h>
+#include <base/strings.h>
 #include <bootloader_message/bootloader_message.h>
 #include <cutils/android_reboot.h>
 #include <cutils/properties.h>
 #include <log/logger.h> /* Android Log packet format */
 #include <private/android_logger.h> /* private pmsg functions */
 
+#ifdef ENABLE_BATTERY_MONITOR
 #include <healthd/BatteryMonitor.h>
+#endif
 
 #include "adb_install.h"
 #include "common.h"
+#include "cutils/memory.h"
 #include "device.h"
 #include "error_code.h"
 #include "fuse_sdcard_provider.h"
@@ -356,12 +361,14 @@ static void redirect_stdio(const char* filename) {
 static void
 get_args(int *argc, char ***argv) {
     bootloader_message boot = {};
+
     std::string err;
     if (!read_bootloader_message(&boot, &err)) {
         LOGE("%s\n", err.c_str());
         // If fails, leave a zeroed bootloader_message.
         memset(&boot, 0, sizeof(boot));
     }
+
     stage = strndup(boot.stage, sizeof(boot.stage));
 
     if (boot.command[0] != 0 && boot.command[0] != 255) {
@@ -423,6 +430,7 @@ get_args(int *argc, char ***argv) {
         strlcat(boot.recovery, (*argv)[i], sizeof(boot.recovery));
         strlcat(boot.recovery, "\n", sizeof(boot.recovery));
     }
+
     if (!write_bootloader_message(boot, &err)) {
         LOGE("%s\n", err.c_str());
     }
@@ -459,8 +467,11 @@ static void save_kernel_log(const char* destination) {
 
 // write content to the current pmsg session.
 static ssize_t __pmsg_write(const char *filename, const char *buf, size_t len) {
+    // FIXME : Check if this is really needed
+#if ENABLE_PMSG_OPS
     return __android_log_pmsg_file_write(LOG_ID_SYSTEM, ANDROID_LOG_INFO,
-                                         filename, buf, len);
+                                        filename, buf, len);
+#endif
 }
 
 static void copy_log_file_to_pmsg(const char* source, const char* destination) {
@@ -1443,6 +1454,11 @@ ui_print(const char* format, ...) {
 }
 
 static bool is_battery_ok() {
+    return true;
+}
+
+#if 0
+static bool is_battery_ok() {
     struct healthd_config healthd_config = {
             .batteryStatusPath = android::String8(android::String8::kEmptyString),
             .batteryHealthPath = android::String8(android::String8::kEmptyString),
@@ -1495,6 +1511,7 @@ static bool is_battery_ok() {
                 (!charged && capacity.valueInt64 >= BATTERY_OK_PERCENTAGE);
     }
 }
+#endif
 
 static void set_retry_bootloader_message(int retry_count, int argc, char** argv) {
     bootloader_message boot = {};
@@ -1516,6 +1533,7 @@ static void set_retry_bootloader_message(int retry_count, int argc, char** argv)
         snprintf(buffer, sizeof(buffer), "--retry_count=%d\n", retry_count+1);
         strlcat(boot.recovery, buffer, sizeof(boot.recovery));
     }
+
     std::string err;
     if (!write_bootloader_message(boot, &err)) {
         LOGE("%s\n", err.c_str());
@@ -1540,7 +1558,8 @@ static void log_failure_code(ErrorCode code, const char *update_package) {
         "0",  // install result
         "error: " + std::to_string(code),
     };
-    std::string log_content = android::base::Join(log_buffer, "\n");
+    // TODO: check if character join is okay
+    std::string log_content = android::base::Join(log_buffer, '\n');
     if (!android::base::WriteStringToFile(log_content, TEMPORARY_INSTALL_FILE)) {
         LOGE("failed to write %s: %s\n", TEMPORARY_INSTALL_FILE, strerror(errno));
     }
@@ -1563,6 +1582,8 @@ static ssize_t logbasename(
     return len;
 }
 
+// FIXME: Check and enable
+#if 0
 static ssize_t logrotate(
         log_id_t logId,
         char prio,
@@ -1598,12 +1619,15 @@ static ssize_t logrotate(
 
     return __android_log_pmsg_file_write(logId, prio, name.c_str(), buf, len);
 }
+#endif
 
 int main(int argc, char **argv) {
     // Take last pmsg contents and rewrite it to the current pmsg session.
     static const char filter[] = "recovery/";
     // Do we need to rotate?
     bool doRotate = false;
+    //FIXME: check and enable
+#ifdef ENABLE_PMSG_OPS
     __android_log_pmsg_file_read(
         LOG_ID_SYSTEM, ANDROID_LOG_INFO, filter,
         logbasename, &doRotate);
@@ -1611,6 +1635,7 @@ int main(int argc, char **argv) {
     __android_log_pmsg_file_read(
         LOG_ID_SYSTEM, ANDROID_LOG_INFO, filter,
         logrotate, &doRotate);
+#endif
 
     // If this binary is started with the single argument "--adbd",
     // instead of being the normal recovery binary, it turns into kind
@@ -1776,7 +1801,7 @@ int main(int argc, char **argv) {
         }
     }
     printf("\n");
-    property_list(print_property, NULL);
+    //property_list(print_property, NULL);
     printf("\n");
 
     ui->Print("Supported API: %d\n", RECOVERY_API_VERSION);

@@ -17,6 +17,9 @@
 #ifndef __FUSE_SIDELOAD_H
 #define __FUSE_SIDELOAD_H
 
+/*#include <sys/cdefs.h>*/
+#include <inttypes.h>
+
 // define the filenames created by the sideload FUSE filesystem
 #define FUSE_SIDELOAD_HOST_MOUNTPOINT "/sideload"
 #define FUSE_SIDELOAD_HOST_FILENAME "package.zip"

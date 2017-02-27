@@ -27,8 +27,9 @@
 
 #include <memory>
 #include <string>
+#include <algorithm>
 
-#include <android-base/strings.h>
+#include <base/strings.h>
 
 #include "openssl/sha.h"
 #include "applypatch.h"
@@ -139,7 +140,7 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
     }
 
     // Sort the index[] array so it indexes the pairs in order of increasing size.
-    sort(index.begin(), index.end(),
+    std::sort(index.begin(), index.end(),
         [&](const size_t& i, const size_t& j) {
             return (size[i] < size[j]);
         }

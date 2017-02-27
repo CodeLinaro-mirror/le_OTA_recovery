@@ -20,7 +20,7 @@
 
 #include "expr.h"
 #include "yydefs.h"
-#include "parser.h"
+#include "parser.hh"
 
 int gLine = 1;
 int gColumn = 1;

@@ -31,15 +31,18 @@
 #include <sys/ioctl.h>
 #include <time.h>
 #include <unistd.h>
-#include <fec/io.h>
+#include <limits.h>
+
+// FIXME: Need fec libs
+//#include <fec/io.h>
 
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include <android-base/parseint.h>
-#include <android-base/strings.h>
+#include <base/parseint.h>
+#include <base/strings.h>
 
 #include "applypatch/applypatch.h"
 #include "edify/expr.h"
@@ -1830,7 +1833,7 @@ Value* CheckFirstBlockFn(const char* name, State* state, int argc, Expr* argv[])
     return StringValue(strdup("t"));
 }
 
-
+/*
 Value* BlockImageRecoverFn(const char* name, State* state, int argc, Expr* argv[]) {
     Value* arg_filename;
     Value* arg_ranges;
@@ -1908,11 +1911,13 @@ Value* BlockImageRecoverFn(const char* name, State* state, int argc, Expr* argv[
     fprintf(stderr, "...%s image recovered successfully.\n", filename->data);
     return StringValue(strdup("t"));
 }
+*/
 
 void RegisterBlockImageFunctions() {
     RegisterFunction("block_image_verify", BlockImageVerifyFn);
     RegisterFunction("block_image_update", BlockImageUpdateFn);
-    RegisterFunction("block_image_recover", BlockImageRecoverFn);
+    // Need fec libs
+    // RegisterFunction("block_image_recover", BlockImageRecoverFn);
     RegisterFunction("check_first_block", CheckFirstBlockFn);
     RegisterFunction("range_sha1", RangeSha1Fn);
 }

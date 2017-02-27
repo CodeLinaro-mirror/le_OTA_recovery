@@ -67,28 +67,37 @@ void RecoveryUI::OnKeyDetected(int key_code) {
 }
 
 int RecoveryUI::InputCallback(int fd, uint32_t epevents, void* data) {
+#ifdef ENABLE_RECOVERY_UI
     return reinterpret_cast<RecoveryUI*>(data)->OnInputEvent(fd, epevents);
+#endif
 }
 
 // Reads input events, handles special hot keys, and adds to the key queue.
 static void* InputThreadLoop(void*) {
+#ifdef ENABLE_RECOVERY_UI
     while (true) {
         if (!ev_wait(-1)) {
             ev_dispatch();
         }
     }
     return nullptr;
+#endif
 }
 
 void RecoveryUI::Init() {
+#ifdef ENABLE_RECOVERY_UI
     ev_init(InputCallback, this);
 
     ev_iterate_available_keys(std::bind(&RecoveryUI::OnKeyDetected, this, std::placeholders::_1));
 
     pthread_create(&input_thread_, nullptr, InputThreadLoop, nullptr);
+#endif
 }
 
 int RecoveryUI::OnInputEvent(int fd, uint32_t epevents) {
+    return -1;
+
+#ifdef ENABLE_RECOVERY_UI
     struct input_event ev;
     if (ev_get_input(fd, epevents, &ev) == -1) {
         return -1;
@@ -122,6 +131,7 @@ int RecoveryUI::OnInputEvent(int fd, uint32_t epevents) {
     }
 
     return 0;
+#endif
 }
 
 // Process a key-up or -down event.  A key is "registered" when it is

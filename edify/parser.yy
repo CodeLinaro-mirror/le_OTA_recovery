@@ -21,7 +21,7 @@
 
 #include "expr.h"
 #include "yydefs.h"
-#include "parser.h"
+#include "parser.hh"
 
 extern int gLine;
 extern int gColumn;

@@ -19,6 +19,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define TRACE_TAG TRACE_ADB
+
 #include "sysdeps.h"
 
 #include "adb.h"
@@ -36,7 +38,8 @@ int adb_server_main(int is_daemon, int server_port, int /* reply_fd */) {
     init_transport_registration();
     usb_init();
 
-    VLOG(ADB) << "Event loop starting";
+    //VLOG(TRACE_ADB) << "Event loop starting";
+    D("Event loop starting\n");
     fdevent_loop();
 
     return 0;

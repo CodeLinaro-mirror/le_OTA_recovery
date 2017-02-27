@@ -54,15 +54,21 @@
 #include "mtdutils/mounts.h"
 #include "mtdutils/mtdutils.h"
 #include "openssl/sha.h"
-#include "ota_io.h"
+#include "otafault/ota_io.h"
 #include "updater.h"
 #include "install.h"
+
+#ifdef USE_TUNE2FS
 #include "tune2fs.h"
+#endif
 
 #ifdef USE_EXT4
 #include "make_ext4fs.h"
-#include "wipe.h"
 #endif
+
+extern "C" {
+#include "wipe.h"
+}
 
 // Send over the buffer to recovery though the command pipe.
 static void uiPrint(State* state, const std::string& buffer) {
@@ -1584,6 +1590,7 @@ Value* EnableRebootFn(const char* name, State* state, int argc, Expr* argv[]) {
     return StringValue(strdup("t"));
 }
 
+#ifdef USE_TUNE2FS
 Value* Tune2FsFn(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc == 0) {
         return ErrorAbort(state, kArgsParsingFailure, "%s() expects args, got %d", name, argc);
@@ -1614,6 +1621,7 @@ Value* Tune2FsFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
     return StringValue(strdup("t"));
 }
+#endif
 
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
@@ -1666,5 +1674,7 @@ void RegisterInstallFunctions() {
     RegisterFunction("set_stage", SetStageFn);
 
     RegisterFunction("enable_reboot", EnableRebootFn);
+#ifdef USE_TUNE2FS
     RegisterFunction("tune2fs", Tune2FsFn);
+#endif
 }

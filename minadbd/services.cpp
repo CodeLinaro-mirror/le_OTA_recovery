@@ -23,6 +23,8 @@
 
 #include "sysdeps.h"
 
+#define  TRACE_TAG  TRACE_SERVICES
+
 #include "adb.h"
 #include "fdevent.h"
 #include "fuse_adb_provider.h"
@@ -73,7 +75,8 @@ static int create_service_thread(void (*func)(int, void *), void *cookie) {
     sti->cookie = cookie;
     sti->fd = s[1];
 
-    if (!adb_thread_create(service_bootstrap_func, sti)) {
+    adb_thread_t t;
+    if (!adb_thread_create(&t, service_bootstrap_func, sti)) {
         free(sti);
         adb_close(s[0]);
         adb_close(s[1]);
@@ -81,7 +84,8 @@ static int create_service_thread(void (*func)(int, void *), void *cookie) {
         return -1;
     }
 
-    VLOG(SERVICES) << "service thread started, " << s[0] << ":" << s[1];
+    //FIXME VLOG(SERVICES) << "service thread started, " << s[0] << ":" << s[1];
+    D("service thread started, %d:%d\n",s[0], s[1]);
     return s[0];
 }
 
