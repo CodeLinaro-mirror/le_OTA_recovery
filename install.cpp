@@ -271,6 +271,7 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
     const ZipEntry* binary_entry =
             mzFindZipEntry(zip, ASSUMED_UPDATE_BINARY_NAME);
     if (binary_entry == NULL) {
+        LOGE("File corrupted %s; can't find %s\n", path, ASSUMED_UPDATE_BINARY_NAME);
         return INSTALL_CORRUPT;
     }
 
@@ -569,6 +570,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
 
     // Verify and install the contents of the package.
     ui->Print("Installing update...\n");
+    LOGI("Installing update...\n");
     if (retry_count > 0) {
         ui->Print("Retry attempt: %d\n", retry_count);
     }
@@ -660,6 +662,7 @@ bool verify_package(const unsigned char* package_data, size_t package_size) {
 
     // Verify package.
     ui->Print("Verifying update package...\n");
+    LOGI("Verifying update package...\n");
     auto t0 = std::chrono::system_clock::now();
     int err = verify_file(const_cast<unsigned char*>(package_data), package_size, loadedKeys);
     std::chrono::duration<double> duration = std::chrono::system_clock::now() - t0;

@@ -47,9 +47,9 @@ void load_volume_table()
     int i;
     int ret;
 
-    fstab = fs_mgr_read_fstab("/etc/recovery.fstab");
+    fstab = fs_mgr_read_fstab("/res/recovery_volume_detected");
     if (!fstab) {
-        LOGE("failed to read /etc/recovery.fstab\n");
+        LOGE("failed to read /res/recovery_volume_detected\n");
         return;
     }
 
@@ -111,7 +111,7 @@ int ensure_path_mounted_at(const char* path, const char* mount_point) {
         // mount an MTD partition as a YAFFS2 filesystem.
         mtd_scan_partitions();
         const MtdPartition* partition;
-        partition = mtd_find_partition_by_name(v->blk_device);
+        partition = mtd_find_partition_by_device_name(v->blk_device);
         if (partition == NULL) {
             LOGE("failed to find \"%s\" partition to mount at \"%s\"\n",
                  v->blk_device, mount_point);
@@ -120,9 +120,11 @@ int ensure_path_mounted_at(const char* path, const char* mount_point) {
         return mtd_mount_partition(partition, mount_point, v->fs_type, 0);
     } else if (strcmp(v->fs_type, "ext4") == 0 ||
                strcmp(v->fs_type, "squashfs") == 0 ||
-               strcmp(v->fs_type, "vfat") == 0) {
+               strcmp(v->fs_type, "vfat") == 0 ||
+               strcmp(v->fs_type, "ubifs") == 0) {
         result = mount(v->blk_device, mount_point, v->fs_type,
-                       v->flags, v->fs_options);
+                       v->flags,
+                       (strcmp(v->fs_type, "ubifs") == 0) ? "bulk_read" : v->fs_options);
         if (result == 0) return 0;
 
         LOGE("failed to mount %s (%s)\n", mount_point, strerror(errno));

@@ -57,6 +57,8 @@
 #include "otafault/ota_io.h"
 #include "updater.h"
 #include "install.h"
+#include "fs_mgr.h"
+#include "common.h"
 
 #ifdef USE_TUNE2FS
 #include "tune2fs.h"
@@ -69,6 +71,9 @@
 extern "C" {
 #include "wipe.h"
 }
+
+static int num_volumes = 0;
+static Volume* device_volumes = NULL;
 
 // Send over the buffer to recovery though the command pipe.
 static void uiPrint(State* state, const std::string& buffer) {
@@ -115,9 +120,147 @@ char* PrintSha1(const uint8_t* digest) {
     return buffer;
 }
 
+int parse_fstab(FILE *logfd, char *name, int *alloc) {
+    FILE* fstab;
+
+    fstab = fopen(name, "r");
+    if(!fstab){
+        fprintf(logfd, "ui_print %s not found\n", name);
+        return -1;
+    }
+
+    char buffer[1024];
+    int i;
+    while (fgets(buffer, sizeof(buffer)-1, fstab)) {
+        for (i = 0; buffer[i] && isspace(buffer[i]); ++i);
+        if (buffer[i] == '\0' || buffer[i] == '#') continue;
+
+        char* original = strdup(buffer);
+
+        char* device = strtok(buffer+i, " \t\n");
+        char* mount_point = strtok(NULL, " \t\n");
+        char* fs_type = strtok(NULL, " \t\n");
+
+        if (mount_point && fs_type && device) {
+            while (num_volumes >= *alloc) {
+                *alloc *= 2;
+                device_volumes = (Volume*) realloc(device_volumes, (*alloc)*sizeof(Volume));
+            }
+            device_volumes[num_volumes].mount_point = strdup(mount_point);
+            device_volumes[num_volumes].fs_type = strdup(fs_type);
+            device_volumes[num_volumes].blk_device = strdup(device);
+            device_volumes[num_volumes].length = 0;
+            ++num_volumes;
+        } else {
+            fprintf(logfd, "ui_print skipping malformed fstab (%s) line: %s\n", name, original);
+        }
+        free(original);
+    }
+
+    fclose(fstab);
+    return 0;
+}
+
+void load_volume_table(FILE *logfd) {
+    int alloc = 2;
+    int i;
+
+    if (device_volumes)
+        return;
+
+    device_volumes = (Volume*) malloc(alloc * sizeof(Volume));
+
+    // Insert an entry for /tmp, which is the ramdisk and is always mounted.
+    if (asprintf(&device_volumes[0].mount_point, "/tmp") == -1)
+        device_volumes[0].mount_point = NULL;
+    if (asprintf(&device_volumes[0].fs_type, "ramdisk") == -1)
+        device_volumes[0].fs_type = NULL;
+    device_volumes[0].blk_device = NULL;
+    //device_volumes[0].device2 = NULL;
+    device_volumes[0].length = 0;
+    num_volumes = 1;
+
+    if (parse_fstab(logfd, "/res/recovery_volume_config", &alloc) < 0) {
+        fprintf(logfd, "ui_print /res/recovery_volume_config not found\n");
+    }
+    if (parse_fstab(logfd, "/res/recovery_volume_detected", &alloc) < 0) {
+        fprintf(logfd, "ui_print /res/recovery_volume_detected not found\n");
+    }
+}
+
+void free_volume_table() {
+    int i;
+
+    if (!device_volumes)
+        return;
+
+    for (i = 0; i < num_volumes; ++i) {
+        Volume* v = device_volumes+1;
+        if (v->mount_point)
+            free(v->mount_point);
+        if (v->fs_type)
+            free(v->fs_type);
+        if (v->blk_device)
+            free(v->blk_device);
+        //if (v->device2)
+        //    free(v->device2);
+    }
+    free(device_volumes);
+    device_volumes = 0;
+}
+
+Volume* volume_for_path(const char* path) {
+    int i;
+    for (i = 0; i < num_volumes; ++i) {
+        Volume* v = device_volumes+i;
+        int len = strlen(v->mount_point);
+        if (strncmp(path, v->mount_point, len) == 0 &&
+            (path[len] == '\0' || path[len] == '/')) {
+            return v;
+        }
+    }
+    return NULL;
+}
+
+// Execute command
+int exec_command(FILE *logfd, const char *name, char *const args[]) {
+    int status = -1;
+    int i;
+    pid_t pid;
+
+    pid = fork();
+    if (pid == -1) {
+        fprintf(logfd, "ui_print exec failed at fork \'%s\'\n", name);
+        goto cleanup;
+    } else if (pid == 0) {
+        fprintf(logfd, "ui_print executing \'%s\'", name);
+        for (i = 0; i < 10; i++) {  // limit logging to reduce verbage
+            if (args[i]) {
+                fprintf(logfd, "ui_print %s", args[i]);
+            } else {
+                break;
+            }
+        }
+        fprintf(logfd, "ui_print \n", name);
+        execvp(name, args);
+        fprintf(logfd, "ui_print exec failed \'%s\'\n", name);
+        _exit(-1);
+    } else {
+        waitpid(pid, &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            fprintf(logfd, "ui_print exec returned error %d \'%s\'\n",
+                    WEXITSTATUS(status), name);
+        }
+    }
+
+cleanup:
+    return status;
+}
+
 // mount(fs_type, partition_type, location, mount_point)
 //
 //    fs_type="yaffs2" partition_type="MTD"     location=partition
+//    fs_type="ubifs"  partition_type="UBI"     location=volume_alias
 //    fs_type="ext4"   partition_type="EMMC"    location=device
 Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* result = NULL;
@@ -196,6 +339,28 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
             goto done;
         }
         result = mount_point;
+    } else if ((strcmp(fs_type, "ubifs") == 0)
+               || (strcmp(fs_type, "ext4") == 0)) {
+        Volume *v = 0;;
+        if (strcmp(location, "userdata") == 0) {
+            v = volume_for_path("/data");
+        } else if (strcmp(location, "system") == 0) {
+            v = volume_for_path("/system");
+        }
+        if (!v) {
+            fprintf(stderr, "%s: failed to locate %s \"%s\"",
+                    name, fs_type, location);
+            result = strdup("");
+            goto done;
+        }
+        if (mount(v->blk_device, mount_point, fs_type,
+                  MS_NOATIME | MS_NODEV | MS_NODIRATIME, "") < 0) {
+            fprintf(stderr, "%s: failed to mount %s at %s: %s\n",
+                    name, location, mount_point, strerror(errno));
+            result = strdup("");
+        } else {
+            result = mount_point;
+        }
     } else {
         if (mount(location, mount_point, fs_type,
                   MS_NOATIME | MS_NODEV | MS_NODIRATIME,
@@ -302,6 +467,7 @@ static int exec_cmd(const char* path, char* const argv[]) {
 // format(fs_type, partition_type, location, fs_size, mount_point)
 //
 //    fs_type="yaffs2" partition_type="MTD"     location=partition fs_size=<bytes> mount_point=<location>
+//    fs_type="ubifs"  partition_type="UBI"     location=path      fs_size=(ignored)
 //    fs_type="ext4"   partition_type="EMMC"    location=device    fs_size=<bytes> mount_point=<location>
 //    fs_type="f2fs"   partition_type="EMMC"    location=device    fs_size=<bytes> mount_point=<location>
 //    if fs_size == 0, then make fs uses the entire partition.
@@ -369,7 +535,28 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
             goto done;
         }
         result = location;
-#ifdef USE_EXT4
+    } else if (strcmp(fs_type, "ubifs") == 0) {
+        Volume *v = 0;;
+        UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+        if (strcmp(location, "userdata") == 0) {
+            v = volume_for_path("/data");
+        } else if (strcmp(location, "system") == 0) {
+            v = volume_for_path("/system");
+        }
+        if (!v) {
+            fprintf(stderr, "%s: failed to locate ubifs volume \"%s\"", name, location);
+            result = strdup("");
+            goto done;
+        }
+        char *argv[] = {"mkfs.ubifs", "-y", v->blk_device, 0};
+        if (exec_command(ui->cmd_pipe, "/usr/sbin/mkfs.ubifs", argv) != 0) {
+            fprintf(stderr, "%s: failed to create ubifs volume \"%s\"", name, location);
+            fprintf(ui->cmd_pipe, "ui_print %s: failed to format ubifs volume \"%s\"\n", name, location);
+            result = strdup("");
+            goto done;
+        }
+        result = location;
+#ifdef USE_EXT4  /* Use linked in ext4fs generation tool */
     } else if (strcmp(fs_type, "ext4") == 0) {
         int status = make_ext4fs(location, atoll(fs_size), mount_point, sehandle);
         if (status != 0) {
@@ -393,6 +580,28 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
         if (status != 0) {
             printf("%s: mkfs.f2fs failed (%d) on %s",
                     name, status, location);
+            result = strdup("");
+            goto done;
+        }
+        result = location;
+#else  /* Use e2fsprogs modules */
+    } else if (strcmp(fs_type, "ext4") == 0) {
+        Volume *v = 0;;
+        UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+        if (strcmp(location, "userdata") == 0) {
+            v = volume_for_path("/data");
+        } else if (strcmp(location, "system") == 0) {
+            v = volume_for_path("/system");
+        }
+        if (!v) {
+            fprintf(stderr, "%s: failed to locate ext4 filesystem \"%s\"", name, location);
+            result = strdup("");
+            goto done;
+        }
+        char *argv[] = {"mkfs.ext4", "-b", "4096", "-O", "extent,uninit_bg,dir_index,has_journal,sparse_super", v->blk_device, 0};
+        if (exec_command(ui->cmd_pipe, "/sbin/mkfs.ext4", argv) != 0) {
+            fprintf(stderr, "%s: failed to create ext4 filesystem \"%s\"", name, location);
+            fprintf(ui->cmd_pipe, "ui_print %s: failed to format ubifs volume \"%s\"\n", name, location);
             result = strdup("");
             goto done;
         }

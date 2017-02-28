@@ -23,5 +23,7 @@ void RegisterInstallFunctions();
 void uiPrintf(State* state, const char* format, ...);
 
 static int make_parents(char* name);
+void load_volume_table(FILE *);
+void free_volume_table();
 
 #endif

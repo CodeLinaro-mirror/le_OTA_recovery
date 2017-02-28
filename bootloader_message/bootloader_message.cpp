@@ -238,7 +238,7 @@ static int get_bootloader_message_mtd(bootloader_message* out,
                                       const Volume* v) {
     size_t write_size;
     mtd_scan_partitions();
-    const MtdPartition* part = mtd_find_partition_by_name(v->blk_device);
+    const MtdPartition* part = mtd_find_partition_by_device_name(v->blk_device);
     if (part == nullptr || mtd_partition_info(part, nullptr, nullptr, &write_size)) {
         LOGE("failed to find \"%s\"\n", v->blk_device);
         return -1;
@@ -264,7 +264,7 @@ static int set_bootloader_message_mtd(const bootloader_message* in,
                                       const Volume* v) {
     size_t write_size;
     mtd_scan_partitions();
-    const MtdPartition* part = mtd_find_partition_by_name(v->blk_device);
+    const MtdPartition* part = mtd_find_partition_by_device_name(v->blk_device);
     if (part == nullptr || mtd_partition_info(part, nullptr, nullptr, &write_size)) {
         LOGE("failed to find \"%s\"\n", v->blk_device);
         return -1;

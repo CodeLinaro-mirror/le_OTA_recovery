@@ -119,6 +119,7 @@ static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
+static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
 static const int KEEP_LOG_COUNT = 10;
 // We will try to apply the update package 5 times at most in case of an I/O error.
 static const int EIO_RETRY_COUNT = 4;
@@ -582,6 +583,30 @@ static void copy_logs() {
     sync();
 }
 
+static int set_ota_cookie() {
+    int fd = -1;
+    int rcode = 0;
+    fd = open(STATUS_COOKIE_FILE, O_CREAT | O_RDWR);
+    if (fd < 0) {
+        LOGE("Failed to open %s : %s\n",
+             STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    rcode = write(fd, "OTA_DONE", 8);
+    if (rcode < 0) {
+        LOGE("Failed to write to %s : %s\n", STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    LOGI("ota_status cookie set");
+    close(fd);
+    return 0;
+error:
+    if (fd >= 0) close(fd);
+    return -1;
+}
+
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
 // record any intent we were asked to communicate back to the system.
@@ -627,6 +652,7 @@ finish_recovery(const char *send_intent) {
         LOGE("%s\n", err.c_str());
     }
 #endif
+    set_ota_cookie();
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (has_cache) {
@@ -1673,7 +1699,7 @@ int main(int argc, char **argv) {
     // we may have two logger instances with different timestamps.
     redirect_stdio(TEMPORARY_LOG_FILE);
 
-    printf("Starting recovery (pid %d) on %s", getpid(), ctime(&start));
+    printf("Starting recovery (pid %d) on %s\n", getpid(), ctime(&start));
 
     load_volume_table();
     has_cache = volume_for_path(CACHE_ROOT) != nullptr;
@@ -1935,6 +1961,7 @@ error:
 
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
+    bool reboot = false;
 
     switch (after) {
         case Device::SHUTDOWN:
@@ -1945,13 +1972,22 @@ error:
         case Device::REBOOT_BOOTLOADER:
             ui->Print("Rebooting to bootloader...\n");
             property_set(ANDROID_RB_PROPERTY, "reboot,bootloader");
+            reboot = true;
             break;
 
         default:
             ui->Print("Rebooting...\n");
             property_set(ANDROID_RB_PROPERTY, "reboot,");
+            reboot = true;
             break;
     }
+
+    sync();
+    if (reboot) {
+        printf("invoking reboot\n"); fflush(stdout);
+        syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
+    }
+
     while (true) {
       pause();
     }

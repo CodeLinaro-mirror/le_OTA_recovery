@@ -85,6 +85,8 @@ int main(int argc, char** argv) {
     if (err != 0) {
         printf("failed to open package %s: %s\n",
                argv[3], strerror(err));
+        fprintf(cmd_pipe, "ui_print failed to open package %s: %s\n",
+                package_filename, strerror(err));
         return 3;
     }
     ota_io_init(&za);
@@ -92,12 +94,14 @@ int main(int argc, char** argv) {
     const ZipEntry* script_entry = mzFindZipEntry(&za, SCRIPT_NAME);
     if (script_entry == NULL) {
         printf("failed to find %s in %s\n", SCRIPT_NAME, package_filename);
+        fprintf(cmd_pipe, "ui_print failed to find %s in %s\n", SCRIPT_NAME, package_filename);
         return 4;
     }
 
     char* script = reinterpret_cast<char*>(malloc(script_entry->uncompLen+1));
     if (!mzReadZipEntry(&za, script_entry, script, script_entry->uncompLen)) {
         printf("failed to read script from package\n");
+        fprintf(cmd_pipe, "ui_print failed to read script from package\n");
         return 5;
     }
     script[script_entry->uncompLen] = '\0';
@@ -118,6 +122,7 @@ int main(int argc, char** argv) {
     int error = parse_string(script, &root, &error_count);
     if (error != 0 || error_count > 0) {
         printf("%d parse errors\n", error_count);
+        fprintf(cmd_pipe, "ui_print %d parse errors\n", error_count);
         return 6;
     }
 
@@ -130,6 +135,9 @@ int main(int argc, char** argv) {
     if (!sehandle) {
         fprintf(cmd_pipe, "ui_print Warning: No file_contexts\n");
     }
+
+    // read the partition mapping
+    load_volume_table(cmd_pipe);
 
     // Evaluate the parsed script.
 
@@ -152,6 +160,8 @@ int main(int argc, char** argv) {
             printf("unexpected argument: %s", argv[4]);
         }
     }
+
+    // Evaluate
 
     char* result = Evaluate(&state, root);
 
@@ -190,6 +200,7 @@ int main(int argc, char** argv) {
         }
 
         free(state.errmsg);
+        free_volume_table();
         return 7;
     } else {
         fprintf(cmd_pipe, "ui_print script succeeded: result was [%s]\n", result);
@@ -201,6 +212,7 @@ int main(int argc, char** argv) {
     }
     sysReleaseMap(&map);
     free(script);
+    free_volume_table();
 
     return 0;
 }
