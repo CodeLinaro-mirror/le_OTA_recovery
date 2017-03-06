@@ -33,10 +33,8 @@ if USE_GLIB
 libminadbd_la_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 libminadbd_la_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 libminadbd_la_LIBADD := $(requiredlibs) -lm -lpthread @GLIB_LIBS@
-libminadbd_la_LDFLAGS := -all-static
 else
 libminadbd_la_CFLAGS := $(AM_CFLAGS)
 libminadbd_la_CPPFLAGS := $(AM_CPPFLAGS)
 libminadbd_la_LIBADD := $(requiredlibs) -lm -lpthread
-libminadbd_la_LDFLAGS := -all-static
 endif
