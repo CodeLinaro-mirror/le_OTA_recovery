@@ -168,7 +168,7 @@ void free_volume_table() {
         return;
 
     for (i = 0; i < num_volumes; ++i) {
-        Volume* v = device_volumes+1;
+        Volume* v = device_volumes + i;
         if (v->mount_point)
             free(v->mount_point);
         if (v->fs_type)
