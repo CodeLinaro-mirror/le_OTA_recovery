@@ -803,13 +803,14 @@ wipe_data(int confirm, Device* device) {
         static const char** title_headers = NULL;
 
         if (title_headers == NULL) {
-            const char* headers[] = { "Confirm wipe of all user data?",
-                                      "  THIS CAN NOT BE UNDONE.",
+            const char* headers[] = { "Wipe of all user data?",
+                                      "THIS CAN NOT BE UNDONE.",
                                       "",
                                       NULL };
             title_headers = prepend_title((const char**)headers);
         }
 
+#ifndef FEATURE_PHONE_FLAG
         const char* items[] = { " No",
                                 " No",
                                 " No",
@@ -827,6 +828,22 @@ wipe_data(int confirm, Device* device) {
         if (chosen_item != 7) {
             return;
         }
+#else
+        const char* items[] = { " No",
+                                " No",
+                                " No",
+                                " No",
+                                " No",
+                                " Yes -- delete all user data",   // [5]
+                                " No",
+                                " No",
+                                NULL };
+
+        int chosen_item = get_menu_selection(title_headers, items, 1, 0, device);
+        if (chosen_item != 5) {
+            return;
+        }
+#endif
     }
 
     ui->Print("\n-- Wiping data...\n");

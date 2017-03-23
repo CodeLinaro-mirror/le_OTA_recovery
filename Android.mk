@@ -31,6 +31,10 @@ ifeq ($(TARGET_USES_QCOM_BSP), true)
 LOCAL_SRC_FILES += bootselect.cpp
 endif
 
+ifeq ($(FEATURE_PHONE),true)
+ LOCAL_CFLAGS += -DFEATURE_PHONE_FLAG
+endif
+
 LOCAL_MODULE := recovery
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
