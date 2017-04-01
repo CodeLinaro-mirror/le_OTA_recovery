@@ -1,5 +1,3 @@
-#TODO: include librecovery_updater_msm
-
 AM_CFLAGS = -Wundef \
             -Wstrict-prototypes \
             -Wno-trigraphs \
@@ -16,10 +14,11 @@ AM_CFLAGS = -Wundef \
             -I..
 
 AM_CPPFLAGS = \
+              -DUSE_LE_MODE \
               -I.\
+              -I../otafault \
               -I.. \
                $(LIBSELINUX_CFLAGS) \
-              -I../otafault \
               -I$(WORKSPACE)/system/core/base/include \
               -I$(WORKSPACE)/system/core/include \
               -I$(WORKSPACE)/system/core/fs_mgr/include \
@@ -41,6 +40,7 @@ requiredlibs = -lm \
                -lselinux \
                -lext4_utils \
                -lcrypto \
+               -lrecovery_updater_msm \
                ../mtdutils/libmtdutils.la \
                ../edify/libedify.la \
                ../minzip/libminzip.la \

@@ -6,6 +6,7 @@ AM_CFLAGS := -Wundef \
         -fpic
 
 AM_CPPFLAGS := \
+              -DUSE_LE_MODE \
               -I. \
               -USE_GLIB \
               -I$(WORKSPACE)/system/core/adb \

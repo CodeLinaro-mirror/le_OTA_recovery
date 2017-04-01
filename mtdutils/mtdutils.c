@@ -27,6 +27,7 @@
 #include <assert.h>
 
 #include "mtdutils.h"
+#include "common.h"
 
 struct MtdPartition {
     int device_index;
@@ -215,7 +216,7 @@ mtd_mount_partition(const MtdPartition *partition, const char *mount_point,
     char devname[64];
     int rv = -1;
 
-    sprintf(devname, "/dev/mtdblock%d", partition->device_index);
+    sprintf(devname, IS_LE_MODE() ? "/dev/mtdblock%d" : "/dev/block/mtdblock%d", partition->device_index);
     if (!read_only) {
         rv = mount(devname, mount_point, filesystem, flags, NULL);
     }
@@ -257,7 +258,7 @@ mtd_partition_info(const MtdPartition *partition,
         size_t *total_size, size_t *erase_size, size_t *write_size)
 {
     char mtddevname[32];
-    sprintf(mtddevname, "/dev/mtd%d", partition->device_index);
+    sprintf(mtddevname, IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
     int fd = open(mtddevname, O_RDONLY);
     if (fd < 0) return -1;
 
@@ -284,7 +285,7 @@ MtdReadContext *mtd_read_partition(const MtdPartition *partition)
     }
 
     char mtddevname[32];
-    sprintf(mtddevname, "/dev/mtd%d", partition->device_index);
+    sprintf(mtddevname, IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
     ctx->fd = open(mtddevname, O_RDONLY);
     if (ctx->fd < 0) {
         free(ctx->buffer);
@@ -305,7 +306,7 @@ static int read_block(const MtdPartition *partition, int fd, char *data)
         return -1;
     }
 
-    loff_t pos = TEMP_FAILURE_RETRY(lseek(fd, 0, SEEK_CUR));
+    loff_t pos = IS_LE_MODE() ? TEMP_FAILURE_RETRY(lseek(fd, 0, SEEK_CUR)) : TEMP_FAILURE_RETRY(lseek64(fd, 0, SEEK_CUR));
     if (pos == -1) {
         printf("mtd: read_block: couldn't SEEK_CUR: %s\n", strerror(errno));
         return -1;
@@ -315,8 +316,8 @@ static int read_block(const MtdPartition *partition, int fd, char *data)
     int mgbb;
 
     while (pos + size <= (int) partition->size) {
-        if (TEMP_FAILURE_RETRY(lseek(fd, pos, SEEK_SET)) != pos ||
-                    TEMP_FAILURE_RETRY(read(fd, data, size)) != size) {
+        loff_t seekpos = IS_LE_MODE() ? TEMP_FAILURE_RETRY(lseek(fd, pos, SEEK_SET)) : TEMP_FAILURE_RETRY(lseek64(fd, pos, SEEK_SET));
+        if (seekpos != pos || TEMP_FAILURE_RETRY(read(fd, data, size)) != size) {
             printf("mtd: read error at 0x%08llx (%s)\n",
                    (long long)pos, strerror(errno));
         } else if (ioctl(fd, ECCGETSTATS, &after)) {
@@ -399,7 +400,7 @@ MtdWriteContext *mtd_write_partition(const MtdPartition *partition)
     }
 
     char mtddevname[32];
-    sprintf(mtddevname, "/dev/mtd%d", partition->device_index);
+    sprintf(mtddevname, IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
     ctx->fd = open(mtddevname, O_RDWR);
     if (ctx->fd < 0) {
         free(ctx->buffer);

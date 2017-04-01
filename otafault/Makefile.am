@@ -9,6 +9,7 @@ AM_CFLAGS := -Wundef \
              -I..
 
 AM_CPPFLAGS := \
+              -DUSE_LE_MODE \
               -I. \
               -I.. \
               $(LIBSELINUX_CFLAGS) \

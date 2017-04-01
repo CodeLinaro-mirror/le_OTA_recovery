@@ -11,6 +11,7 @@ AM_LEXFLAGS := -x c
 AM_YFLAGS := -v -d
 
 AM_CPPFLAGS := \
+              -DUSE_LE_MODE \
               -I. \
               -I$(WORKSPACE)/system/core/base/include \
               -std=c++11

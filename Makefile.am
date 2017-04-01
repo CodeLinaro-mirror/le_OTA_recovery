@@ -10,12 +10,14 @@ AM_CFLAGS := -Wundef \
              -fno-short-enums \
              -fpic \
              -D__reboot=reboot \
-             -Dstrlcat=strncat \
              $(LIBSELINUX_CFLAGS) \
              -D_GNU_SOURCE \
-             -D_LARGEFILE64_SOURCE
+             -D_LARGEFILE64_SOURCE \
+             -Dstrlcpy=g_strlcpy \
+             -Dstrlcat=g_strlcat
 
 AM_CPPFLAGS := \
+              -DUSE_LE_MODE \
               -I. \
               -I$(WORKSPACE)/system/core/include \
               -I$(WORKSPACE)/system/core/base/include \
@@ -26,7 +28,8 @@ AM_CPPFLAGS := \
               $(LIBSELINUX_CFLAGS) \
               -std=c++11 \
               -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
-              -Dstrlcat=strncat
+              -Dstrlcpy=g_strlcpy \
+              -Dstrlcat=g_strlcat
 
 #AM_LDFLAGS := -shared -version-info 1:0:0
 
@@ -80,10 +83,17 @@ requiredlibs := -lm \
 
 RECOVERY_API_VERSION := 3
 
+if USE_GLIB
+recovery_SOURCES := $(cpp_sources)
+recovery_CFLAGS := $(AM_CFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION) -DUSE_GLIB @GLIB_CFLAGS@
+recovery_CPPFLAGS := $(AM_CPPFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION) -DUSE_GLIB @GLIB_CFLAGS@
+recovery_LDADD := $(requiredlibs) -lcrypto @GLIB_LIBS@
+else
 recovery_SOURCES := $(cpp_sources)
 recovery_CFLAGS := $(AM_CFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION)
 recovery_CPPFLAGS := $(AM_CPPFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION)
 recovery_LDADD := $(requiredlibs) -lcrypto
+endif
 
 
 verifier_test_libs := -lmincrypt ./minzip/libminzip.la -lm -lpthread -lcutils

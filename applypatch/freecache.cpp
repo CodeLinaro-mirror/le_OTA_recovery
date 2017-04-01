@@ -29,8 +29,8 @@
 #include <set>
 #include <string>
 
-#include <base/parseint.h>
-#include <base/stringprintf.h>
+#include <android-base/parseint.h>
+#include <android-base/stringprintf.h>
 
 #include "applypatch.h"
 

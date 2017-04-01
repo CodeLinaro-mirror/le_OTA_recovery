@@ -21,7 +21,11 @@
 
 #include "expr.h"
 #include "yydefs.h"
-#include "parser.hh"
+#ifdef USE_LE_MODE
+#include "parser.hh" /* .hh file generated in LE */
+#else
+#include "parser.h"
+#endif
 
 extern int gLine;
 extern int gColumn;

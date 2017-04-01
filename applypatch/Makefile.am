@@ -86,7 +86,7 @@ endif
 endif
 
 if BUILD_HOST
-imgdiff_SOURCES := imgdiff.c utils.c bsdiff.c
+imgdiff_SOURCES := imgdiff.cpp utils.cpp bsdiff.cpp
 
 if USE_GLIB
 imgdiff_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@

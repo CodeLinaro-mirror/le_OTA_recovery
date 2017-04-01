@@ -31,10 +31,10 @@
 #include <string>
 #include <vector>
 
-#include <base/file.h>
-#include <base/parseint.h>
-#include <base/stringprintf.h>
-#include <base/strings.h>
+#include <android-base/file.h>
+#include <android-base/parseint.h>
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <cutils/properties.h>
 
 #include "common.h"
@@ -48,7 +48,7 @@
 #include "roots.h"
 #include "ui.h"
 
-#if ENABLE_SIGNATURE_CHECK
+#ifndef USE_LE_MODE
 #include "verifier.h"
 #endif
 
@@ -548,7 +548,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
         return INSTALL_CORRUPT;
     }
 
-#if ENABLE_SIGNATURE_CHECK
+#ifndef USE_LE_MODE
     // Verify package.
     if (!verify_package(map.addr, map.length)) {
         log_buffer.push_back(android::base::StringPrintf("error: %d", kZipVerificationFailure));
@@ -637,10 +637,14 @@ install_package(const char* path, bool* wipe_cache, const char* install_file,
         "time_total: " + std::to_string(time_total),
         "retry: " + std::to_string(retry_count),
     };
-
+#ifdef USE_LE_MODE
     // TODO : Check if any issue with using character join
     std::string log_content = android::base::Join(log_header, '\n') + "\n" +
             android::base::Join(log_buffer, '\n');
+#else
+    std::string log_content = android::base::Join(log_header, "\n") + "\n" +
+            android::base::Join(log_buffer, "\n");
+#endif
     if (!android::base::WriteStringToFile(log_content, install_file)) {
         LOGE("failed to write %s: %s\n", install_file, strerror(errno));
     }
@@ -652,7 +656,7 @@ install_package(const char* path, bool* wipe_cache, const char* install_file,
 }
 
 bool verify_package(const unsigned char* package_data, size_t package_size) {
-#if ENABLE_SIGNATURE_CHECK
+#ifndef USE_LE_MODE
     std::vector<Certificate> loadedKeys;
     if (!load_keys(PUBLIC_KEYS_FILE, loadedKeys)) {
         LOGE("Failed to load keys\n");

@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include <base/stringprintf.h>
+#include <android-base/stringprintf.h>
 
 #include "minzip/Zip.h"
 #include "config.h"

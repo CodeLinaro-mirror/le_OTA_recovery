@@ -31,8 +31,8 @@
 
 #include <vector>
 
-#include <base/strings.h>
-#include <base/stringprintf.h>
+#include <android-base/strings.h>
+#include <android-base/stringprintf.h>
 #include <cutils/properties.h>
 
 #include "common.h"
@@ -128,21 +128,21 @@ static constexpr int kLayouts[LAYOUT_MAX][DIMENSION_MAX] = {
 };
 
 int ScreenRecoveryUI::GetAnimationBaseline() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     return GetTextBaseline() - PixelsFromDp(kLayouts[layout_][ICON]) -
             gr_get_height(loopFrames[0]);
 #endif
 }
 
 int ScreenRecoveryUI::GetTextBaseline() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     return GetProgressBaseline() - PixelsFromDp(kLayouts[layout_][TEXT]) -
             gr_get_height(installing_text);
 #endif
 }
 
 int ScreenRecoveryUI::GetProgressBaseline() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     return gr_fb_height() - PixelsFromDp(kLayouts[layout_][PROGRESS]) -
             gr_get_height(progressBarFill);
 #endif
@@ -151,7 +151,7 @@ int ScreenRecoveryUI::GetProgressBaseline() {
 // Clear the screen and draw the currently selected background icon (if any).
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::draw_background_locked() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pagesIdentical = false;
     gr_color(0, 0, 0, 255);
     gr_clear();
@@ -182,7 +182,7 @@ void ScreenRecoveryUI::draw_background_locked() {
 // Does not flip pages.
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::draw_foreground_locked() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     if (currentIcon != NONE) {
         GRSurface* frame = GetCurrentFrame();
         int frame_width = gr_get_width(frame);
@@ -232,7 +232,7 @@ void ScreenRecoveryUI::draw_foreground_locked() {
 }
 
 void ScreenRecoveryUI::SetColor(UIElement e) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     switch (e) {
         case INFO:
             gr_color(249, 194, 0, 255);
@@ -264,7 +264,7 @@ void ScreenRecoveryUI::SetColor(UIElement e) {
 }
 
 void ScreenRecoveryUI::DrawHorizontalRule(int* y) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     SetColor(MENU);
     *y += 4;
     gr_fill(0, *y, gr_fb_width(), *y + 2);
@@ -273,14 +273,14 @@ void ScreenRecoveryUI::DrawHorizontalRule(int* y) {
 }
 
 void ScreenRecoveryUI::DrawTextLine(int x, int* y, const char* line, bool bold) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     gr_text(gr_sys_font(), x, *y, line, bold);
     *y += char_height_ + 4;
 #endif
 }
 
 void ScreenRecoveryUI::DrawTextLines(int x, int* y, const char* const* lines) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     for (size_t i = 0; lines != nullptr && lines[i] != nullptr; ++i) {
         DrawTextLine(x, y, lines[i], false);
     }
@@ -301,7 +301,7 @@ static const char* LONG_PRESS_HELP[] = {
 // Redraw everything on the screen.  Does not flip pages.
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::draw_screen_locked() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     if (!show_text) {
         draw_background_locked();
         draw_foreground_locked();
@@ -364,7 +364,7 @@ void ScreenRecoveryUI::draw_screen_locked() {
 // Redraw everything on the screen and flip the screen (make it visible).
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::update_screen_locked() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     draw_screen_locked();
     gr_flip();
 #endif
@@ -373,7 +373,7 @@ void ScreenRecoveryUI::update_screen_locked() {
 // Updates only the progress bar, if possible, otherwise redraws the screen.
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::update_progress_locked() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     if (show_text || !pagesIdentical) {
         draw_screen_locked();    // Must redraw the whole screen
         pagesIdentical = true;
@@ -439,7 +439,7 @@ void ScreenRecoveryUI::ProgressThreadLoop() {
 }
 
 void ScreenRecoveryUI::LoadBitmap(const char* filename, GRSurface** surface) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     int result = res_create_display_surface(filename, surface);
     if (result < 0) {
         LOGE("couldn't load bitmap %s (error %d)\n", filename, result);
@@ -448,7 +448,7 @@ void ScreenRecoveryUI::LoadBitmap(const char* filename, GRSurface** surface) {
 }
 
 void ScreenRecoveryUI::LoadLocalizedBitmap(const char* filename, GRSurface** surface) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     int result = res_create_localized_alpha_surface(filename, locale, surface);
     if (result < 0) {
         LOGE("couldn't load bitmap %s (error %d)\n", filename, result);
@@ -476,7 +476,7 @@ void ScreenRecoveryUI::SetSystemUpdateText(bool security_update) {
 }
 
 void ScreenRecoveryUI::InitTextParams() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     gr_init();
 
     gr_font_size(gr_sys_font(), &char_width_, &char_height_);
@@ -486,7 +486,7 @@ void ScreenRecoveryUI::InitTextParams() {
 }
 
 void ScreenRecoveryUI::Init() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     RecoveryUI::Init();
     InitTextParams();
 
@@ -527,7 +527,7 @@ void ScreenRecoveryUI::Init() {
 }
 
 void ScreenRecoveryUI::LoadAnimation() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     // How many frames of intro and loop do we have?
     std::unique_ptr<DIR, decltype(&closedir)> dir(opendir("/res/images"), closedir);
     dirent* de;
@@ -567,7 +567,7 @@ void ScreenRecoveryUI::LoadAnimation() {
 }
 
 void ScreenRecoveryUI::SetLocale(const char* new_locale) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     this->locale = new_locale;
     this->rtl_locale = false;
 
@@ -594,7 +594,7 @@ void ScreenRecoveryUI::SetLocale(const char* new_locale) {
 }
 
 void ScreenRecoveryUI::SetBackground(Icon icon) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
 
     currentIcon = icon;
@@ -605,7 +605,7 @@ void ScreenRecoveryUI::SetBackground(Icon icon) {
 }
 
 void ScreenRecoveryUI::SetProgressType(ProgressType type) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     if (progressBarType != type) {
         progressBarType = type;
@@ -619,7 +619,7 @@ void ScreenRecoveryUI::SetProgressType(ProgressType type) {
 }
 
 void ScreenRecoveryUI::ShowProgress(float portion, float seconds) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     progressBarType = DETERMINATE;
     progressScopeStart += progressScopeSize;
@@ -633,7 +633,7 @@ void ScreenRecoveryUI::ShowProgress(float portion, float seconds) {
 }
 
 void ScreenRecoveryUI::SetProgress(float fraction) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     if (fraction < 0.0) fraction = 0.0;
     if (fraction > 1.0) fraction = 1.0;
@@ -651,7 +651,7 @@ void ScreenRecoveryUI::SetProgress(float fraction) {
 }
 
 void ScreenRecoveryUI::SetStage(int current, int max) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     stage = current;
     max_stage = max;
@@ -660,7 +660,7 @@ void ScreenRecoveryUI::SetStage(int current, int max) {
 }
 
 void ScreenRecoveryUI::PrintV(const char* fmt, bool copy_to_stdout, va_list ap) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     std::string str;
     android::base::StringAppendV(&str, fmt, ap);
 
@@ -701,7 +701,7 @@ void ScreenRecoveryUI::PrintOnScreenOnly(const char *fmt, ...) {
 }
 
 void ScreenRecoveryUI::PutChar(char ch) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     if (ch != '\n') text_[text_row_][text_col_++] = ch;
     if (ch == '\n' || text_col_ >= text_cols_) {
@@ -715,7 +715,7 @@ void ScreenRecoveryUI::PutChar(char ch) {
 }
 
 void ScreenRecoveryUI::ClearText() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     text_col_ = 0;
     text_row_ = 0;
@@ -728,7 +728,7 @@ void ScreenRecoveryUI::ClearText() {
 }
 
 void ScreenRecoveryUI::ShowFile(FILE* fp) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     std::vector<long> offsets;
     offsets.push_back(ftell(fp));
     ClearText();
@@ -780,7 +780,7 @@ void ScreenRecoveryUI::ShowFile(FILE* fp) {
 }
 
 void ScreenRecoveryUI::ShowFile(const char* filename) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     FILE* fp = fopen_path(filename, "re");
     if (fp == nullptr) {
         Print("  Unable to open %s: %s\n", filename, strerror(errno));
@@ -808,7 +808,7 @@ void ScreenRecoveryUI::ShowFile(const char* filename) {
 
 void ScreenRecoveryUI::StartMenu(const char* const * headers, const char* const * items,
                                  int initial_selection) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     if (text_rows_ > 0 && text_cols_ > 0) {
         menu_headers_ = headers;
@@ -827,7 +827,7 @@ void ScreenRecoveryUI::StartMenu(const char* const * headers, const char* const 
 }
 
 int ScreenRecoveryUI::SelectMenu(int sel) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     if (show_menu) {
         int old_sel = menu_sel;
@@ -846,7 +846,7 @@ int ScreenRecoveryUI::SelectMenu(int sel) {
 }
 
 void ScreenRecoveryUI::EndMenu() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     if (show_menu && text_rows_ > 0 && text_cols_ > 0) {
         show_menu = false;
@@ -857,7 +857,7 @@ void ScreenRecoveryUI::EndMenu() {
 }
 
 bool ScreenRecoveryUI::IsTextVisible() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     int visible = show_text;
     pthread_mutex_unlock(&updateMutex);
@@ -867,7 +867,7 @@ bool ScreenRecoveryUI::IsTextVisible() {
 }
 
 bool ScreenRecoveryUI::WasTextEverVisible() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     int ever_visible = show_text_ever;
     pthread_mutex_unlock(&updateMutex);
@@ -877,7 +877,7 @@ bool ScreenRecoveryUI::WasTextEverVisible() {
 }
 
 void ScreenRecoveryUI::ShowText(bool visible) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     show_text = visible;
     if (show_text) show_text_ever = true;
@@ -887,7 +887,7 @@ void ScreenRecoveryUI::ShowText(bool visible) {
 }
 
 void ScreenRecoveryUI::Redraw() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     pthread_mutex_lock(&updateMutex);
     update_screen_locked();
     pthread_mutex_unlock(&updateMutex);
@@ -895,7 +895,7 @@ void ScreenRecoveryUI::Redraw() {
 }
 
 void ScreenRecoveryUI::KeyLongPress(int) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     // Redraw so that if we're in the menu, the highlight
     // will change color to indicate a successful long press.
     Redraw();

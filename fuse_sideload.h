@@ -17,8 +17,12 @@
 #ifndef __FUSE_SIDELOAD_H
 #define __FUSE_SIDELOAD_H
 
-/*#include <sys/cdefs.h>*/
+#ifdef USE_LE_MODE
 #include <inttypes.h>
+#else
+#include <sys/cdefs.h>
+#endif
+
 
 // define the filenames created by the sideload FUSE filesystem
 #define FUSE_SIDELOAD_HOST_MOUNTPOINT "/sideload"

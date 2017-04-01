@@ -57,23 +57,26 @@
 #include "otafault/ota_io.h"
 #include "updater.h"
 #include "install.h"
-#include "fs_mgr.h"
-#include "common.h"
 
-#ifdef USE_TUNE2FS
+#ifndef USE_LE_MODE
 #include "tune2fs.h"
 #endif
 
 #ifdef USE_EXT4
 #include "make_ext4fs.h"
+#include "wipe.h"
 #endif
 
-extern "C" {
+#ifdef USE_LE_MODE
+#include "fs_mgr.h"
+#include "common.h"
+extern "C" {    // Use till system/core is updated
 #include "wipe.h"
 }
 
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
+#endif
 
 // Send over the buffer to recovery though the command pipe.
 static void uiPrint(State* state, const std::string& buffer) {
@@ -1799,7 +1802,7 @@ Value* EnableRebootFn(const char* name, State* state, int argc, Expr* argv[]) {
     return StringValue(strdup("t"));
 }
 
-#ifdef USE_TUNE2FS
+#ifndef USE_LE_MODE
 Value* Tune2FsFn(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc == 0) {
         return ErrorAbort(state, kArgsParsingFailure, "%s() expects args, got %d", name, argc);
@@ -1883,7 +1886,7 @@ void RegisterInstallFunctions() {
     RegisterFunction("set_stage", SetStageFn);
 
     RegisterFunction("enable_reboot", EnableRebootFn);
-#ifdef USE_TUNE2FS
+#ifndef USE_LE_MODE
     RegisterFunction("tune2fs", Tune2FsFn);
 #endif
 }

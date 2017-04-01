@@ -25,7 +25,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef USE_LE_MODE
 #include <cutils/klog.h>
+#else
+#include <sys/klog.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -33,8 +37,6 @@
 #include <fs_mgr.h>
 #include <time.h>
 #include <unistd.h>
-#include <linux/reboot.h>
-#include <syscall.h>
 #include <inttypes.h>
 #include <linux/fs.h>
 
@@ -44,23 +46,22 @@
 
 #include <adb.h>
 #include <android/log.h> /* Android Log Priority Tags */
-#include <base/file.h>
-#include <base/parseint.h>
-#include <base/stringprintf.h>
-#include <base/strings.h>
+#include <android-base/file.h>
+#include <android-base/parseint.h>
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <bootloader_message/bootloader_message.h>
 #include <cutils/android_reboot.h>
 #include <cutils/properties.h>
 #include <log/logger.h> /* Android Log packet format */
 #include <private/android_logger.h> /* private pmsg functions */
 
-#ifdef ENABLE_BATTERY_MONITOR
+#ifndef USE_LE_MODE
 #include <healthd/BatteryMonitor.h>
 #endif
 
 #include "adb_install.h"
 #include "common.h"
-#include "cutils/memory.h"
 #include "device.h"
 #include "error_code.h"
 #include "fuse_sdcard_provider.h"
@@ -73,6 +74,16 @@
 #include "ui.h"
 #include "unique_fd.h"
 #include "screen_ui.h"
+
+#ifdef USE_LE_MODE
+#include <linux/reboot.h>
+#include <syscall.h>
+#include "cutils/memory.h"
+#endif
+
+#ifdef USE_GLIB
+#include <glib.h>
+#endif
 
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
 
@@ -479,7 +490,7 @@ static void save_kernel_log(const char* destination) {
 // write content to the current pmsg session.
 static ssize_t __pmsg_write(const char *filename, const char *buf, size_t len) {
     // FIXME : Check if this is really needed
-#if ENABLE_PMSG_OPS
+#ifndef USE_LE_MODE
     return __android_log_pmsg_file_write(LOG_ID_SYSTEM, ANDROID_LOG_INFO,
                                         filename, buf, len);
 #endif
@@ -652,7 +663,10 @@ finish_recovery(const char *send_intent) {
         LOGE("%s\n", err.c_str());
     }
 #endif
-    set_ota_cookie();
+
+    if (IS_LE_MODE()) {
+        set_ota_cookie();
+    }
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (has_cache) {
@@ -1493,11 +1507,11 @@ ui_print(const char* format, ...) {
     }
 }
 
+#ifdef USE_LE_MODE
 static bool is_battery_ok() {
     return true;
 }
-
-#if 0
+#else
 static bool is_battery_ok() {
     struct healthd_config healthd_config = {
             .batteryStatusPath = android::String8(android::String8::kEmptyString),
@@ -1603,7 +1617,11 @@ static void log_failure_code(ErrorCode code, const char *update_package) {
         "error: " + std::to_string(code),
     };
     // TODO: check if character join is okay
+#ifdef USE_LE_MODE
     std::string log_content = android::base::Join(log_buffer, '\n');
+#else
+    std::string log_content = android::base::Join(log_buffer, "\n");
+#endif
     if (!android::base::WriteStringToFile(log_content, TEMPORARY_INSTALL_FILE)) {
         LOGE("failed to write %s: %s\n", TEMPORARY_INSTALL_FILE, strerror(errno));
     }
@@ -1627,7 +1645,7 @@ static ssize_t logbasename(
 }
 
 // FIXME: Check and enable
-#if 0
+#ifndef USE_LE_MODE
 static ssize_t logrotate(
         log_id_t logId,
         char prio,
@@ -1671,7 +1689,7 @@ int main(int argc, char **argv) {
     // Do we need to rotate?
     bool doRotate = false;
     //FIXME: check and enable
-#ifdef ENABLE_PMSG_OPS
+#ifndef USE_LE_MODE
     __android_log_pmsg_file_read(
         LOG_ID_SYSTEM, ANDROID_LOG_INFO, filter,
         logbasename, &doRotate);
@@ -1845,7 +1863,9 @@ int main(int argc, char **argv) {
         }
     }
     printf("\n");
-    //property_list(print_property, NULL);
+#ifndef USE_LE_MODE
+    property_list(print_property, NULL);
+#endif
     printf("\n");
 
     ui->Print("Supported API: %d\n", RECOVERY_API_VERSION);
@@ -1983,7 +2003,8 @@ error:
     }
 
     sync();
-    if (reboot) {
+
+    if (IS_LE_MODE() && reboot) {
         printf("invoking reboot\n"); fflush(stdout);
         syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
     }

@@ -20,7 +20,11 @@
 
 #include "expr.h"
 #include "yydefs.h"
-#include "parser.hh"
+#ifdef USE_LE_MODE
+#include "parser.hh" /* .hh file generated in LE */
+#else
+#include "parser.h"
+#endif
 
 int gLine = 1;
 int gColumn = 1;

@@ -36,6 +36,12 @@
 #define STRINGIFY(x) #x
 #define EXPAND(x) STRINGIFY(x)
 
+#ifdef USE_LE_MODE
+#define IS_LE_MODE() (true)
+#else
+#define IS_LE_MODE() (false)
+#endif
+
 extern bool modified_flash;
 typedef struct fstab_rec Volume;
 
@@ -51,6 +57,9 @@ typedef unsigned long long __u64;
 
 // used in ui.h
 #define __printflike(x, y) __attribute__((__format__(printf, x, y))) __nonnull((x))
+
+//From vold/cryptfs.h
+#define CRYPT_FOOTER_OFFSET 0x4000
 
 int adb_server_main(int is_daemon, int server_port, int /* reply_fd */);
 

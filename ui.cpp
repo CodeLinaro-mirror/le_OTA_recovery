@@ -67,14 +67,14 @@ void RecoveryUI::OnKeyDetected(int key_code) {
 }
 
 int RecoveryUI::InputCallback(int fd, uint32_t epevents, void* data) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     return reinterpret_cast<RecoveryUI*>(data)->OnInputEvent(fd, epevents);
 #endif
 }
 
 // Reads input events, handles special hot keys, and adds to the key queue.
 static void* InputThreadLoop(void*) {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     while (true) {
         if (!ev_wait(-1)) {
             ev_dispatch();
@@ -85,7 +85,7 @@ static void* InputThreadLoop(void*) {
 }
 
 void RecoveryUI::Init() {
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     ev_init(InputCallback, this);
 
     ev_iterate_available_keys(std::bind(&RecoveryUI::OnKeyDetected, this, std::placeholders::_1));
@@ -97,7 +97,7 @@ void RecoveryUI::Init() {
 int RecoveryUI::OnInputEvent(int fd, uint32_t epevents) {
     return -1;
 
-#ifdef ENABLE_RECOVERY_UI
+#ifndef USE_LE_MODE
     struct input_event ev;
     if (ev_get_input(fd, epevents, &ev) == -1) {
         return -1;

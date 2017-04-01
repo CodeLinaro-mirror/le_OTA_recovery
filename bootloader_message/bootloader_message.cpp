@@ -24,23 +24,29 @@
 #include <string>
 #include <vector>
 
-#include <base/file.h>
-#include <base/stringprintf.h>
-#include <base/unique_fd.h>
+#include <android-base/file.h>
+#include <android-base/stringprintf.h>
+#include <android-base/unique_fd.h>
 #include <fs_mgr.h>
+
+#ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
 #include <cutils/memory.h>
 #include <inttypes.h>
 
 #include "common.h"
 #include "mtdutils/mtdutils.h"
 #include "roots.h"
+#endif
+
+#ifdef USE_GLIB
+#include <glib.h>
+#endif
 
 static struct fstab* read_fstab(std::string* err) {
   // The fstab path is always "/fstab.${ro.hardware}".
   std::string fstab_path = "/fstab.";
   char value[PROP_VALUE_MAX] = "";
-  // FIXME: not available in LE
-#if 0
+#ifndef USE_LE_MODE  // __system_property_get not available in LE
   if (__system_property_get("ro.hardware", value) == 0) {
     *err = "failed to get ro.hardware";
     return nullptr;

@@ -7,9 +7,11 @@ AM_CFLAGS := -Wundef \
         -fpic \
         $(LIBSELINUX_CFLAGS) \
         -D_GNU_SOURCE \
-        -D_LARGEFILE64_SOURCE
+        -D_LARGEFILE64_SOURCE \
+        -DUSE_LE_MODE
 
 AM_CPPFLAGS := \
+              -DUSE_LE_MODE \
               -I. \
               -I$(WORKSPACE)/external/safe-iop/include \
               -I$(WORKSPACE)/system/core/include

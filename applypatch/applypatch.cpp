@@ -29,7 +29,7 @@
 #include <string>
 #include <algorithm>
 
-#include <base/strings.h>
+#include <android-base/strings.h>
 
 #include "openssl/sha.h"
 #include "applypatch.h"

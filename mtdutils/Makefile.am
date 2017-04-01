@@ -8,6 +8,7 @@ AM_CFLAGS := -Wundef \
         -D_GNU_SOURCE
 
 AM_CPPFLAGS := \
+              -DUSE_LE_MODE \
               -I. \
               -USE_GLIB \
               -I$(WORKSPACE)/system/core/include

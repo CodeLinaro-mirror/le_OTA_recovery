@@ -19,13 +19,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define TRACE_TAG TRACE_ADB
-
 #include "sysdeps.h"
 
 #include "adb.h"
 #include "adb_auth.h"
 #include "transport.h"
+
+#ifdef USE_LE_MODE
+#define TRACE_TAG TRACE_ADB
+#endif
 
 int adb_server_main(int is_daemon, int server_port, int /* reply_fd */) {
     adb_device_banner = "sideload";
@@ -37,9 +39,12 @@ int adb_server_main(int is_daemon, int server_port, int /* reply_fd */) {
 
     init_transport_registration();
     usb_init();
-
-    //VLOG(TRACE_ADB) << "Event loop starting";
+#ifdef USE_LE_MODE
     D("Event loop starting\n");
+#else
+    VLOG(TRACE_ADB) << "Event loop starting";
+#endif
+
     fdevent_loop();
 
     return 0;

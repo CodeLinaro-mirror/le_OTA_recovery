@@ -30,13 +30,15 @@
 #include "roots.h"
 #include "common.h"
 #include "make_ext4fs.h"
-extern "C" {
-#include "wipe.h"
-  //#include "cryptfs.h" //Needs vold to enable
-}
 
-//From vold/cryptfs.h
-#define CRYPT_FOOTER_OFFSET 0x4000
+#ifdef USE_LE_MODE
+extern "C" {    // Use till system/core is updated
+#include "wipe.h"
+}
+#else
+#include "wipe.h"
+#include "cryptfs.h"
+#endif
 
 static struct fstab *fstab = NULL;
 
@@ -46,10 +48,11 @@ void load_volume_table()
 {
     int i;
     int ret;
+    const char * FSTAB_ENTRY = IS_LE_MODE() ? "/res/recovery_volume_detected" : "/etc/recovery.fstab";
 
-    fstab = fs_mgr_read_fstab("/res/recovery_volume_detected");
+    fstab = fs_mgr_read_fstab(FSTAB_ENTRY);
     if (!fstab) {
-        LOGE("failed to read /res/recovery_volume_detected\n");
+        LOGE("failed to read %s\n", FSTAB_ENTRY);
         return;
     }
 
@@ -111,7 +114,8 @@ int ensure_path_mounted_at(const char* path, const char* mount_point) {
         // mount an MTD partition as a YAFFS2 filesystem.
         mtd_scan_partitions();
         const MtdPartition* partition;
-        partition = mtd_find_partition_by_device_name(v->blk_device);
+
+        partition = IS_LE_MODE() ? mtd_find_partition_by_device_name(v->blk_device) : mtd_find_partition_by_name(v->blk_device);
         if (partition == NULL) {
             LOGE("failed to find \"%s\" partition to mount at \"%s\"\n",
                  v->blk_device, mount_point);

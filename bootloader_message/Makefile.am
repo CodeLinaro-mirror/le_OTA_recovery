@@ -5,11 +5,11 @@ AM_CFLAGS := -Wundef \
              -fno-inline \
              -fno-short-enums \
              -fpic \
-             -Dstrlcat=strncat \
              -D_GNU_SOURCE \
              -I..
 
 AM_CPPFLAGS := \
+              -DUSE_LE_MODE \
               -I. \
               -I.. \
               -I./include \
@@ -19,7 +19,8 @@ AM_CPPFLAGS := \
               -I$(WORKSPACE)/system/core/fs_mgr/include \
               -std=c++11 \
               -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
-              -Dstrlcat=strncat
+              -Dstrlcpy=g_strlcpy \
+              -Dstrlcat=g_strlcat
 
 AM_LDFLAGS := -shared -version-info 1:0:0
 
