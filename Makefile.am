@@ -25,6 +25,7 @@ AM_CPPFLAGS := \
               -I./bootloader_message/include \
               $(LIBSELINUX_CFLAGS) \
               -std=c++11 \
+              -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
               -Dstrlcat=strncat
 
 #AM_LDFLAGS := -shared -version-info 1:0:0

@@ -362,13 +362,16 @@ static void
 get_args(int *argc, char ***argv) {
     bootloader_message boot = {};
 
+#ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
+    get_bootloader_message(&boot);  // this may fail, leaving a zeroed structure
+#else
     std::string err;
     if (!read_bootloader_message(&boot, &err)) {
         LOGE("%s\n", err.c_str());
         // If fails, leave a zeroed bootloader_message.
         memset(&boot, 0, sizeof(boot));
     }
-
+#endif
     stage = strndup(boot.stage, sizeof(boot.stage));
 
     if (boot.command[0] != 0 && boot.command[0] != 255) {
@@ -430,10 +433,13 @@ get_args(int *argc, char ***argv) {
         strlcat(boot.recovery, (*argv)[i], sizeof(boot.recovery));
         strlcat(boot.recovery, "\n", sizeof(boot.recovery));
     }
-
+#ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
+    set_bootloader_message(&boot);
+#else
     if (!write_bootloader_message(boot, &err)) {
         LOGE("%s\n", err.c_str());
     }
+#endif
 }
 
 static void
@@ -441,10 +447,14 @@ set_sdcard_update_bootloader_message() {
     bootloader_message boot = {};
     strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
     strlcpy(boot.recovery, "recovery\n", sizeof(boot.recovery));
+#ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
+    set_bootloader_message(&boot);
+#else
     std::string err;
     if (!write_bootloader_message(boot, &err)) {
         LOGE("%s\n", err.c_str());
     }
+#endif
 }
 
 // Read from kernel log into buffer and write out to file.
@@ -609,10 +619,14 @@ finish_recovery(const char *send_intent) {
 
     // Reset to normal system boot so recovery won't cycle indefinitely.
     bootloader_message boot = {};
+#ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
+    set_bootloader_message(&boot);
+#else
     std::string err;
     if (!write_bootloader_message(boot, &err)) {
         LOGE("%s\n", err.c_str());
     }
+#endif
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (has_cache) {
@@ -1534,10 +1548,14 @@ static void set_retry_bootloader_message(int retry_count, int argc, char** argv)
         strlcat(boot.recovery, buffer, sizeof(boot.recovery));
     }
 
+#ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
+    set_bootloader_message(&boot);
+#else
     std::string err;
     if (!write_bootloader_message(boot, &err)) {
         LOGE("%s\n", err.c_str());
     }
+#endif
 }
 
 static bool bootreason_in_blacklist() {

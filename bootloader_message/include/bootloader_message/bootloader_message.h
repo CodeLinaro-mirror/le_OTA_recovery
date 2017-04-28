@@ -86,6 +86,16 @@ bool clear_bootloader_message(std::string* err);
 bool read_wipe_package(std::string* package_data, size_t size, std::string* err);
 bool write_wipe_package(const std::string& package_data, std::string* err);
 
+#ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
+/*
+ * Read and write the bootloader command from the "misc" partition.
+ * These return zero on success
+ * (Keep these methods for LE platform)
+ */
+int get_bootloader_message(struct bootloader_message *out);
+int set_bootloader_message(const struct bootloader_message *in);
+#endif
+
 #else
 
 #include <stdbool.h>
