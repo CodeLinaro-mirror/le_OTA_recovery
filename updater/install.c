@@ -168,7 +168,7 @@ void free_volume_table() {
         return;
 
     for (i = 0; i < num_volumes; ++i) {
-        Volume* v = device_volumes+1;
+        Volume* v = device_volumes + i;
         if (v->mount_point)
             free(v->mount_point);
         if (v->fs_type)
@@ -243,19 +243,21 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* fs_type;
     char* partition_type;
     char* location;
-    char* mount_point;
+    char* mount_dir;
     char* mount_options;
     bool has_mount_options;
+    char *newcontext = NULL;
+    char *oldcontext = NULL;
     if (argc == 5) {
         has_mount_options = true;
         if (ReadArgs(state, argv, 5, &fs_type, &partition_type,
-                 &location, &mount_point, &mount_options) < 0) {
+                 &location, &mount_dir, &mount_options) < 0) {
             return NULL;
         }
     } else {
         has_mount_options = false;
         if (ReadArgs(state, argv, 4, &fs_type, &partition_type,
-                 &location, &mount_point) < 0) {
+                 &location, &mount_dir) < 0) {
             return NULL;
         }
     }
@@ -273,10 +275,24 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
         ErrorAbort(state, "location argument to %s() can't be empty", name);
         goto done;
     }
-    if (strlen(mount_point) == 0) {
-        ErrorAbort(state, "mount_point argument to %s() can't be empty", name);
+    if (strlen(mount_dir) == 0) {
+        ErrorAbort(state, "mount_dir argument to %s() can't be empty", name);
         goto done;
     }
+
+    //stick a slash on the end to mount point
+    size_t pathLen = strlen(mount_dir);
+    char *mount_point = (char *)malloc(pathLen + 2);
+    if (mount_point == NULL) {
+        ErrorAbort(state, "Can't malloc mount_point to %s()", name);
+        goto done;
+    }
+    memcpy(mount_point, mount_dir, pathLen);
+    if(mount_point[pathLen - 1] != '/')
+        mount_point[pathLen] = '/';
+    else
+        mount_point[pathLen] = '\0';
+    mount_point[pathLen + 1] = '\0';
 
     char *secontext = NULL;
 
@@ -343,12 +359,28 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
         }
     }
 
+    // After mounted, should check mouint point's selinux context. If it
+    // isn't correct, modify it.
+    if (sehandle) {
+        if (getfilecon(mount_point, &oldcontext) < 0)
+            goto done;
+        if (selabel_lookup(sehandle, &newcontext, mount_point, 0755) < 0)
+            goto done;
+        if (strcmp(newcontext, "<<none>>") == 0)
+            goto done;
+        if (strcmp(oldcontext, newcontext))
+            setfilecon(mount_point, newcontext);
+    }
+
 done:
     free(fs_type);
     free(partition_type);
     free(location);
+    free(mount_dir);
     if (result != mount_point) free(mount_point);
     if (has_mount_options) free(mount_options);
+    if (newcontext) freecon(newcontext);
+    if (oldcontext) freecon(oldcontext);
     return StringValue(result);
 }
 
