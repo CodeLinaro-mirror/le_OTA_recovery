@@ -39,6 +39,7 @@
 #include "updater.h"
 #include "applypatch/applypatch.h"
 #include "common.h"
+#include "bootloader.h"
 
 #ifdef USE_EXT4
 #include "make_ext4fs.h"
@@ -47,6 +48,8 @@
 
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
+char* stage;
+struct bootloader_message boot;
 
 int parse_fstab(FILE *logfd, char *name, int *alloc) {
     FILE* fstab;
@@ -1015,6 +1018,14 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         goto done;
     }
 
+	if (strcmp(stage, &boot.stage) != 0) {
+		fprintf(stderr, 
+		"boot.stage = \"%s\" and current stage = \"%s\", skipping parition \"%s\"\n",
+		boot.stage, stage, partition);
+		result = strdup("");
+		goto done;
+	}
+
     mtd_scan_partitions();
     const MtdPartition* mtd = mtd_find_partition_by_name(partition);
     if (mtd == NULL) {
@@ -1387,6 +1398,125 @@ Value* ReadFileFn(const char* name, State* state, int argc, Expr* argv[]) {
     return v;
 }
 
+static const int MISC_PAGES = 3;         // number of pages to save
+static const int MISC_COMMAND_PAGE = 1;  // bootloader command is this page
+
+static int updater_get_bootloader_message_mtd(struct bootloader_message *out,
+                                      const Volume* v) {
+    size_t write_size;
+	mtd_scan_partitions();
+    const MtdPartition *part = mtd_find_partition_by_name("misc");
+	if (part == NULL || mtd_partition_info(part, NULL, NULL, &write_size)) {
+		fprintf(stderr, "Can't find %s\n", v->device);
+		return -1;
+	}
+
+	MtdReadContext *read = mtd_read_partition(part);
+	if (read == NULL) {
+		fprintf(stderr, "Can't open %s\n(%s)\n", v->device, strerror(errno));
+		return -1;
+	}
+
+	const ssize_t size = write_size * MISC_PAGES;
+	char data[size];
+	ssize_t r = mtd_read_data(read, data, size);
+	if (r != size) 
+		fprintf(stderr, "Can't read %s\n(%s)\n", v->device, strerror(errno));
+	mtd_read_close(read);
+	if (r != size) return -1;
+
+	memcpy(out, &data[write_size * MISC_COMMAND_PAGE], sizeof(*out));
+	return 0;
+}
+
+static int updater_set_bootloader_message_mtd(const struct bootloader_message *in,
+                                      const Volume* v) {
+	size_t write_size;
+	mtd_scan_partitions();
+	const MtdPartition *part = mtd_find_partition_by_name("misc");
+	if (part == NULL || mtd_partition_info(part, NULL, NULL, &write_size)) {
+		fprintf(stderr, "Can't find %s\n", v->device);
+		return -1;
+	}
+
+	MtdReadContext *read = mtd_read_partition(part);
+	if (read == NULL) {
+		fprintf(stderr, "Can't open %s\n(%s)\n", v->device, strerror(errno));
+		return -1;
+	}
+
+	ssize_t size = write_size * MISC_PAGES;
+	char data[size];
+	ssize_t r = mtd_read_data(read, data, size);
+	if (r != size) fprintf(stderr, "Can't read %s\n(%s)\n", v->device, strerror(errno));
+	mtd_read_close(read);
+	if (r != size) return -1;
+
+	memcpy(&data[write_size * MISC_COMMAND_PAGE], in, sizeof(*in));
+
+	MtdWriteContext *write = mtd_write_partition(part);
+	if (write == NULL) {
+		fprintf(stderr, "Can't open %s\n(%s)\n", v->device, strerror(errno));
+		return -1;
+	}
+	if (mtd_write_data(write, data, size) != size) {
+		fprintf(stderr, "Can't write %s\n(%s)\n", v->device, strerror(errno));
+		mtd_write_close(write);
+		return -1;
+	}
+	if (mtd_write_close(write)) {
+		fprintf(stderr, "Can't finish %s\n(%s)\n", v->device, strerror(errno));
+		return -1;
+	}
+
+	fprintf(stderr, "Set boot.stage to \"%s\"\n", in->stage[0] != 255 ? in->stage : "");
+	return 0;
+}
+
+Value* CurrentStageFn(const char* name, State* state, int argc, Expr* argv[]) {
+	if (argc != 1) {
+		return ErrorAbort(state, "%s() expects 1 arg, got %d", name, argc);
+	}
+	if (ReadArgs(state, argv, 1, &stage) < 0) return NULL;
+	fprintf(stderr, "%s: is \"%s\"\n", name, stage);
+
+	Volume* v = volume_for_path("/misc");
+	if (v == NULL) {
+		fprintf(stderr, "Cannot load volume /misc!\n");
+		return -1;
+	}
+	//get bootloder_message
+	memset(&boot, 0, sizeof(boot));
+	if(-1 == updater_get_bootloader_message_mtd(&boot,v)) {
+		fprintf(stderr, "get_bootloader_message returned -1 \n");
+	}
+	fprintf(stderr, "boot.command = \"%s\"\n", boot.command);
+	fprintf(stderr, "boot.recovery = \"%s\"\n", boot.recovery);
+	fprintf(stderr, "boot.stage = \"%s\"\n", boot.stage);
+
+	if(0 == boot.stage[0]) {
+		fprintf(stderr, "boot.stage is NULL!! \n");
+		//set boot stage to "main"
+		strlcpy(boot.stage, "main", sizeof(boot.stage));
+		//update bootloader_message with stage=main and save it
+		updater_set_bootloader_message_mtd(&boot,v);
+		fprintf(stderr, "boot.stage is set to \"main\"\n");
+	}
+
+	if((0 == strncmp("backup", stage, strlen("backup")))) {
+		fprintf(stderr, "current stage is \"backup\" and boot.stage is %s \n", boot.stage);
+		if(0 != (strncmp("backup", &boot.stage, strlen("backup")))) {
+			fprintf(stderr, "boot.stage should be set to \"backup\"\n");
+			//set boot stage to "backup"
+			strlcpy(boot.stage, "backup", sizeof(boot.stage));
+			//update bootloader_message with stage=main and save it
+			updater_set_bootloader_message_mtd(&boot,v);
+			//system("reboot -p");
+		}
+	}
+	return StringValue(strdup("t"));
+}
+
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
     RegisterFunction("is_mounted", IsMountedFn);
@@ -1420,4 +1550,6 @@ void RegisterInstallFunctions() {
     RegisterFunction("ui_print", UIPrintFn);
 
     RegisterFunction("run_program", RunProgramFn);
+	
+	RegisterFunction("current_stage", CurrentStageFn);
 }

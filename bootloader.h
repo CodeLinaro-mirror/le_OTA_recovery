@@ -38,7 +38,15 @@
 struct bootloader_message {
     char command[32];
     char status[32];
-    char recovery[1024];
+    char recovery[768];
+
+    // The 'recovery' field used to be 1024 bytes.  It has only ever
+    // been used to store the recovery command line, so 768 bytes
+    // should be plenty.  We carve off the last 256 bytes to store the
+    // stage string (for multistage packages) and possible future
+    // expansion.
+    char stage[32];
+    char reserved[224];
 };
 
 /* Read and write the bootloader command from the "misc" partition.
