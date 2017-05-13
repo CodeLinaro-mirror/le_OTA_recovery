@@ -54,29 +54,39 @@ bool have_eio_error = false;
 int ota_open(const char* path, int oflags) {
     // Let the caller handle errors; we do not care if open succeeds or fails
     int fd = open(path, oflags);
+#ifndef USE_LE_MODE // TODO: below map op causing issue on LE.
     filename_cache[fd] = path;
+#endif
     return fd;
 }
 
 int ota_open(const char* path, int oflags, mode_t mode) {
     int fd = open(path, oflags, mode);
+#ifndef USE_LE_MODE
     filename_cache[fd] = path;
+#endif
     return fd; }
 
 FILE* ota_fopen(const char* path, const char* mode) {
     FILE* fh = fopen(path, mode);
+#ifndef USE_LE_MODE
     filename_cache[(intptr_t)fh] = path;
+#endif
     return fh;
 }
 
 int ota_close(int fd) {
     // descriptors can be reused, so make sure not to leave them in the cache
+#ifndef USE_LE_MODE
     filename_cache.erase(fd);
+#endif
     return close(fd);
 }
 
 int ota_fclose(FILE* fh) {
+#ifndef USE_LE_MODE
     filename_cache.erase((intptr_t)fh);
+#endif
     return fclose(fh);
 }
 

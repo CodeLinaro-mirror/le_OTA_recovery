@@ -21,7 +21,11 @@
 #include <string>
 
 #include "expr.h"
+#ifdef USE_LE_MODE
+#include "parser.hh"
+#else
 #include "parser.h"
+#endif
 
 extern int yyparse(Expr** root, int* error_count);
 

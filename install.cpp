@@ -377,6 +377,7 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
         chr_args[i] = args[i].c_str();
     }
 
+    LOGI("Attempting to run %s\n", chr_args[0]);
     pid_t pid = fork();
 
     if (pid == -1) {
@@ -391,6 +392,7 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
         close(pipefd[0]);
         execv(chr_args[0], const_cast<char**>(chr_args));
         fprintf(stdout, "E:Can't run %s (%s)\n", chr_args[0], strerror(errno));
+        LOGE("Can't run %s (%s)\n", chr_args[0], strerror(errno));
         _exit(-1);
     }
     close(pipefd[1]);

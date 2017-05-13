@@ -99,7 +99,11 @@ static int create_service_thread(void (*func)(int, void *), void *cookie) {
     return s[0];
 }
 
+#ifdef USE_LE_MODE
+int service_to_fd(const char* name) {
+#else
 int service_to_fd(const char* name, const atransport* transport) {
+#endif
     int ret = -1;
 
     if (!strncmp(name, "sideload:", 9)) {

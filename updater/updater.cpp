@@ -93,7 +93,9 @@ int main(int argc, char** argv) {
                 package_filename, strerror(err));
         return 3;
     }
+#ifndef USE_LE_MODE
     ota_io_init(&za);
+#endif
 
     const ZipEntry* script_entry = mzFindZipEntry(&za, SCRIPT_NAME);
     if (script_entry == NULL) {
