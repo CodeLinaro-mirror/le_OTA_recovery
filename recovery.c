@@ -692,7 +692,9 @@ main(int argc, char **argv) {
 
     int previous_runs = 0;
     const char *send_intent = NULL;
-    const char *update_package = NULL;
+    char *update_package = NULL;
+    update_package = (char*)malloc(strlen("/data/update.zip")+1);
+    sprintf(update_package, "%s", "/data/update.zip");
     int wipe_data = 0, wipe_cache = 0;
 
     int arg;
@@ -709,7 +711,6 @@ main(int argc, char **argv) {
             continue;
         }
     }
-
     printf("Command:");
     for (arg = 0; arg < argc; arg++) {
         printf(" \"%s\"", argv[arg]);
@@ -763,6 +764,7 @@ main(int argc, char **argv) {
 
     // Otherwise, get ready to boot the main system...
     finish_recovery(send_intent);
+    free(update_package);
     ui_print("Rebooting...\n");
     sync();
     syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
