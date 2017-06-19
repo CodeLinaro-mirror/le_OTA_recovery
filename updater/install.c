@@ -1494,8 +1494,9 @@ Value* CurrentStageFn(const char* name, State* state, int argc, Expr* argv[]) {
 	fprintf(stderr, "boot.recovery = \"%s\"\n", boot.recovery);
 	fprintf(stderr, "boot.stage = \"%s\"\n", boot.stage);
 
-	if(0 == boot.stage[0]) {
-		fprintf(stderr, "boot.stage is NULL!! \n");
+	if((0 != strncmp("backup", boot.stage, strlen("backup")))
+		&& (0 != strncmp("main", boot.stage, strlen("main")))) {
+		fprintf(stderr, "boot.stage is not initialized and not backup.. set it to main!! \n");
 		//set boot stage to "main"
 		strlcpy(boot.stage, "main", sizeof(boot.stage));
 		//update bootloader_message with stage=main and save it
