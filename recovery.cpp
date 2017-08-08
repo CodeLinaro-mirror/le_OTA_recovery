@@ -68,6 +68,7 @@
 #include "ui.h"
 #include "unique_fd.h"
 #include "screen_ui.h"
+#include "headless_ui.h"
 
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
 
@@ -1702,11 +1703,22 @@ int main(int argc, char **argv) {
     printf("reason is [%s]\n", reason);
 
     Device* device = make_device();
-    ui = device->GetUI();
+
+    char headless_device[PROPERTY_VALUE_MAX];
+    property_get("ro.boot.headless_device", headless_device, "true");
+    bool is_headless_device = (strncmp(headless_device, "true", sizeof("true")) == 0);
+
+    if (is_headless_device) {
+        ui = new HeadlessRecoveryUI();
+    } else {
+        ui = device->GetUI();
+    }
     gCurrentUI = ui;
 
     ui->SetLocale(locale);
-    ui->Init();
+    if (!is_headless_device) {
+        ui->Init();
+    }
     // Set background string to "installing security update" for security update,
     // otherwise set it to "installing system update".
     ui->SetSystemUpdateText(security_update);
