@@ -485,6 +485,8 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
 done:
     free(fs_type);
     free(partition_type);
+    free(fs_size);
+    free(mount_point);
     if (result != location) free(location);
     return StringValue(result);
 }
@@ -764,6 +766,7 @@ Value* SymlinkFn(const char* name, State* state, int argc, Expr* argv[]) {
         free(srcs[i]);
     }
     free(srcs);
+    free(target);
     if (bad) {
         return ErrorAbort(state, "%s: some symlinks failed", name);
     }
@@ -1056,7 +1059,7 @@ Value* ConfirmDevVariant(const char* name, State* state, int argc, Expr* argv[])
 {
     //ro.product.device that was on the build that the update package was made
     //from
-    char* package_dev_variant;
+    char* package_dev_variant = NULL;
     //ro.product.device on the current hardware
     char current_dev_variant[PROPERTY_VALUE_MAX];
     int comparison_len;
@@ -1328,7 +1331,7 @@ Value* ApplyPatchSpaceFn(const char* name, State* state,
         free(bytes_str);
         return NULL;
     }
-
+    free(bytes_str);
     return StringValue(strdup(CacheSizeCheck(bytes) ? "" : "t"));
 }
 
@@ -1401,6 +1404,10 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
     free(patch_sha_str);
     free(patches);
+    free(source_filename);
+    free(target_filename);
+    free(target_sha1);
+    free(target_size_str);
 
     return StringValue(strdup(result == 0 ? "t" : ""));
 }
@@ -1413,7 +1420,7 @@ Value* ApplyPatchCheckFn(const char* name, State* state,
                           name, argc);
     }
 
-    char* filename;
+    char* filename = NULL;
     if (ReadArgs(state, argv, 1, &filename) < 0) {
         return NULL;
     }
@@ -1428,6 +1435,9 @@ Value* ApplyPatchCheckFn(const char* name, State* state,
         free(sha1s[i]);
     }
     free(sha1s);
+    if (filename != NULL) {
+        free(filename);
+    }
 
     return StringValue(strdup(result == 0 ? "t" : ""));
 }
@@ -1690,7 +1700,7 @@ Value* GetStageFn(const char* name, State* state, int argc, Expr* argv[]) {
     fread(buffer, sizeof(buffer), 1, f);
     fclose(f);
     buffer[sizeof(buffer)-1] = '\0';
-
+    free(filename);
     return StringValue(strdup(buffer));
 }
 

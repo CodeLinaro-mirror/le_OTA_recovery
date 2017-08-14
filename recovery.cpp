@@ -1018,14 +1018,13 @@ static void write_file(const char *file_name, int reason, char *result)
     }
 
     int result_fd = open(file_name, O_RDWR | O_CREAT | O_TRUNC, 0666);
-    fchown(result_fd, AID_SYSTEM, AID_SYSTEM);
 
     if (result_fd < 0) {
         fprintf(stdout, "cannot open '%s' for output : %s\n", file_name, strerror(errno));
         umask(proc_mask);
         return;
     }
-
+    fchown(result_fd, AID_SYSTEM, AID_SYSTEM);
     sprintf(buf,"%s:%d",result,reason);
 
     write(result_fd, buf, strlen(buf));
