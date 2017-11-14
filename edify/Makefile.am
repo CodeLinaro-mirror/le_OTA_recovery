@@ -51,10 +51,8 @@ if USE_GLIB
 edify_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 edify_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 edify_LDADD := -lm -lpthread -lbase @GLIB_LIBS@
-edify_LDFLAGS := -all-static
 else
 edify_CFLAGS := $(AM_CFLAGS)
 edify_CPPFLAGS := $(AM_CPPFLAGS)
 edify_LDADD := -lm -lpthread -lbase
-edify_LDFLAGS := -all-static
 endif

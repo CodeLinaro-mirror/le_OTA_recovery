@@ -75,12 +75,10 @@ if USE_GLIB
 applypatch_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 applypatch_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 applypatch_LDADD := $(requiredlibs) -lcrypto @GLIB_LIBS@
-applypatch_LDFLAGS := -all-static
 else
 applypatch_CFLAGS := $(AM_CFLAGS)
 applypatch_CPPFLAGS := $(AM_CPPFLAGS)
 applypatch_LDADD := $(requiredlibs) -lcrypto
-applypatch_LDFLAGS := -all-static
 endif
 
 endif
