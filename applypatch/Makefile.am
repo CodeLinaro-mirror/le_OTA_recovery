@@ -15,6 +15,7 @@ AM_CPPFLAGS := \
               -I../otafault \
               -I$(WORKSPACE)/system/core/include \
               -I$(WORKSPACE)/system/core/base/include \
+              -I$(WORKSPACE)/OTA/system/core/base/include \
               -std=c++11
 
 AM_LDFLAGS := -shared -version-info 1:0:0

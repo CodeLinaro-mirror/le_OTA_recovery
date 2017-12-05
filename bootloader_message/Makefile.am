@@ -17,6 +17,7 @@ AM_CPPFLAGS := \
               -I$(WORKSPACE)/system/core/include \
               -I$(WORKSPACE)/system/core/base/include \
               -I$(WORKSPACE)/system/core/fs_mgr/include \
+              -I$(WORKSPACE)/OTA/system/core/base/include \
               -std=c++11 \
               -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
               -Dstrlcpy=g_strlcpy \

@@ -43,7 +43,7 @@
 #include <vector>
 
 #include <android-base/parseint.h>
-#include <android-base/strings.h>
+#include <base/strings.h>
 
 #include "applypatch/applypatch.h"
 #include "edify/expr.h"

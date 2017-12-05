@@ -26,6 +26,7 @@ AM_CPPFLAGS := \
               -I$(WORKSPACE)/system/extras/ext4_utils \
               -I./bootloader_message/include \
               $(LIBSELINUX_CFLAGS) \
+              -I$(WORKSPACE)/OTA/system/core/base/include \
               -std=c++11 \
               -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
               -Dstrlcpy=g_strlcpy \

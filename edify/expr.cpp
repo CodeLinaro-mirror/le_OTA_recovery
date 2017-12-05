@@ -23,8 +23,8 @@
 
 #include <string>
 
-#include <android-base/stringprintf.h>
-#include <android-base/strings.h>
+#include <base/stringprintf.h>
+#include <base/strings.h>
 
 #include "expr.h"
 

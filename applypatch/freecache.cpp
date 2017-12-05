@@ -30,7 +30,7 @@
 #include <string>
 
 #include <android-base/parseint.h>
-#include <android-base/stringprintf.h>
+#include <base/stringprintf.h>
 
 #include "applypatch.h"
 

@@ -31,10 +31,10 @@
 #include <string>
 #include <vector>
 
-#include <android-base/file.h>
+#include <base/file.h>
 #include <android-base/parseint.h>
-#include <android-base/stringprintf.h>
-#include <android-base/strings.h>
+#include <base/stringprintf.h>
+#include <base/strings.h>
 #include <cutils/properties.h>
 
 #include "common.h"
