@@ -597,7 +597,7 @@ static void copy_logs() {
 static int set_ota_cookie() {
     int fd = -1;
     int rcode = 0;
-    fd = open(STATUS_COOKIE_FILE, O_CREAT | O_RDWR);
+    fd = open(STATUS_COOKIE_FILE, O_CREAT, S_IRUSR | S_IWUSR);
     if (fd < 0) {
         LOGE("Failed to open %s : %s\n",
              STATUS_COOKIE_FILE,

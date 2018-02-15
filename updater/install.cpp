@@ -685,7 +685,7 @@ Value* DeleteFn(const char* name, State* state, int argc, Expr* argv[]) {
     free(paths);
 
     char buffer[10];
-    sprintf(buffer, "%d", success);
+    snprintf(buffer, sizeof(buffer), "%d", success);
     return StringValue(strdup(buffer));
 }
 
@@ -1641,7 +1641,7 @@ Value* RunProgramFn(const char* name, State* state, int argc, Expr* argv[]) {
     free(args2);
 
     char buffer[20];
-    sprintf(buffer, "%d", status);
+    snprintf(buffer, sizeof(buffer), "%d", status);
 
     return StringValue(strdup(buffer));
 }

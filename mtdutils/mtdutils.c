@@ -198,7 +198,7 @@ mtd_find_partition_by_device_name(const char *devicename)
         for (i = 0; i < g_mtd_state.partitions_allocd; i++) {
             MtdPartition *p = &g_mtd_state.partitions[i];
             if(p->device_index >= 0 && p->name != NULL) {
-                sprintf(mtd_devname, "/dev/mtdblock%d", p->device_index);
+                snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", p->device_index);
                 if (strcmp(mtd_devname, devicename) == 0) {
                     return p;
                 }
@@ -216,7 +216,7 @@ mtd_mount_partition(const MtdPartition *partition, const char *mount_point,
     char devname[64];
     int rv = -1;
 
-    sprintf(devname, IS_LE_MODE() ? "/dev/mtdblock%d" : "/dev/block/mtdblock%d", partition->device_index);
+    snprintf(devname, sizeof(devname), IS_LE_MODE() ? "/dev/mtdblock%d" : "/dev/block/mtdblock%d", partition->device_index);
     if (!read_only) {
         rv = mount(devname, mount_point, filesystem, flags, NULL);
     }
@@ -258,7 +258,7 @@ mtd_partition_info(const MtdPartition *partition,
         size_t *total_size, size_t *erase_size, size_t *write_size)
 {
     char mtddevname[32];
-    sprintf(mtddevname, IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
+    snprintf(mtddevname, sizeof(mtddevname), IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
     int fd = open(mtddevname, O_RDONLY);
     if (fd < 0) return -1;
 
@@ -285,7 +285,7 @@ MtdReadContext *mtd_read_partition(const MtdPartition *partition)
     }
 
     char mtddevname[32];
-    sprintf(mtddevname, IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
+    snprintf(mtddevname, sizeof(mtddevname), IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
     ctx->fd = open(mtddevname, O_RDONLY);
     if (ctx->fd < 0) {
         free(ctx->buffer);
@@ -400,7 +400,7 @@ MtdWriteContext *mtd_write_partition(const MtdPartition *partition)
     }
 
     char mtddevname[32];
-    sprintf(mtddevname, IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
+    snprintf(mtddevname, sizeof(mtddevname), IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
     ctx->fd = open(mtddevname, O_RDWR);
     if (ctx->fd < 0) {
         free(ctx->buffer);

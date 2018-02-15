@@ -71,6 +71,7 @@ requiredlibs := -lm \
                -lcutils \
                -lmincrypt \
                -lselinux \
+               -lfs_mgr \
                -lext4_utils \
                ./mtdutils/libmtdutils.la \
                ./minadbd/libminadbd.la \
