@@ -131,7 +131,7 @@ static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
 static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
-static const int KEEP_LOG_COUNT = 10;
+static const int KEEP_LOG_COUNT = 5;
 // We will try to apply the update package 5 times at most in case of an I/O error.
 static const int EIO_RETRY_COUNT = 4;
 static const int BATTERY_READ_TIMEOUT_IN_SEC = 10;
@@ -581,7 +581,6 @@ static void copy_logs() {
     rotate_logs(KEEP_LOG_COUNT);
 
     // Copy logs to cache so the system can find out what happened.
-    copy_log_file(TEMPORARY_LOG_FILE, LOG_FILE, true);
     copy_log_file(TEMPORARY_LOG_FILE, LAST_LOG_FILE, false);
     copy_log_file(TEMPORARY_INSTALL_FILE, LAST_INSTALL_FILE, false);
     save_kernel_log(LAST_KMSG_FILE);
