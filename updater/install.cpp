@@ -981,6 +981,20 @@ Value* SetPermFn(const char* name, State* state, int argc, Expr* argv[]) {
         }
 
         for (i = 3; i < argc; ++i) {
+            // Do not set permissions on symlinks
+            struct stat st;
+            if (lstat(args[i], &st)) {
+                ErrorAbort(state, kSetMetadataFailure,
+                    "%s: Error on lstat of \"%s\": %s",
+                    name, args[i], strerror(errno));
+                goto done;
+            }
+            if (S_ISLNK(st.st_mode)) {
+                printf("%s: Not setting permission on symlink file: %s\n",
+                        name, args[i]);
+                continue;
+            }
+
             if (chown(args[i], uid, gid) < 0) {
                 printf("%s: chown of %s to %d %d failed: %s\n",
                         name, args[i], uid, gid, strerror(errno));
