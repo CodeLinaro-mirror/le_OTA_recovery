@@ -186,8 +186,8 @@ void load_volume_table(FILE *logfd) {
     if (parse_fstab(logfd, "/res/recovery_volume_config", &alloc) < 0) {
         fprintf(logfd, "ui_print /res/recovery_volume_config not found\n");
     }
-    if (parse_fstab(logfd, "/res/recovery_volume_detected", &alloc) < 0) {
-        fprintf(logfd, "ui_print /res/recovery_volume_detected not found\n");
+    if (parse_fstab(logfd, "/tmp/recovery_volume_detected", &alloc) < 0) {
+        fprintf(logfd, "ui_print /tmp/recovery_volume_detected not found\n");
     }
 }
 
@@ -198,7 +198,7 @@ void free_volume_table() {
         return;
 
     for (i = 0; i < num_volumes; ++i) {
-        Volume* v = device_volumes+1;
+        Volume* v = device_volumes + i;
         if (v->mount_point)
             free(v->mount_point);
         if (v->fs_type)

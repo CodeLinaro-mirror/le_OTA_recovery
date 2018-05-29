@@ -48,7 +48,7 @@ void load_volume_table()
 {
     int i;
     int ret;
-    const char * FSTAB_ENTRY = IS_LE_MODE() ? "/res/recovery_volume_detected" : "/etc/recovery.fstab";
+    const char * FSTAB_ENTRY = IS_LE_MODE() ? "/tmp/recovery_volume_detected" : "/etc/recovery.fstab";
 
     fstab = fs_mgr_read_fstab(FSTAB_ENTRY);
     if (!fstab) {

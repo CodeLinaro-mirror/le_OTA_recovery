@@ -67,6 +67,8 @@ static const float VERIFICATION_PROGRESS_FRACTION = 0.25;
 static const float DEFAULT_FILES_PROGRESS_FRACTION = 0.4;
 static const float DEFAULT_IMAGE_PROGRESS_FRACTION = 0.1;
 
+static const char *RECOVERYUPDATER_COOKIE = "/cache/recoveryupgrade/RECOVERY_UPGRADE_DONE";
+
 // This function parses and returns the build.version.incremental
 static int parse_build_number(std::string str) {
     size_t pos = str.find("=");
@@ -653,6 +655,17 @@ install_package(const char* path, bool* wipe_cache, const char* install_file,
 
     // Write a copy into last_log.
     LOGI("%s\n", log_content.c_str());
+
+    // regardless of whether OTA-upgrade failed or not,
+    // clear any existing cookie.
+    int err = 0, ret = unlink(RECOVERYUPDATER_COOKIE); // remove any existing cookie
+    err = errno;
+
+    if (!ret) {
+        LOGI("Removing any existing cookie!! \n");
+    } else {
+        LOGE("\nFailure in removing cookie, %s\n", strerror(err));
+    }
 
     return result;
 }
