@@ -661,8 +661,8 @@ install_package(const char* path, bool* wipe_cache, const char* install_file,
     int err = 0, ret = unlink(RECOVERYUPDATER_COOKIE); // remove any existing cookie
     err = errno;
 
-    if (!ret) {
-        LOGI("Removing any existing cookie!! \n");
+    if (ret == 0) {
+        LOGE("\nRemoved existing cookie!! \n");
     } else {
         LOGE("\nFailure in removing cookie, %s\n", strerror(err));
     }
