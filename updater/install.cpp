@@ -784,6 +784,8 @@ Value* PackageExtractFileFn(const char* name, State* state,
                 printf("close of \"%s\" failed: %s\n", dest_path, strerror(errno));
                 success = false;
             }
+            printf("%s %s to %s\n",
+                    success ? "extracted" : "failed to extract", zip_path, dest_path);
         }
 
       done2:
