@@ -131,6 +131,7 @@ static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
 static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
+static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
 // We will try to apply the update package 5 times at most in case of an I/O error.
 static const int EIO_RETRY_COUNT = 4;
@@ -960,11 +961,13 @@ static bool wipe_data(int should_confirm, Device* device) {
     }
 
     modified_flash = true;
+    bool has_systemrw = volume_for_path(SYSTEMRW_ROOT) != nullptr;
 
     ui->Print("\n-- Wiping data...\n");
     bool success =
         device->PreWipeData() &&
         erase_volume("/data") &&
+        (has_systemrw ? erase_volume("/systemrw") : true) &&
         (has_cache ? erase_volume("/cache") : true) &&
         device->PostWipeData();
     ui->Print("Data wipe %s.\n", success ? "complete" : "failed");
