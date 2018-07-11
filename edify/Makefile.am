@@ -38,6 +38,10 @@ libedify_la_LIBADD := -lm -lpthread
 libedify_la_LDFLAGS := -all-static
 endif
 
+if TARGET_SUPPORTS_AB
+libedify_la_CPPFLAGS += -DTARGET_SUPPORTS_AB
+endif
+
 edify_c_sources := parser.yy \
              lexer.ll \
              expr.cpp \

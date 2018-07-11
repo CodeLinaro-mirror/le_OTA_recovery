@@ -56,6 +56,10 @@
 #include "unique_fd.h"
 #include "updater.h"
 
+#ifdef TARGET_SUPPORTS_AB
+#include <libabctl.h>
+#endif
+
 #define BLOCKSIZE 4096
 
 // Set this to 0 to interpret 'erase' transfers to mean do a
@@ -1430,6 +1434,17 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
         return StringValue(strdup(""));
     }
 
+#ifdef TARGET_SUPPORTS_AB
+// Now that the arguments have been populated,
+// make A/B specific changes to block-device name
+    char buf[PATH_MAX];
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+            slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
+    printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
+            blockdev_filename->data);
+#endif
+
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
 
     if (ui == nullptr) {
@@ -1742,6 +1757,17 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
         ErrorAbort(state, kArgsParsingFailure, "ranges argument to %s must be string", name);
         return StringValue(strdup(""));
     }
+
+#ifdef TARGET_SUPPORTS_AB
+// Now that the arguments have been populated,
+// make A/B specific changes to block-device name
+    char buf[PATH_MAX];
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+            slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
+    printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
+            blockdev_filename->data);
+#endif
 
     int fd = open(blockdev_filename->data, O_RDWR);
     unique_fd fd_holder(fd);

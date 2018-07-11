@@ -64,7 +64,7 @@ scan_mounted_volumes()
     struct mntent* mentry;
 
     if (g_mounts_state.volumes == NULL) {
-        const int numv = 32;
+        const int numv = 64;
         MountedVolume *volumes = malloc(numv * sizeof(*volumes));
         if (volumes == NULL) {
             errno = ENOMEM;

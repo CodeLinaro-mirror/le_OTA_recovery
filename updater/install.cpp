@@ -74,6 +74,16 @@ extern "C" {    // Use till system/core is updated
 #include "wipe.h"
 }
 
+#ifdef TARGET_SUPPORTS_AB
+#include <libabctl.h>
+#include <errno.h>
+#include <dirent.h>
+#include "print_sha1.h"
+
+#define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
+#define BLOCKSIZE 4096*1024
+#endif
+
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
 #endif
@@ -769,6 +779,23 @@ Value* PackageExtractFileFn(const char* name, State* state,
         }
 
         {
+#ifdef TARGET_SUPPORTS_AB
+            // Check if dest_path here is a block-devices or not
+            if (strncmp(dest_path, BOOTDEVICE_DIR, strlen(BOOTDEVICE_DIR)) == 0) {
+                // append the inactive-slot's suffix to the path
+                char buffer[PATH_MAX];
+                snprintf(buffer, PATH_MAX, "%s%s", dest_path,
+                        slot_suffix_arr[inactive_slot]);
+                dest_path = strdup(buffer);
+                if (dest_path == NULL) {
+                    printf("%s: strdup() failure at line %d: %s\n",
+                            name, __LINE__, strerror(errno));
+                    return NULL;
+                }
+                printf("%s: Writing %s to %s\n", name, zip_path, dest_path);
+            }
+#endif
+
             int fd = TEMP_FAILURE_RETRY(ota_open(dest_path, O_WRONLY | O_CREAT | O_TRUNC | O_SYNC,
                   S_IRUSR | S_IWUSR));
             if (fd == -1) {
@@ -1485,6 +1512,28 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
         return NULL;
     }
 
+#ifdef TARGET_SUPPORTS_AB
+    // For A/B targets, The blk_dev in "EMMC:<blk_dev>:...."
+    // should be appended with the inactive slot
+    std::string copy(source_filename), tmp(slot_suffix_arr[inactive_slot]);
+    std::vector<std::string> pieces = android::base::Split(copy, ":");
+    // The second "piece" should be the block device
+    if (pieces.size() >= 2 && pieces[0] == "EMMC" &&
+        strncmp(pieces[1].c_str(), BOOTDEVICE_DIR, strlen(BOOTDEVICE_DIR)) == 0) {
+        pieces[1] += tmp;
+        copy = android::base::Join(pieces, ':');
+        source_filename = strdup(copy.c_str());
+        if (source_filename == NULL) {
+            printf("%s: strdup() failure at line %d: %s\n",
+                    name, __LINE__, strerror(errno));
+            return NULL;
+        }
+    }
+    // We do not modify the target filename as that is "-"
+    // i.e. same as source filename
+    printf("%s: applypatch() will be performed on %s\n", name, source_filename);
+#endif
+
     size_t target_size;
     if (!android::base::ParseUint(target_size_str, &target_size)) {
         ErrorAbort(state, kArgsParsingFailure, "%s(): can't parse \"%s\" as byte count",
@@ -1547,6 +1596,26 @@ Value* ApplyPatchCheckFn(const char* name, State* state,
     if (ReadArgs(state, argv, 1, &filename) < 0) {
         return NULL;
     }
+
+#ifdef TARGET_SUPPORTS_AB
+    // For A/B targets, The blk_dev in "EMMC:<blk_dev>:...."
+    // should be appended with the inactive slot.
+    std::string copy(filename), tmp(slot_suffix_arr[inactive_slot]);
+    std::vector<std::string> pieces = android::base::Split(copy, ":");
+    // The second "piece" should be the block device
+    if (pieces.size() >= 2 && pieces[0] == "EMMC" &&
+        strncmp(pieces[1].c_str(), BOOTDEVICE_DIR, strlen(BOOTDEVICE_DIR)) == 0) {
+        pieces[1] += tmp;
+        copy = android::base::Join(pieces, ':');
+        filename = strdup(copy.c_str());
+        if (filename == NULL) {
+            printf("%s: strdup() failure at line %d: %s\n",
+                    name, __LINE__, strerror(errno));
+            return NULL;
+        }
+    }
+    printf("%s: checking %s\n", name, filename);
+#endif
 
     int patchcount = argc-1;
     char** sha1s = ReadVarArgs(state, argc-1, argv+1);
@@ -1907,6 +1976,383 @@ Value* Tune2FsFn(const char* name, State* state, int argc, Expr* argv[]) {
 }
 #endif
 
+#ifdef TARGET_SUPPORTS_AB
+/* Checks if a file exists.
+   Takes as argument absolute filename path.
+ */
+Value* CheckIfFileExistsFn(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    if (argc != 1) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects exactly 1 arg, got %d", name, argc);
+    }
+    char *filename;
+    if (ReadArgs(state, argv, 1, &filename) < 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+    }
+
+    if (access(filename, F_OK) != -1) {
+        return StringValue(strdup("exists"));
+    } else {
+        return StringValue(strdup(""));
+    }
+}
+
+/* Creates an empty file.
+   Takes as argument absolute filename path.
+ */
+Value* CreateFileFn(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    if (argc != 1) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects exactly 1 arg, got %d", name, argc);
+    }
+    char *filename;
+    if (ReadArgs(state, argv, 1, &filename) < 0) {
+            return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+    }
+    if (make_parents(filename) != 0) {
+        printf("%s: Failed to make parents of %s", name, filename);
+        return StringValue(strdup(""));
+    }
+
+    int fd = open(filename, O_WRONLY | O_CREAT, 0600);
+    if (fd != -1) {
+        return StringValue(strdup("success"));
+    } else {
+        return StringValue(strdup(""));
+    }
+}
+
+/* Low-level block copy from source blk-device
+   to target blk-device.
+   returns false if any I/O error is encountered.
+   Additionally, also compute the SHA1 over the partitions
+   (source and destination) and return false if
+   they do not match.
+ */
+bool PerformBlockCopyOperation(char* source, char* dest) {
+    int source_fd = open(source, O_RDONLY);
+    if (source_fd == -1) {
+        printf("PerformBlockCopyOperation: open failed \"%s\": %s\n",
+                source, strerror(errno));
+        return false;
+    }
+
+    int dest_fd = open(dest, O_WRONLY);
+    if (dest_fd == -1) {
+        printf("PerformBlockCopyOperation: open failed \"%s\": %s\n",
+                dest, strerror(errno));
+        return false;
+    }
+
+    bool success = true;
+    ssize_t read;
+
+    // Object to hold the current state of the hash
+    SHA_CTX src_ctx, dest_ctx;
+    SHA1_Init(&src_ctx);
+    uint8_t src_hash[SHA_DIGEST_LENGTH], dest_hash[SHA_DIGEST_LENGTH];
+
+    char* buffer = reinterpret_cast<char*>(malloc(BLOCKSIZE));
+    while (success && (read =
+            TEMP_FAILURE_RETRY(ota_read(source_fd, buffer, BLOCKSIZE))) > 0) {
+        // printf("Read %zd bytes from source_fd\n", read);
+        SHA1_Update(&src_ctx, buffer, read); //update sha1 with was just read
+        ssize_t wrote = TEMP_FAILURE_RETRY(ota_write(dest_fd, buffer, read));
+        // printf("Wrote %zd bytes to target_fd\n", wrote);
+        success = success && (wrote == read);
+    }
+
+    if (success) {
+        SHA1_Final(src_hash, &src_ctx); // finalize src SHA1
+
+        if (ota_fsync(dest_fd) == -1) {
+            printf("PerformBlockCopyOperation: fsync of \"%s\" failed: %s\n",
+                    dest, strerror(errno));
+            success = false;
+            goto end;
+        }
+
+        // Close and open dest_fd to reset read offset to start
+        ota_close(dest_fd);
+        dest_fd = open(dest, O_RDONLY);
+        if (dest_fd == -1) {
+            printf("PerformBlockCopyOperation: SHA1: open failed \"%s\": %s\n",
+                    dest, strerror(errno));
+            success = false;
+            goto end;
+        }
+
+        SHA1_Init(&dest_ctx);
+        while ((read = TEMP_FAILURE_RETRY(
+                ota_read(dest_fd, buffer, BLOCKSIZE))) > 0) {
+            SHA1_Update(&dest_ctx, buffer, read);
+        }
+        SHA1_Final(dest_hash, &dest_ctx); // finalize dest SHA1
+
+        // compare src vs dest SHA1 and return
+        success = (memcmp(src_hash, dest_hash, SHA_DIGEST_LENGTH) == 0);
+        printf("PerformBlockCopyOperation: src hash: %s\n",
+                print_sha1(src_hash).c_str());
+        printf("PerformBlockCopyOperation: dest hash: %s\n",
+                print_sha1(dest_hash).c_str());
+        printf("PerformBlockCopyOperation: src & dest SHA1s %s\n",
+                success ? "match": "do not match");
+    }
+
+end:
+    ota_close(source_fd);
+    ota_close(dest_fd);
+    return success;
+}
+
+/* Copies blocks from active slot of all **A/B**
+   partitions to their respective inactive slots.
+   Takes as argument a comma-separated list of partitions
+   that need to be **excluded** from being copied.
+   If no argument is supplied, **all** AB partitions
+   are copied from active to inactive slots */
+Value* CopyABPartitionsFn(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    if (argc > 1) {
+        // Only expect a max of single argument with space-separated list of partitions.
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects <=1 arg, got %d", name, argc);
+    }
+
+    char *exclude_arg;
+    bool exclude_from_copy = false;
+    int exclude_length = 0;
+    char partitions_to_exclude[20][PATH_MAX];
+
+    if (argc == 1) {
+        if (ReadArgs(state, argv, 1, &exclude_arg) < 0) {
+            return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+        }
+        char *p = strtok (exclude_arg, ",");
+        while (p != NULL) {
+            // append the boot/active slot to the name and then save it
+            char buffer[PATH_MAX];
+            snprintf(partitions_to_exclude[exclude_length], PATH_MAX, "%s%s",
+                    p, slot_suffix_arr[boot_slot]);
+            printf("%s: Excluding partition \"%s\" from being copied\n", name, p);
+            exclude_length ++;
+            p = strtok (NULL, ",");
+        }
+        if (exclude_length > 0)
+            exclude_from_copy = true; // we have partitions that need not be copied
+    }
+
+    /* iterate through A/B partitions */
+
+    // open the dir first
+    DIR *dir = opendir(BOOTDEVICE_DIR);
+    if (dir == NULL) {
+        return ErrorAbort(state, kFileOpenFailure,
+                "opendir(%s) failed, aborting!", BOOTDEVICE_DIR);
+    }
+
+    while (1) {
+        struct dirent *de = readdir(dir);
+        char active_block_dev_filename[PATH_MAX];
+        char inactive_block_dev_filename[PATH_MAX];
+        if (de != NULL) {
+            if (de->d_name[0] == '.') {
+                continue;
+            }
+            snprintf(active_block_dev_filename, PATH_MAX, "%s/%s",
+                    BOOTDEVICE_DIR, de->d_name);
+            // printf("Checking whether %s needs to be copied..\n", active_block_dev_filename);
+
+            // stat to check if this is a block-device file
+            // copy should be done only on block-devices
+            struct stat st;
+            stat(active_block_dev_filename, &st);
+
+            if (!S_ISBLK(st.st_mode))
+                continue;
+
+            // if the filename doesn't have the boot/active slot
+            // as the last 2 chars, ignore copy operation
+            const char *suffix = &((de->d_name)[strlen(de->d_name)-2]);
+            if (strncmp(suffix, slot_suffix_arr[boot_slot], 2))
+                continue;
+
+            if (exclude_from_copy) {
+                // there are some partitions that need not be copied.
+                // check if the current entry is one of them
+                bool match_found = false;
+                for (int i = 0; i < exclude_length; i++) {
+                    int maxlen = strlen(partitions_to_exclude[i]);
+                    // printf("Matching %s against %s\n", de->d_name, partitions_to_exclude[i]);
+                    if (strcmp(de->d_name, partitions_to_exclude[i]) == 0) {
+                        match_found = true;
+                        break;
+                    }
+                }
+                if (match_found)
+                    continue; // ignore copy operation
+            }
+            snprintf(inactive_block_dev_filename, PATH_MAX, "%s/%s",
+                    BOOTDEVICE_DIR, de->d_name);
+            char *p = strstr(inactive_block_dev_filename,
+                              slot_suffix_arr[boot_slot]);
+            // p shouldn't be null as we already checked for the suffix earlier
+            strncpy(p,  slot_suffix_arr[inactive_slot], 2); // replace the slot
+
+            /* Perform the actual copy */
+            printf("%s: Copying from %s to %s\n", name, active_block_dev_filename,
+                    inactive_block_dev_filename);
+            bool ret = PerformBlockCopyOperation(active_block_dev_filename,
+                    inactive_block_dev_filename);
+            if (!ret) {
+                printf("%s: PerformBlockCopyOperation failed for %s\n", name,
+                        active_block_dev_filename);
+                // Abort
+                return StringValue(strdup(""));
+            }
+        } else {
+            break;
+        }
+    }
+    return StringValue(strdup("success"));
+}
+
+/* Calculates SHA1 hash of contents of a  block-device
+   and compares against a reference.
+   Takes 3 arguments: the block-device name,
+   the number of bytes to be read from the block_device
+   and the reference SHA1.
+ */
+Value* BlockDeviceCheckFn(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    if (argc != 3) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects exactly 3 arg, got %d", name, argc);
+    }
+    char *block_dev, *total_read_size, *reference_sha1_str;
+    if (ReadArgs(state, argv, 3, &block_dev, &total_read_size,
+            &reference_sha1_str) < 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+    }
+
+    // Check if we were given a block-device or not
+    if (strncmp(block_dev, BOOTDEVICE_DIR, strlen(BOOTDEVICE_DIR)) == 0) {
+        // append the inactive-slot's suffix to the path
+        char buffer[PATH_MAX];
+        snprintf(buffer, PATH_MAX, "%s%s", block_dev,
+                slot_suffix_arr[inactive_slot]);
+        block_dev = strdup(buffer);
+        printf("%s: Checking sanity of %s\n", name, block_dev);
+    } else {
+        printf("%s: Expecting block-device but received something else!\n", name);
+        return StringValue(strdup(""));
+    }
+
+    // Parse the incoming SHA1
+    uint8_t reference_sha1[SHA_DIGEST_LENGTH];
+    if (ParseSha1(reference_sha1_str, reference_sha1) != 0) {
+        printf("%s: failed to parse sha1 \"%s\"\n", name, reference_sha1_str);
+        return StringValue(strdup(""));
+    }
+
+    printf("%s: reference SHA1: %s\n", name,
+            print_sha1(reference_sha1).c_str());
+
+    int block_dev_fd = open(block_dev, O_RDONLY);
+    if (block_dev_fd == -1) {
+        printf("%s: open failed \"%s\": %s\n", name,
+                block_dev, strerror(errno));
+        return StringValue(strdup(""));
+    }
+
+    // Object to hold the current state of the hash
+    SHA_CTX ctx;
+    SHA1_Init(&ctx);
+    uint8_t block_dev_sha1[SHA_DIGEST_LENGTH];
+    char* buffer = reinterpret_cast<char*>(malloc(BLOCKSIZE));
+    size_t to_read = atoll(total_read_size), so_far = 0;
+    size_t read = (size_t)min(BLOCKSIZE, to_read - so_far);
+
+    while (so_far < to_read) {
+        ssize_t read_count =
+                TEMP_FAILURE_RETRY(ota_read(block_dev_fd, buffer, read));
+        so_far += read_count;
+        read = (size_t)min(BLOCKSIZE, to_read - so_far);
+        SHA1_Update(&ctx, buffer, read_count); // update SHA1 with current buffer
+    }
+    SHA1_Final(block_dev_sha1, &ctx); //Finalize the SHA1
+
+    printf("%s: block device SHA1: %s\n", name,
+            print_sha1(block_dev_sha1).c_str());
+
+    // Now compare this against the reference SHA1
+    if (memcmp(block_dev_sha1, reference_sha1, SHA_DIGEST_LENGTH) == 0) {
+        printf("%s: The block device SHA1 matches the reference SHA1\n", name);
+        return StringValue(strdup("success"));
+    }
+
+    printf("%s: The block device SHA1 doesn't match the reference SHA1\n", name);
+    return StringValue(strdup(""));
+}
+
+Value* SetInactiveAsUnbootableFn(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+
+    printf("%s: Setting inactive_slot(%s) as unbootable\n", name,
+            slot_suffix_arr[inactive_slot]);
+
+    int ret = libabctl_setUnbootable(inactive_slot);
+
+    if (ret == 0) {
+        printf("%s: %s set as unbootable successfully\n", name,
+                slot_suffix_arr[inactive_slot]);
+        return StringValue(strdup("Success"));
+    } else {
+        printf("%s: Couldn't set inactive slot as unbootable!\n", name);
+        return StringValue(strdup("")); // abort, if you want
+    }
+}
+
+Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+
+    printf("%s: Setting inactive_slot(%s) as active\n", name,
+            slot_suffix_arr[inactive_slot]);
+
+    int ret = libabctl_setActive(inactive_slot);
+
+    if (ret == 0) {
+        // Check again if it is actually set as active
+        ret = libabctl_getActiveStatus(inactive_slot);
+        if (ret == 1) { // slot is active
+            printf("%s: Set %s as active slot successfully\n", name,
+                    slot_suffix_arr[inactive_slot]);
+            return StringValue(strdup("Success"));
+        } else {
+            printf("That's weird! setActive() didn't return any errors "
+                   "but looks like the active status is not set..\n");
+        }
+    }
+
+    printf("%s: Couldn't set inactive slot as active!\n", name);
+    return StringValue(strdup("")); // abort, if you want
+}
+#endif
+
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
     RegisterFunction("is_mounted", IsMountedFn);
@@ -1965,5 +2411,15 @@ void RegisterInstallFunctions() {
     RegisterFunction("enable_reboot", EnableRebootFn);
 #ifndef USE_LE_MODE
     RegisterFunction("tune2fs", Tune2FsFn);
+#endif
+
+#ifdef TARGET_SUPPORTS_AB
+    RegisterFunction("if_copy_done_cookie_exists", CheckIfFileExistsFn);
+    RegisterFunction("write_copy_done_cookie", CreateFileFn);
+    RegisterFunction("delete_copy_done_cookie", DeleteFn);
+    RegisterFunction("copy_all_source_partitions_except", CopyABPartitionsFn);
+    RegisterFunction("block_device_check", BlockDeviceCheckFn);
+    RegisterFunction("set_inactive_slot_as_unbootable", SetInactiveAsUnbootableFn);
+    RegisterFunction("set_inactive_slot_as_active", SetInactiveSlotAsActiveFn);
 #endif
 }

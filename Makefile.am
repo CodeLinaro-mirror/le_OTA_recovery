@@ -111,3 +111,8 @@ bin_PROGRAMS := recovery
 pkgconfigdir := $(libdir)/pkgconfig
 pkgconfig_DATA := recovery.pc
 EXTRA_DIST := $(pkgconfig_DATA)
+
+if TARGET_SUPPORTS_AB
+recovery_CPPFLAGS += -DTARGET_SUPPORTS_AB
+recovery_LDADD += -labctl
+endif
