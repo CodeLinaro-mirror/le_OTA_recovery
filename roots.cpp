@@ -48,8 +48,11 @@ void load_volume_table()
 {
     int i;
     int ret;
+#ifdef TARGET_SUPPORTS_AB
+    const char * FSTAB_ENTRY = "/res/recovery_volume_config";
+#else
     const char * FSTAB_ENTRY = IS_LE_MODE() ? "/tmp/recovery_volume_detected" : "/etc/recovery.fstab";
-
+#endif
     fstab = fs_mgr_read_fstab(FSTAB_ENTRY);
     if (!fstab) {
         LOGE("failed to read %s\n", FSTAB_ENTRY);
@@ -302,13 +305,18 @@ int setup_install_mounts() {
                 LOGE("failed to mount %s\n", v->mount_point);
                 return -1;
             }
-
+#ifdef TARGET_SUPPORTS_AB
+// In A/B boot, we do not want recovery to perform
+// any unmount as we are in mission-mode.
+        }
+#else
         } else {
             if (ensure_path_unmounted(v->mount_point) != 0) {
                 LOGE("failed to unmount %s\n", v->mount_point);
                 return -1;
             }
         }
+#endif
     }
     return 0;
 }

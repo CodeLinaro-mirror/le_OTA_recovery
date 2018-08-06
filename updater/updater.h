@@ -34,4 +34,10 @@ typedef struct {
 
 extern struct selabel_handle *sehandle;
 
+#ifdef TARGET_SUPPORTS_AB
+extern int boot_slot;
+extern int inactive_slot;
+extern const char *slot_suffix_arr[];
+#endif
+
 #endif

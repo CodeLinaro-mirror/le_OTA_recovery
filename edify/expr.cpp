@@ -140,6 +140,19 @@ Value* AbortFn(const char* name, State* state, int argc, Expr* argv[]) {
     } else {
         state->errmsg = strdup("called abort()");
     }
+
+    // In A/B mode, before abort(), also delete the AB_COPY_DONE from
+    // /cache/recovery. This is because if we are aborting
+    // (especially because image/block-device verification failed before/after OTA),
+    // clearing the cookie would reset the state, and this means more chances
+    // of OTA upgrade not failing when re-triggered.
+#ifdef TARGET_SUPPORTS_AB
+    std::string tmp(state->errmsg);
+    std::string buf = tmp + "\nDeleting AB_COPY_DONE before exiting..\n";
+    state->errmsg = strdup(buf.c_str());
+    unlink("/cache/recovery/AB_COPY_DONE");
+#endif
+
     return NULL;
 }
 
