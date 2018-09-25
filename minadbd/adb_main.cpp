@@ -29,6 +29,10 @@
 #define TRACE_TAG TRACE_ADB
 #endif
 
+// Define this variable here as this has an "extern"
+// linkage in libadbd.so.
+bool adb_use_pcie;
+
 int adb_server_main(int is_daemon, int server_port, int /* reply_fd */) {
     adb_device_banner = "sideload";
 
