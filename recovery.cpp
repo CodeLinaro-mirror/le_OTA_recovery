@@ -85,6 +85,10 @@
 #include <glib.h>
 #endif
 
+#ifdef TARGET_SUPPORTS_AB
+#include <libabctl.h>
+#endif
+
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
 
 struct selabel_handle *sehandle;
@@ -375,6 +379,8 @@ static void
 get_args(int *argc, char ***argv) {
     bootloader_message boot = {};
 
+// Don't read anything from BCB if A/B
+#ifndef TARGET_SUPPORTS_AB
 #ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
     get_bootloader_message(&boot);  // this may fail, leaving a zeroed structure
 #else
@@ -411,6 +417,7 @@ get_args(int *argc, char ***argv) {
             LOGE("Bad boot message\n\"%.20s\"\n", boot.recovery);
         }
     }
+#endif
 
     // --- if that doesn't work, try the command file (if we have /cache).
     if (*argc <= 1 && has_cache) {
@@ -437,6 +444,8 @@ get_args(int *argc, char ***argv) {
         }
     }
 
+// If A/B boot is supported, avoid writing into BCB
+#ifndef TARGET_SUPPORTS_AB
     // --> write the arguments we have back into the bootloader control block
     // always boot into recovery after this (until finish_recovery() is called)
     strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
@@ -452,6 +461,7 @@ get_args(int *argc, char ***argv) {
     if (!write_bootloader_message(boot, &err)) {
         LOGE("%s\n", err.c_str());
     }
+#endif
 #endif
 }
 
@@ -653,6 +663,8 @@ finish_recovery(const char *send_intent) {
 
     copy_logs();
 
+// Don't touch BCB if A/B mode
+#ifndef TARGET_SUPPORTS_AB
     // Reset to normal system boot so recovery won't cycle indefinitely.
     bootloader_message boot = {};
 #ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
@@ -662,6 +674,7 @@ finish_recovery(const char *send_intent) {
     if (!write_bootloader_message(boot, &err)) {
         LOGE("%s\n", err.c_str());
     }
+#endif
 #endif
 
     if (IS_LE_MODE()) {
@@ -673,7 +686,9 @@ finish_recovery(const char *send_intent) {
         if (ensure_path_mounted(COMMAND_FILE) != 0 || (unlink(COMMAND_FILE) && errno != ENOENT)) {
             LOGW("Can't unlink %s\n", COMMAND_FILE);
         }
+#ifndef TARGET_SUPPORTS_AB
         ensure_path_unmounted(CACHE_ROOT);
+#endif
     }
 
     sync();  // For good measure.
@@ -1973,6 +1988,10 @@ error:
     }
 
     Device::BuiltinAction after = shutdown_after ? Device::SHUTDOWN : Device::REBOOT;
+
+// Don't call prompt_and_wait() if A/B boot is supported
+// In this case, recovery should exit and with appropriate error code
+#ifndef TARGET_SUPPORTS_AB
     if ((status != INSTALL_SUCCESS && status != INSTALL_SKIPPED && !sideload_auto_reboot) ||
             ui->IsTextVisible()) {
         Device::BuiltinAction temp = prompt_and_wait(device, status);
@@ -1980,11 +1999,20 @@ error:
             after = temp;
         }
     }
+#else
+    printf("Recovery exiting, upgrade %s\n",
+            (status == INSTALL_SUCCESS) ? "success!" : "failed!");
+#endif
 
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
     bool reboot = false;
 
+    sync();
+
+#ifdef TARGET_SUPPORTS_AB
+    _exit((status == INSTALL_SUCCESS) ? EXIT_SUCCESS : EXIT_FAILURE);
+#else
     switch (after) {
         case Device::SHUTDOWN:
             ui->Print("Shutting down...\n");
@@ -2004,8 +2032,6 @@ error:
             break;
     }
 
-    sync();
-
     if (IS_LE_MODE() && reboot) {
         printf("invoking reboot\n"); fflush(stdout);
         syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
@@ -2016,4 +2042,5 @@ error:
     }
     // Should be unreachable.
     return EXIT_SUCCESS;
+#endif
 }

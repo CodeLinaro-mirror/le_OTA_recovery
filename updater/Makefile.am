@@ -59,3 +59,8 @@ updater_CFLAGS = $(AM_CFLAGS)
 updater_CPPFLAGS = $(AM_CPPFLAGS)
 updater_LDADD = $(requiredlibs)
 endif
+
+if TARGET_SUPPORTS_AB
+updater_CPPFLAGS += -DTARGET_SUPPORTS_AB
+updater_LDADD += -labctl
+endif
