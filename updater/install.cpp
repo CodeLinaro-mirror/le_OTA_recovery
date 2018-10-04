@@ -158,6 +158,10 @@ int parse_fstab(FILE *logfd, char *name, int *alloc) {
             while (num_volumes >= *alloc) {
                 *alloc *= 2;
                 device_volumes = (Volume*) realloc(device_volumes, (*alloc)*sizeof(Volume));
+                if (!device_volumes) {
+                    printf("parse_fstab: realloc() failed, line: %d", __LINE__);
+                    return -1;
+                }
             }
             device_volumes[num_volumes].mount_point = strdup(mount_point);
             device_volumes[num_volumes].fs_type = strdup(fs_type);
@@ -165,7 +169,8 @@ int parse_fstab(FILE *logfd, char *name, int *alloc) {
             device_volumes[num_volumes].length = 0;
             ++num_volumes;
         } else {
-            fprintf(logfd, "ui_print skipping malformed fstab (%s) line: %s\n", name, original);
+            if (original)
+                fprintf(logfd, "ui_print skipping malformed fstab (%s) line: %s\n", name, original);
         }
         free(original);
     }
@@ -182,6 +187,11 @@ void load_volume_table(FILE *logfd) {
         return;
 
     device_volumes = (Volume*) malloc(alloc * sizeof(Volume));
+
+    if (!device_volumes) {
+        printf("load_volume_table: malloc() failed, line: %d", __LINE__);
+        return;
+    }
 
     // Insert an entry for /tmp, which is the ramdisk and is always mounted.
     if (asprintf(&device_volumes[0].mount_point, "/tmp") == -1)
