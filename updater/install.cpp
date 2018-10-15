@@ -149,10 +149,11 @@ int parse_fstab(FILE *logfd, char *name, int *alloc) {
         if (buffer[i] == '\0' || buffer[i] == '#') continue;
 
         char* original = strdup(buffer);
+        char* saveptr = NULL; // to be passed to strtok_r()
 
-        char* device = strtok(buffer+i, " \t\n");
-        char* mount_point = strtok(NULL, " \t\n");
-        char* fs_type = strtok(NULL, " \t\n");
+        char* device = strtok_r(buffer+i, " \t\n", &saveptr);
+        char* mount_point = strtok_r(NULL, " \t\n", &saveptr);
+        char* fs_type = strtok_r(NULL, " \t\n", &saveptr);
 
         if (mount_point && fs_type && device) {
             while (num_volumes >= *alloc) {
