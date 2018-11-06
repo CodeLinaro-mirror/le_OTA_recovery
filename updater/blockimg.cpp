@@ -1390,8 +1390,7 @@ static unsigned int HashString(const char *s) {
 
 static Value* PerformBlockImageUpdate(const char* name, State* state, int /* argc */, Expr* argv[],
         const Command* commands, size_t cmdcount, bool dryrun) {
-    CommandParameters params;
-    memset(&params, 0, sizeof(params));
+    CommandParameters params = {};
     params.canwrite = !dryrun;
 
     fprintf(stderr, "performing %s\n", dryrun ? "verification" : "update");
