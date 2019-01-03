@@ -78,7 +78,7 @@ mtd_scan_partitions()
     ssize_t nbytes;
 
     if (g_mtd_state.partitions == NULL) {
-        const int nump = 32;
+        const int nump = 64;
         MtdPartition *partitions = malloc(nump * sizeof(*partitions));
         if (partitions == NULL) {
             errno = ENOMEM;
