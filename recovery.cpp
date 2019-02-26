@@ -505,6 +505,7 @@ static ssize_t __pmsg_write(const char *filename, const char *buf, size_t len) {
     return __android_log_pmsg_file_write(LOG_ID_SYSTEM, ANDROID_LOG_INFO,
                                         filename, buf, len);
 #endif
+    return 0;
 }
 
 static void copy_log_file_to_pmsg(const char* source, const char* destination) {

@@ -90,6 +90,7 @@ GRSurface* ScreenRecoveryUI::GetCurrentFrame() {
 }
 
 GRSurface* ScreenRecoveryUI::GetCurrentText() {
+#ifndef USE_LE_MODE
     switch (currentIcon) {
         case ERASING: return erasing_text;
         case ERROR: return error_text;
@@ -97,6 +98,8 @@ GRSurface* ScreenRecoveryUI::GetCurrentText() {
         case NO_COMMAND: return no_command_text;
         case NONE: abort();
     }
+#endif
+    return nullptr;
 }
 
 int ScreenRecoveryUI::PixelsFromDp(int dp) {
@@ -132,6 +135,7 @@ int ScreenRecoveryUI::GetAnimationBaseline() {
     return GetTextBaseline() - PixelsFromDp(kLayouts[layout_][ICON]) -
             gr_get_height(loopFrames[0]);
 #endif
+    return 0;
 }
 
 int ScreenRecoveryUI::GetTextBaseline() {
@@ -139,6 +143,7 @@ int ScreenRecoveryUI::GetTextBaseline() {
     return GetProgressBaseline() - PixelsFromDp(kLayouts[layout_][TEXT]) -
             gr_get_height(installing_text);
 #endif
+    return 0;
 }
 
 int ScreenRecoveryUI::GetProgressBaseline() {
@@ -146,6 +151,7 @@ int ScreenRecoveryUI::GetProgressBaseline() {
     return gr_fb_height() - PixelsFromDp(kLayouts[layout_][PROGRESS]) -
             gr_get_height(progressBarFill);
 #endif
+    return 0;
 }
 
 // Clear the screen and draw the currently selected background icon (if any).
@@ -843,6 +849,7 @@ int ScreenRecoveryUI::SelectMenu(int sel) {
     pthread_mutex_unlock(&updateMutex);
     return sel;
 #endif
+    return 0;
 }
 
 void ScreenRecoveryUI::EndMenu() {

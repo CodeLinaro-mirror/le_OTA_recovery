@@ -70,6 +70,7 @@ int RecoveryUI::InputCallback(int fd, uint32_t epevents, void* data) {
 #ifndef USE_LE_MODE
     return reinterpret_cast<RecoveryUI*>(data)->OnInputEvent(fd, epevents);
 #endif
+    return 0;
 }
 
 // Reads input events, handles special hot keys, and adds to the key queue.
@@ -82,6 +83,7 @@ static void* InputThreadLoop(void*) {
     }
     return nullptr;
 #endif
+    return 0;
 }
 
 void RecoveryUI::Init() {
