@@ -553,6 +553,14 @@ static void rotate_logs(int max) {
     ensure_path_mounted(LAST_LOG_FILE);
     ensure_path_mounted(LAST_KMSG_FILE);
 
+    // MTD devices usually are low on free-space in cache, so cap the
+    // max number of logs retained (from previous iterations) to 1.
+    Volume* v = volume_for_path("/cache");
+    // cache on nand usually has ubifs filesystem
+    if (v != nullptr && strcmp(v->fs_type, "ubifs") == 0) {
+        max = 1;
+    }
+
     for (int i = max-1; i >= 0; --i) {
         std::string old_log = android::base::StringPrintf("%s", LAST_LOG_FILE);
         if (i > 0) {
