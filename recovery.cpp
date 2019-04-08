@@ -505,6 +505,7 @@ static ssize_t __pmsg_write(const char *filename, const char *buf, size_t len) {
     return __android_log_pmsg_file_write(LOG_ID_SYSTEM, ANDROID_LOG_INFO,
                                         filename, buf, len);
 #endif
+    return 0;
 }
 
 static void copy_log_file_to_pmsg(const char* source, const char* destination) {
@@ -552,6 +553,14 @@ static void rotate_logs(int max) {
     rotated = true;
     ensure_path_mounted(LAST_LOG_FILE);
     ensure_path_mounted(LAST_KMSG_FILE);
+
+    // MTD devices usually are low on free-space in cache, so cap the
+    // max number of logs retained (from previous iterations) to 1.
+    Volume* v = volume_for_path("/cache");
+    // cache on nand usually has ubifs filesystem
+    if (v != nullptr && strcmp(v->fs_type, "ubifs") == 0) {
+        max = 1;
+    }
 
     for (int i = max-1; i >= 0; --i) {
         std::string old_log = android::base::StringPrintf("%s", LAST_LOG_FILE);
