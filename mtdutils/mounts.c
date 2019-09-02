@@ -62,9 +62,10 @@ scan_mounted_volumes()
 {
     FILE* fp;
     struct mntent* mentry;
+    const int numv = 128;
+    int i;
 
     if (g_mounts_state.volumes == NULL) {
-        const int numv = 64;
         MountedVolume *volumes = malloc(numv * sizeof(*volumes));
         if (volumes == NULL) {
             errno = ENOMEM;
@@ -76,7 +77,6 @@ scan_mounted_volumes()
     } else {
         /* Free the old volume strings.
          */
-        int i;
         for (i = 0; i < g_mounts_state.volume_count; i++) {
             free_volume_internals(&g_mounts_state.volumes[i], 1);
         }
@@ -88,7 +88,7 @@ scan_mounted_volumes()
     if (fp == NULL) {
         return -1;
     }
-    while ((mentry = getmntent(fp)) != NULL) {
+    while ((mentry = getmntent(fp)) != NULL && g_mounts_state.volume_count < numv) {
         MountedVolume* v = &g_mounts_state.volumes[g_mounts_state.volume_count++];
         v->device = strdup(mentry->mnt_fsname);
         v->mount_point = strdup(mentry->mnt_dir);
@@ -96,6 +96,14 @@ scan_mounted_volumes()
         v->flags = strdup(mentry->mnt_opts);
     }
     endmntent(fp);
+
+    if (mentry != NULL && g_mounts_state.volume_count >= numv ) {
+        /* Error: allocated mem insufficient */
+        for (i = 0; i < g_mounts_state.volume_count; i++) {
+            free_volume_internals(&g_mounts_state.volumes[i], 1);
+        }
+        return -1;
+    }
     return 0;
 }
 
