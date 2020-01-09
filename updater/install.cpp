@@ -82,6 +82,8 @@ extern "C" {    // Use till system/core is updated
 
 #define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
 #define BLOCKSIZE 4096*1024
+#define BOOT_NAME_LENGTH 7
+#define ROOTFS_NAME_LENGTH 10
 #endif
 
 static int num_volumes = 0;
@@ -1435,6 +1437,13 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     mtd_scan_partitions();
+#ifdef TARGET_SUPPORTS_AB
+    if (strncmp(partition, "boot", strlen(partition)) == 0) {
+        char buf[BOOT_NAME_LENGTH];
+        snprintf(buf, BOOT_NAME_LENGTH, "%s%s", partition, slot_suffix_arr[inactive_slot]);
+        partition = strdup(buf);
+    }
+#endif
     const MtdPartition* mtd;
     mtd = mtd_find_partition_by_name(partition);
     if (mtd == NULL) {
@@ -2326,6 +2335,161 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     return StringValue(strdup(""));
 }
 
+Value* scanMtdPartitions(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+    int result = mtd_scan_partitions();
+    if (result <= 0) {
+        printf("error scanning mtd partitions");
+        return StringValue(strdup(""));
+    }
+    printf("scannig of mtd partitions done\n");
+    return StringValue(strdup("success"));
+}
+
+static char* getMtdBlock(const char* rootfs_volume) {
+    const MtdPartition* mtd = mtd_find_partition_by_name(rootfs_volume);
+    if (mtd == NULL) {
+        printf("no mtd partition named \"%s\"\n", rootfs_volume);
+        return strdup("");
+    }
+    char mtd_devname[PATH_MAX];
+    snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+    return strdup(mtd_devname);
+}
+
+Value* copyActiveRootfsToInactiveRootfs(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+    char inactive_rootfs_volume[ROOTFS_NAME_LENGTH];
+    snprintf(inactive_rootfs_volume, ROOTFS_NAME_LENGTH, "%s%s", "rootfs",
+            slot_suffix_arr[inactive_slot]);
+    char *inactive_mtd_block = getMtdBlock(inactive_rootfs_volume);
+    char active_rootfs_volume[ROOTFS_NAME_LENGTH];
+    snprintf(active_rootfs_volume, ROOTFS_NAME_LENGTH, "%s%s", "rootfs",
+            slot_suffix_arr[boot_slot]);
+    printf("copying %s to %s\n", active_rootfs_volume, inactive_rootfs_volume);
+    char *active_mtd_block = getMtdBlock(active_rootfs_volume);
+    char in_file[PATH_MAX], out_file[PATH_MAX];
+    snprintf(in_file, PATH_MAX, "%s%s", "if=", active_mtd_block);
+    printf("Active rootfs mtd block: %s\n", in_file);
+    snprintf(out_file, PATH_MAX, "%s%s", "of=", inactive_mtd_block);
+    printf("Inactive rootfs mtd block: %s\n", out_file);
+    char *args[] = {"dd", in_file, out_file, 0};
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+    if (exec_command(ui->cmd_pipe, "/bin/dd", args) != 0) {
+        fprintf(stderr, "can not copy rootfs");
+        fprintf(ui->cmd_pipe, "can not copy rootfs");
+        return StringValue(strdup(""));
+    }
+    printf("copying of active rootfs to inactive rootfs done\n");
+    return StringValue(strdup("success"));
+}
+
+Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+    char inactive_boot_partition[BOOT_NAME_LENGTH];
+    snprintf(inactive_boot_partition, BOOT_NAME_LENGTH, "%s%s", "boot",
+            slot_suffix_arr[inactive_slot]);
+    char *inactive_boot_mtd_block = getMtdBlock(inactive_boot_partition);
+    char active_boot_partition[BOOT_NAME_LENGTH];
+    snprintf(active_boot_partition, BOOT_NAME_LENGTH, "%s%s", "boot",
+            slot_suffix_arr[boot_slot]);
+    printf("copying %s to %s\n", active_boot_partition, inactive_boot_partition);
+    char *active_boot_mtd_block = getMtdBlock(active_boot_partition);
+    char in_file[PATH_MAX], out_file[PATH_MAX];
+    snprintf(in_file, PATH_MAX, "%s%s", "active boot=", active_boot_mtd_block);
+    printf("Active boot mtd block: %s\n", in_file);
+    snprintf(out_file, PATH_MAX, "%s%s", "inactive boot=", inactive_boot_mtd_block);
+    printf("Inactive boot mtd block: %s\n", out_file);
+
+    const MtdPartition* mtd;
+    char* result = NULL;
+    mtd = mtd_find_partition_by_name(inactive_boot_partition);
+    if (mtd == NULL) {
+        printf("no mtd partition named \"%s\"\n", inactive_boot_partition);
+        return StringValue(strdup(""));
+    }
+
+    MtdWriteContext* ctx;
+    ctx = mtd_write_partition(mtd);
+    if (ctx == NULL) {
+        printf("can't write mtd partition \"%s\"\n", inactive_boot_partition);
+        return StringValue(strdup(""));
+    }
+
+    bool success;
+    char* filename = active_boot_mtd_block;
+    FILE* f = ota_fopen(filename, "rb");
+    if (f == NULL) {
+        printf("%s: can't open %s: %s\n", name, filename, strerror(errno));
+        return StringValue(strdup(""));
+    }
+
+    success = true;
+    char* buffer = reinterpret_cast<char*>(malloc(BUFSIZ));
+    int read;
+    while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
+        int wrote = mtd_write_data(ctx, buffer, read);
+        success = success && (wrote == read);
+    }
+    free(buffer);
+    ota_fclose(f);
+
+    if (!success) {
+        printf("mtd_write_data to %s failed: %s\n",
+                inactive_boot_partition, strerror(errno));
+    }
+    if (mtd_erase_blocks(ctx, -1) == -1) {
+        printf("error erasing blocks of %s\n", inactive_boot_partition);
+    }
+    if (mtd_write_close(ctx) != 0) {
+        printf("error closing write of %s\n", inactive_boot_partition);
+    }
+
+    printf("%s %s partition\n",
+           success ? "wrote" : "failed to write", inactive_boot_partition);
+    result = success ? strdup("success") : strdup("");
+    return StringValue(result);
+}
+
+Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+    char inactive_nonhlos_volume[PATH_MAX];
+    snprintf(inactive_nonhlos_volume, PATH_MAX, "%s%s", "nonhlos-fs",
+            slot_suffix_arr[inactive_slot]);
+    char *inactive_mtd_block = getMtdBlock(inactive_nonhlos_volume);
+    char active_nonhlos_volume[PATH_MAX];
+    snprintf(active_nonhlos_volume, PATH_MAX, "%s%s", "nonhlos-fs",
+            slot_suffix_arr[boot_slot]);
+    printf("copying %s to %s\n", active_nonhlos_volume, inactive_nonhlos_volume);
+    char *active_mtd_block = getMtdBlock(active_nonhlos_volume);
+    char in_file[PATH_MAX], out_file[PATH_MAX];
+    snprintf(in_file, PATH_MAX, "%s%s", "if=", active_mtd_block);
+    printf("Active nonhlos mtd block: %s\n", in_file);
+    snprintf(out_file, PATH_MAX, "%s%s", "of=", inactive_mtd_block);
+    printf("Inactive nonhlos mtd block: %s\n", out_file);
+    char *args[] = {"dd", in_file, out_file, 0};
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+    if (exec_command(ui->cmd_pipe, "/bin/dd", args) != 0) {
+        fprintf(stderr, "can not copy NonHlos");
+        fprintf(ui->cmd_pipe, "can not copy NonHlos");
+        return StringValue(strdup(""));
+    }
+    printf("copying of active NonHlos to inactive NonHlos done\n");
+    return StringValue(strdup("success"));
+}
+
 Value* SetInactiveAsUnbootableFn(const char* name, State* state,
         int argc, Expr* argv[]) {
     if (argc != 0) {
@@ -2446,5 +2610,9 @@ void RegisterInstallFunctions() {
     RegisterFunction("block_device_check", BlockDeviceCheckFn);
     RegisterFunction("set_inactive_slot_as_unbootable", SetInactiveAsUnbootableFn);
     RegisterFunction("set_inactive_slot_as_active", SetInactiveSlotAsActiveFn);
+    RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
+    RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);
+    RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
+    RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
 #endif
 }
