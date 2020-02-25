@@ -762,6 +762,18 @@ Value* PackageExtractDirFn(const char* name, State* state,
     return StringValue(strdup(success ? "t" : ""));
 }
 
+#ifdef TARGET_SUPPORTS_AB
+static char* getMtdBlock(const char* rootfs_volume) {
+    const MtdPartition* mtd = mtd_find_partition_by_name(rootfs_volume);
+    if (mtd == NULL) {
+        printf("no mtd partition named \"%s\"\n", rootfs_volume);
+        return strdup("");
+    }
+    char mtd_devname[PATH_MAX];
+    snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+    return strdup(mtd_devname);
+}
+#endif
 
 // package_extract_file(package_path, destination_path)
 //   or
@@ -800,6 +812,20 @@ Value* PackageExtractFileFn(const char* name, State* state,
                 snprintf(buffer, PATH_MAX, "%s%s", dest_path,
                         slot_suffix_arr[inactive_slot]);
                 dest_path = strdup(buffer);
+                if (dest_path == NULL) {
+                    printf("%s: strdup() failure at line %d: %s\n",
+                            name, __LINE__, strerror(errno));
+                    return NULL;
+                }
+                printf("%s: Writing %s to %s\n", name, zip_path, dest_path);
+            } else if (strncmp(dest_path, "modem", strlen("modem")) == 0) {
+                // append the inactive-slot's suffix to the path
+                char buffer[PATH_MAX];
+                snprintf(buffer, PATH_MAX, "%s%s", "nonhlos-fs",
+                        slot_suffix_arr[inactive_slot]);
+                printf("Inactive nonHlos volume: %s\n", buffer);
+                char *inactive_mtd_block = getMtdBlock(buffer);
+                dest_path = strdup(inactive_mtd_block);
                 if (dest_path == NULL) {
                     printf("%s: strdup() failure at line %d: %s\n",
                             name, __LINE__, strerror(errno));
@@ -2334,7 +2360,7 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     printf("%s: The block device SHA1 doesn't match the reference SHA1\n", name);
     return StringValue(strdup(""));
 }
-
+#ifdef TARGET_SUPPORTS_AB
 Value* scanMtdPartitions(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
         return ErrorAbort(state, kArgsParsingFailure,
@@ -2347,17 +2373,6 @@ Value* scanMtdPartitions(const char* name, State* state, int argc, Expr* argv[])
     }
     printf("scannig of mtd partitions done\n");
     return StringValue(strdup("success"));
-}
-
-static char* getMtdBlock(const char* rootfs_volume) {
-    const MtdPartition* mtd = mtd_find_partition_by_name(rootfs_volume);
-    if (mtd == NULL) {
-        printf("no mtd partition named \"%s\"\n", rootfs_volume);
-        return strdup("");
-    }
-    char mtd_devname[PATH_MAX];
-    snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
-    return strdup(mtd_devname);
 }
 
 Value* copyActiveRootfsToInactiveRootfs(const char* name, State* state, int argc, Expr* argv[]) {
@@ -2489,7 +2504,7 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
     printf("copying of active NonHlos to inactive NonHlos done\n");
     return StringValue(strdup("success"));
 }
-
+#endif
 Value* SetInactiveAsUnbootableFn(const char* name, State* state,
         int argc, Expr* argv[]) {
     if (argc != 0) {
