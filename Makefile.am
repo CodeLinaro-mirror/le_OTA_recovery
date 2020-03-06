@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS := -I m4
 
-SUBDIRS := minzip mtdutils edify otafault applypatch updater minadbd bootloader_message
+SUBDIRS := minzip mtdutils edify otafault applypatch updater minadbd bootloader_message otautils
 
 AM_CFLAGS := -Wundef \
              -Wstrict-prototypes \
@@ -80,7 +80,8 @@ requiredlibs := -lm \
                ./minzip/libminzip.la \
                ./applypatch/libapplypatch.la \
                ./otafault/libotafault.la \
-               ./bootloader_message/libbootloader_message.la
+               ./bootloader_message/libbootloader_message.la \
+               ./otautils/libotautils.la
 
 
 RECOVERY_API_VERSION := 3

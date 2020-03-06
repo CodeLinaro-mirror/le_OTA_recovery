@@ -131,6 +131,7 @@ AC_CONFIG_FILES([     \
         minadbd/Makefile \
         otafault/Makefile \
         bootloader_message/Makefile \
+        otautils/Makefile \
         recovery.pc      \
         ])
 AC_OUTPUT
