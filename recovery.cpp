@@ -1743,7 +1743,7 @@ int main(int argc, char **argv) {
 
     // redirect_stdio should be called only in non-sideload mode. Otherwise
     // we may have two logger instances with different timestamps.
-    redirect_stdio(TEMPORARY_LOG_FILE);
+    //redirect_stdio(TEMPORARY_LOG_FILE);
 
     printf("Starting recovery (pid %d) on %s\n", getpid(), ctime(&start));
 
