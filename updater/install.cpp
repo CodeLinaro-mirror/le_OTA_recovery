@@ -46,6 +46,7 @@
 #include "bootloader.h"
 #include "applypatch/applypatch.h"
 #include "cutils/android_reboot.h"
+#include "cutils/memory.h"
 #include "cutils/misc.h"
 #include "cutils/properties.h"
 #include "edify/expr.h"
@@ -82,6 +83,7 @@ extern "C" {    // Use till system/core is updated
 
 #define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
 #define BLOCKSIZE 4096*1024
+#define GLD_SLOT_SUFFIX "_g"
 #endif
 
 static int num_volumes = 0;
@@ -2247,6 +2249,120 @@ Value* CopyABPartitionsFn(const char* name, State* state,
     return StringValue(strdup("success"));
 }
 
+/* Copies blocks from golden slot of all **A/B**
+   partitions to their respective inactive slots.
+   Takes as argument a comma-separated list of partitions
+   that need to be **excluded** from being copied.
+   If no argument is supplied, **all** AB partitions
+   are copied from golden to inactive slots */
+Value* CopyGoldenPartitionsFn(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    if (argc > 1) {
+        // Only expect a max of single argument with space-separated list of partitions.
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects <=1 arg, got %d", name, argc);
+    }
+
+    char *exclude_arg;
+    char *saveptr = NULL;
+    bool exclude_from_copy = false;
+    int exclude_length = 0;
+    char partitions_to_exclude[20][PATH_MAX];
+
+    if (argc == 1) {
+        if (ReadArgs(state, argv, 1, &exclude_arg) < 0) {
+            return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+        }
+        char *p = strtok_r (exclude_arg, ",", &saveptr);
+        while (p != NULL) {
+            // append the boot/active slot to the name and then save it
+            char buffer[PATH_MAX];
+            snprintf(partitions_to_exclude[exclude_length], PATH_MAX, "%s%s",
+                    p, GLD_SLOT_SUFFIX);
+            printf("%s: Excluding partition \"%s\" from being copied\n", name, p);
+            exclude_length ++;
+            p = strtok_r (NULL, ",", &saveptr);
+        }
+        if (exclude_length > 0)
+            exclude_from_copy = true; // we have partitions that need not be copied
+    }
+
+    /* iterate through A/B partitions */
+
+    // open the dir first
+    DIR *dir = opendir(BOOTDEVICE_DIR);
+    if (dir == NULL) {
+        return ErrorAbort(state, kFileOpenFailure,
+                "opendir(%s) failed, aborting!", BOOTDEVICE_DIR);
+    }
+
+    while (1) {
+        struct dirent *de = readdir(dir);
+        char golden_block_dev_filename[PATH_MAX];
+        char inactive_block_dev_filename[PATH_MAX];
+        if (de != NULL) {
+            if (de->d_name[0] == '.') {
+                continue;
+            }
+            snprintf(golden_block_dev_filename, PATH_MAX, "%s/%s",
+                    BOOTDEVICE_DIR, de->d_name);
+            // printf("Checking whether %s needs to be copied..\n", golden_block_dev_filename);
+
+            // stat to check if this is a block-device file
+            // copy should be done only on block-devices
+            struct stat st;
+            stat(golden_block_dev_filename, &st);
+
+            if (!S_ISBLK(st.st_mode))
+                continue;
+
+            // if the filename doesn't have the boot/active slot
+            // as the last 2 chars, ignore copy operation
+            const char *suffix = &((de->d_name)[strlen(de->d_name)-2]);
+            if (strncmp(suffix, GLD_SLOT_SUFFIX, 2))
+                continue;
+
+            if (exclude_from_copy) {
+                // there are some partitions that need not be copied.
+                // check if the current entry is one of them
+                bool match_found = false;
+                for (int i = 0; i < exclude_length; i++) {
+                    int maxlen = strlen(partitions_to_exclude[i]);
+                    // printf("Matching %s against %s\n", de->d_name, partitions_to_exclude[i]);
+                    if (strcmp(de->d_name, partitions_to_exclude[i]) == 0) {
+                        match_found = true;
+                        break;
+                    }
+                }
+                if (match_found)
+                    continue; // ignore copy operation
+            }
+            snprintf(inactive_block_dev_filename, PATH_MAX, "%s/%s",
+                    BOOTDEVICE_DIR, de->d_name);
+            char *p = strstr(inactive_block_dev_filename,
+                              GLD_SLOT_SUFFIX);
+            // p shouldn't be null as we already checked for the suffix earlier
+            strlcpy(p,  slot_suffix_arr[inactive_slot], 3); // replace the slot
+
+            /* Perform the actual copy */
+            printf("%s: Copying from %s to %s\n", name, golden_block_dev_filename,
+                    inactive_block_dev_filename);
+            bool ret = PerformBlockCopyOperation(golden_block_dev_filename,
+                    inactive_block_dev_filename);
+            if (!ret) {
+                printf("%s: PerformBlockCopyOperation failed for %s\n", name,
+                        golden_block_dev_filename);
+                // Abort
+                return StringValue(strdup(""));
+            }
+        } else {
+            break;
+        }
+    }
+    return StringValue(strdup("success"));
+}
+
 /* Calculates SHA1 hash of contents of a  block-device
    and compares against a reference.
    Takes 3 arguments: the block-device name,
@@ -2443,6 +2559,7 @@ void RegisterInstallFunctions() {
     RegisterFunction("write_copy_done_cookie", CreateFileFn);
     RegisterFunction("delete_copy_done_cookie", DeleteFn);
     RegisterFunction("copy_all_source_partitions_except", CopyABPartitionsFn);
+    RegisterFunction("copy_all_golden_partitions", CopyGoldenPartitionsFn);
     RegisterFunction("block_device_check", BlockDeviceCheckFn);
     RegisterFunction("set_inactive_slot_as_unbootable", SetInactiveAsUnbootableFn);
     RegisterFunction("set_inactive_slot_as_active", SetInactiveSlotAsActiveFn);
