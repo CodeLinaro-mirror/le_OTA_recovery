@@ -84,6 +84,8 @@ extern "C" {    // Use till system/core is updated
 #define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
 #define BLOCKSIZE 4096*1024
 #define GLD_SLOT_SUFFIX "_g"
+#define TRY_UMOUNT_MAX 6
+#define DATADEVPATH "/dev/block/bootdevice/by-name/userdata"
 #endif
 
 static int num_volumes = 0;
@@ -2363,6 +2365,83 @@ Value* CopyGoldenPartitionsFn(const char* name, State* state,
     return StringValue(strdup("success"));
 }
 
+/* erase_partition(mount_point):
+ *
+ * Erase user data partition, take one argument: mount point.
+ * Firstly, check if data is mounted, if yes, umount it.Then
+ * call wipe_block_device(...) to erase data on partition.
+ * After erase, format operation is needed to ensure data partition
+ * will be mounted after reboot.
+ */
+Value* ErasePartitionFn(const char* name, State* state, int argc, Expr* argv[]) {
+    char* result = NULL;
+    if (argc != 1) {
+        return ErrorAbort(state, kArgsParsingFailure, "%s() expects 1 args, got %d", name, argc);
+    }
+
+    char* mount_point;
+    if (ReadArgs(state, argv, 1, &mount_point) < 0) {
+        return NULL;
+    }
+    if (strlen(mount_point) == 0) {
+        ErrorAbort(state, kArgsParsingFailure, "mount_point argument to unmount() can't be empty");
+        return NULL;
+    }
+    if (strcmp(mount_point, "/data") != 0) {
+        ErrorAbort(state, kArgsParsingFailure, "mount_point %s not supported except /data", mount_point);
+        return NULL;
+    }
+
+    scan_mounted_volumes();
+    {
+        const MountedVolume* vol = find_mounted_volume_by_mount_point(mount_point);
+        if (vol == NULL) {
+            result = strdup("");
+        } else {
+            int ret = unmount_mounted_volume(vol);
+            int try_umount_cnt = 1;
+            while (ret != 0) {
+                uiPrintf(state, "unmount of %s failed (%d): %s\n",
+                        mount_point, ret, strerror(errno));
+                char *argv[] = {"fuser", "-ck", mount_point, 0};
+                int status = exec_cmd("/usr/sbin/fuser", argv);
+                printf("%s: fuser -ck /data/, return: %d\n", name, status);
+                ret = unmount_mounted_volume(vol);
+                try_umount_cnt++;
+                printf("%s: Try unmount again, return: %d, retry count: %d,\n", name, ret, try_umount_cnt);
+                if (ret == 0) {
+                    printf("%s: Unmount %s successfully now!\n", name, mount_point);
+                    break;
+                }
+
+                if (try_umount_cnt > TRY_UMOUNT_MAX) {
+                    printf("%s: Try unmount of %s failed, erase data abort!\n", name, mount_point);
+                    return StringValue(strdup(""));
+                }
+            }
+            result = mount_point;
+        }
+    }
+
+    // data partition is ready to erase here...
+    int fd = ota_open(DATADEVPATH, O_WRONLY, 0644);
+    if(fd < 0) {
+        printf("failed to open device for erase operation!\n");
+        return StringValue(strdup(""));
+    }
+
+    printf("%s: Data partition size:  %lld bytes\n", name, get_file_size(fd));
+    //success: 0, fail: 1
+    int success = wipe_block_device(fd, get_file_size(fd));
+    result = strdup(success ? "" : "t");
+
+    ota_close(fd);
+
+done:
+    if (result != mount_point) free(mount_point);
+    return StringValue(result);
+}
+
 /* Calculates SHA1 hash of contents of a  block-device
    and compares against a reference.
    Takes 3 arguments: the block-device name,
@@ -2560,6 +2639,7 @@ void RegisterInstallFunctions() {
     RegisterFunction("delete_copy_done_cookie", DeleteFn);
     RegisterFunction("copy_all_source_partitions_except", CopyABPartitionsFn);
     RegisterFunction("copy_all_golden_partitions", CopyGoldenPartitionsFn);
+    RegisterFunction("erase_partition", ErasePartitionFn);
     RegisterFunction("block_device_check", BlockDeviceCheckFn);
     RegisterFunction("set_inactive_slot_as_unbootable", SetInactiveAsUnbootableFn);
     RegisterFunction("set_inactive_slot_as_active", SetInactiveSlotAsActiveFn);
