@@ -55,6 +55,13 @@
 extern RecoveryUI* ui;
 
 #define ASSUMED_UPDATE_BINARY_NAME  "META-INF/com/google/android/update-binary"
+#ifdef TARGET_SUPPORTS_OTA_VERIFICATION
+#define SIGNATURE_FILE_NAME  "update.sig"
+#define SIGNATURE_FILE  "/tmp/update.sig"
+#define CMD_BUFFER_SIZE 256
+#define OTA_VERIFICATION_SUCCESS "Verified OK"
+#define PUBLIC_KEY "/res/public.pem"
+#endif //TARGET_SUPPORTS_OTA_VERIFICATION
 static constexpr const char* AB_OTA_PAYLOAD_PROPERTIES = "payload_properties.txt";
 static constexpr const char* AB_OTA_PAYLOAD = "payload.bin";
 #define PUBLIC_KEYS_FILE "/res/keys"
@@ -552,25 +559,24 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
         return INSTALL_CORRUPT;
     }
 
-#ifndef USE_LE_MODE
-    // Verify package.
-    if (!verify_package(map.addr, map.length)) {
-        log_buffer.push_back(android::base::StringPrintf("error: %d", kZipVerificationFailure));
-        sysReleaseMap(&map);
-        return INSTALL_CORRUPT;
-    }
-#endif
-
     // Try to open the package.
     ZipArchive zip;
     int err = mzOpenZipArchive(map.addr, map.length, &zip);
     if (err != 0) {
         LOGE("Can't open %s\n(%s)\n", path, err != -1 ? strerror(err) : "bad");
         log_buffer.push_back(android::base::StringPrintf("error: %d", kZipOpenFailure));
-
         sysReleaseMap(&map);
         return INSTALL_CORRUPT;
     }
+
+#ifdef TARGET_SUPPORTS_OTA_VERIFICATION
+    // Verify package.
+    if (!verify_ota_package(path, &zip)) {
+        log_buffer.push_back(android::base::StringPrintf("error: %d", kZipVerificationFailure));
+        sysReleaseMap(&map);
+        return INSTALL_CORRUPT;
+    }
+#endif
 
     // Verify and install the contents of the package.
     ui->Print("Installing update...\n");
@@ -696,3 +702,58 @@ bool verify_package(const unsigned char* package_data, size_t package_size) {
     return false;
 #endif
 }
+
+#ifdef TARGET_SUPPORTS_OTA_VERIFICATION
+bool verify_ota_package(const char* path, ZipArchive *zip) {
+
+    bool result = false;
+
+    //Extract signature file from the zip
+    const ZipEntry* sig_entry =
+            mzFindZipEntry(zip, SIGNATURE_FILE_NAME);
+    if (sig_entry == NULL) {
+        LOGE("can't find %s\n", sig_entry);
+        return result;
+    }
+    const char* sig_file = SIGNATURE_FILE;
+    unlink(sig_file);
+    int fd = creat(sig_file, 0644);
+    if (fd < 0) {
+        LOGE("Can't make %s\n", sig_file);
+        return result;
+    }
+    bool ok = mzExtractZipEntryToFile(zip, sig_entry, fd);
+    close(fd);
+    if (!ok) {
+        LOGE("Can't extract %s from zip\n", SIGNATURE_FILE_NAME);
+        return result;
+    }
+
+    //Verify the signature
+    FILE *fp;
+    char cmd_buf[CMD_BUFFER_SIZE] = { 0 };
+
+    snprintf(cmd_buf, sizeof(cmd_buf), "unzip -p %s -x %s | openssl dgst -sha256 -verify %s -signature %s 2>&1", path, SIGNATURE_FILE_NAME, PUBLIC_KEY, SIGNATURE_FILE);
+    fp = popen(cmd_buf, "r");
+    if(!fp) {
+        LOGE("Can't run openssl command\n");
+        return false;
+    }
+    char buf[CMD_BUFFER_SIZE] = { 0 };
+    std::string openssl_result = "";
+    while (fgets(buf, sizeof(buf), fp) != NULL) {
+        openssl_result += buf;
+    }
+    LOGI("openssl command result = %s", openssl_result.c_str());
+    if (!strncmp(openssl_result.c_str(), OTA_VERIFICATION_SUCCESS, strlen(OTA_VERIFICATION_SUCCESS))) {
+        result = true;
+        LOGI("OTA package verification successful\n");
+    } else {
+        LOGI("OTA package verification failed\n");
+    }
+    pclose(fp);
+    unlink(sig_file);
+
+    return result;
+}
+#endif //TARGET_SUPPORTS_OTA_VERIFICATION
