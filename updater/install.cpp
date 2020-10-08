@@ -82,8 +82,10 @@ extern "C" {    // Use till system/core is updated
 
 #define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
 #define BLOCKSIZE 4096*1024
+#ifdef TARGET_NAND_AB_BOOT
 #define BOOT_NAME_LENGTH 7
 #define ROOTFS_NAME_LENGTH 10
+#endif
 #endif
 
 static int num_volumes = 0;
@@ -1438,11 +1440,13 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     mtd_scan_partitions();
 #ifdef TARGET_SUPPORTS_AB
+#ifdef TARGET_NAND_AB_BOOT
     if (strncmp(partition, "boot", strlen(partition)) == 0) {
         char buf[BOOT_NAME_LENGTH];
         snprintf(buf, BOOT_NAME_LENGTH, "%s%s", partition, slot_suffix_arr[inactive_slot]);
         partition = strdup(buf);
     }
+#endif
 #endif
     const MtdPartition* mtd;
     mtd = mtd_find_partition_by_name(partition);
@@ -2334,7 +2338,7 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     printf("%s: The block device SHA1 doesn't match the reference SHA1\n", name);
     return StringValue(strdup(""));
 }
-
+#ifdef TARGET_NAND_AB_BOOT
 Value* scanMtdPartitions(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
         return ErrorAbort(state, kArgsParsingFailure,
@@ -2489,7 +2493,7 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
     printf("copying of active NonHlos to inactive NonHlos done\n");
     return StringValue(strdup("success"));
 }
-
+#endif
 Value* SetInactiveAsUnbootableFn(const char* name, State* state,
         int argc, Expr* argv[]) {
     if (argc != 0) {
@@ -2610,9 +2614,11 @@ void RegisterInstallFunctions() {
     RegisterFunction("block_device_check", BlockDeviceCheckFn);
     RegisterFunction("set_inactive_slot_as_unbootable", SetInactiveAsUnbootableFn);
     RegisterFunction("set_inactive_slot_as_active", SetInactiveSlotAsActiveFn);
+#ifdef TARGET_NAND_AB_BOOT
     RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
     RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);
     RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
     RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
+#endif
 #endif
 }
