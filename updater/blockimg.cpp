@@ -58,13 +58,10 @@
 
 #ifdef TARGET_SUPPORTS_AB
 #include <libabctl.h>
+#ifdef TARGET_NAND_AB_BOOT
 #include "mtdutils/mtdutils.h"
-#define TYPE_ERROR   -1
-#define TYPE_EMMC    0
-#define TYPE_UFS     1
-#define TYPE_MTD     2
+#endif
 #define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
-int get_boot_dev_type();
 #endif
 
 #define BLOCKSIZE 4096
@@ -1390,6 +1387,7 @@ static unsigned int HashString(const char *s) {
 }
 
 #ifdef TARGET_SUPPORTS_AB
+#ifdef TARGET_NAND_AB_BOOT
 static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     int len = strlen(SYSTEM_PATH);
     if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
@@ -1408,6 +1406,7 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     }
     return strdup("");
 }
+#endif
 #endif
 
 // args:
@@ -1464,16 +1463,14 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
 #ifdef TARGET_SUPPORTS_AB
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
-    int boot_device_type = get_boot_dev_type();
-    printf("boot device type: %d\n", boot_device_type);
-    if ( TYPE_MTD == boot_device_type ) {
-        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
-    } else {
-        char buf[PATH_MAX];
-        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-                slot_suffix_arr[inactive_slot]);
-        blockdev_filename->data = strdup(buf);
-    }
+#ifdef TARGET_NAND_AB_BOOT
+    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#else
+    char buf[PATH_MAX];
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+            slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
+#endif
     printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
             blockdev_filename->data);
 #endif
@@ -1794,16 +1791,14 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
 #ifdef TARGET_SUPPORTS_AB
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
-    int boot_device_type = get_boot_dev_type();
-    printf("boot device type: %d\n", boot_device_type);
-    if ( TYPE_MTD == boot_device_type ) {
-        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
-    } else {
-        char buf[PATH_MAX];
-        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-                slot_suffix_arr[inactive_slot]);
-        blockdev_filename->data = strdup(buf);
-    }
+#ifdef TARGET_NAND_AB_BOOT
+    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#else
+    char buf[PATH_MAX];
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+            slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
+#endif
     printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
             blockdev_filename->data);
 #endif
