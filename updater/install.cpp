@@ -1441,10 +1441,13 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
     mtd_scan_partitions();
 #ifdef TARGET_SUPPORTS_AB
 #ifdef TARGET_NAND_AB_BOOT
-    if (strncmp(partition, "boot", strlen(partition)) == 0) {
-        char buf[BOOT_NAME_LENGTH];
-        snprintf(buf, BOOT_NAME_LENGTH, "%s%s", partition, slot_suffix_arr[inactive_slot]);
-        partition = strdup(buf);
+    char buffer[PATH_MAX];
+    memset(buffer, 0, PATH_MAX);
+    snprintf(buffer, PATH_MAX, "%s%s", partition, slot_suffix_arr[inactive_slot]);
+    partition = strdup(buffer);
+    if (partition == NULL) {
+        ErrorAbort(state, kArgsParsingFailure, "%s: strdup() failure at line %d: %s\n", name, __LINE__, strerror(errno));
+        goto done;
     }
 #endif
 #endif
