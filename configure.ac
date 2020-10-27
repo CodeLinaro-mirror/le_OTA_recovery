@@ -117,6 +117,9 @@ AM_CONDITIONAL([TARGET_SUPPORTS_AB],[test x$TARGET_SUPPORTS_AB = xtrue])
 # Compile ota package verification code for targets supporting it
 AM_CONDITIONAL([TARGET_SUPPORTS_OTA_VERIFICATION],[test x$TARGET_SUPPORTS_OTA_VERIFICATION = xtrue])
 
+# Compile nand ab ota code for targets supporting it
+AM_CONDITIONAL([TARGET_NAND_AB_BOOT],[test x$TARGET_NAND_AB_BOOT = xtrue])
+
 AC_ARG_WITH([core-headers],
       AC_HELP_STRING([--with-core-headers=@<:@dir@:>@],
          [Specify the location of the system core headers]),
