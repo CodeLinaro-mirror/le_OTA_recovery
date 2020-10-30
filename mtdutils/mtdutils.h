@@ -23,6 +23,13 @@
 extern "C" {
 #endif
 
+struct MtdPartition {
+    int device_index;
+    unsigned int size;
+    unsigned int erase_size;
+    char *name;
+};
+
 typedef struct MtdPartition MtdPartition;
 
 int mtd_scan_partitions(void);
