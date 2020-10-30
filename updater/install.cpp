@@ -83,6 +83,7 @@ extern "C" {    // Use till system/core is updated
 
 #ifdef TARGET_SUPPORTS_AB
 #include <libabctl.h>
+#include <libabctl.h>
 #include <errno.h>
 #include <dirent.h>
 #include "print_sha1.h"
@@ -92,9 +93,6 @@ extern "C" {    // Use till system/core is updated
 #ifdef TARGET_NAND_BOOT
 #define BOOT_NAME_LENGTH 7
 #define ROOTFS_NAME_LENGTH 10
-#endif
-#ifdef TARGET_NAD_PROD
-#define RAW_PART_LENGTH 20
 #endif
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
@@ -2645,24 +2643,58 @@ Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv
     return StringValue(strdup("success"));
 }
 
-Value* copyAllRawPartitionsSrcToDestn(const char* name, State* state, int argc, Expr* argv[]) {
+Value* copyActiveVolumeToInactiveVolume(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 1) {
         return ErrorAbort(state, kArgsParsingFailure,
                 "%s() expects one args, got %d", name, argc);
     }
-
-    char* src_slot_str;
-    if (ReadArgs(state, argv, 1, &src_slot_str) < 0) {
-        return NULL;
+    int err = isEightPlusEightConfig();
+    if(err == -1){
+        printf(" error accessing ubi sysnode  \n");
+        return StringValue(strdup(""));
+    } else if (err == 1) {
+        printf(" copying volume\n");
+    } else {
+        printf(" skip copying \n");
+        return StringValue(strdup("success"));
     }
+    char *volume_name;
+    if (ReadArgs(state, argv, 1, &volume_name) < 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+    }
+    printf("volume name  \"%s\"\n", volume_name);
+    char inactive_volume[VOLUME_NAME_LENGTH];
+    char active_volume[VOLUME_NAME_LENGTH];
+    snprintf(inactive_volume, strlen(volume_name) + 3, "%s%s", volume_name,
+            slot_suffix_arr[inactive_slot]);
+    snprintf(active_volume, strlen(volume_name)+ 3, "%s%s", volume_name,
+            slot_suffix_arr[boot_slot]);
+    printf("copying %s to %s\n", active_volume, inactive_volume);
+    char *active_mtd_block = getMtdBlock(active_volume);
+    char *inactive_mtd_block = getMtdBlock(inactive_volume);
+    char in_file[PATH_MAX], out_file[PATH_MAX];
+    snprintf(in_file, PATH_MAX, "%s%s", "if=", active_mtd_block);
+    printf("Active volume mtd block: %s\n", in_file);
+    snprintf(out_file, PATH_MAX, "%s%s", "of=", inactive_mtd_block);
+    printf("Inactive volume mtd block: %s\n", out_file);
+    char *args[] = {"dd", in_file, out_file, 0};
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+    if (exec_command(ui->cmd_pipe, "/bin/dd", args) != 0) {
+        fprintf(stderr, "can not copy to inactive volume %s",inactive_volume);
+        fprintf(ui->cmd_pipe, "can not copy to inactive volume %s",inactive_volume);
+        return StringValue(strdup(""));
+    }
+    printf("copying of active volume %s to inactive %s done\n", active_volume, inactive_volume);
+    return StringValue(strdup("success"));
+}
 
-    int src_slot,destn_slot;
-    android::base::ParseInt(src_slot_str, &src_slot);
-
-    free(src_slot_str);
-    printf("source slot :%d \n",src_slot);
-    int result = mrc_systems_raw_ab_sync(src_slot);
-
+Value* copyAllRawPartitionsActiveToInactive(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+               "%s() expects no args, got %d", name, argc);
+    }
+    int result = mrc_systems_raw_ab_sync(boot_slot);
     if(result == 0) return StringValue(strdup("success"));
     else return StringValue(strdup("failed"));
 }
@@ -2746,7 +2778,8 @@ void RegisterInstallFunctions() {
 #endif
 
 #ifdef TARGET_NAD_PROD
-    RegisterFunction("copy_all_raw_partitions_src_to_destn", copyAllRawPartitionsSrcToDestn);
     RegisterFunction("write_modem_ubifs_image", writeModemUbifsImage);
+    RegisterFunction("copy_all_raw_partitions_active_to_inactive", copyAllRawPartitionsActiveToInactive);
+    RegisterFunction("copy_volume_active_to_inactive", copyActiveVolumeToInactiveVolume);
 #endif
 }

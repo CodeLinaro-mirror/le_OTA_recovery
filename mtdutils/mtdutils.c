@@ -638,4 +638,25 @@ MtdState *mtd_get_mtdstate(void)
        return NULL;
     }
 }
+
+int isEightPlusEightConfig() {
+    int result = -1;
+    int fd = open("/sys/class/ubi/ubi0_2/name", O_RDONLY);
+    if (fd == -1) {
+        printf(" error accessing ubi sysnode  \n");
+        return result;
+    }
+    char buf[VOLUME_NAME_LENGTH];
+    read(fd, buf, VOLUME_NAME_LENGTH);
+    close(fd);
+    if (strncmp(buf, "firmware_a", strlen("firmware_a")) == 0) {
+        printf("8+8 configuration \n");
+        result = 1;
+    } else {
+        printf("4+4 configuration \n");
+        result = 0;
+    }
+    return result;
+}
+
 #endif
