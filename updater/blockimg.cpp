@@ -65,6 +65,7 @@
 #ifdef TARGET_NAND_BOOT
 #include "mtdutils/mtdutils.h"
 #define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
+#define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
 #endif
 
 #define BLOCKSIZE 4096
@@ -1396,13 +1397,11 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char rootfs_volume[PATH_MAX];
         mtd_scan_partitions();
 #ifdef TARGET_NAD_PROD
-        const MtdPartition* mtd = mtd_find_partition_by_name("misc");
-        if (mtd == NULL) {
-            printf("no mtd partition named misc, AB system \n");
+        const MtdPartition* mtd;
+        if(isEightPlusEightConfig()) {
             snprintf(rootfs_volume, PATH_MAX, "%s%s", "system", slot_suffix_arr[inactive_slot]);
             printf("Inactive rootfs volume: %s\n", rootfs_volume);
         } else {
-            printf(" found mtd partition named misc, non-AB system \n");
             snprintf(rootfs_volume, PATH_MAX, "%s", "system");
             printf("rootfs volume: %s\n", rootfs_volume);
         }
@@ -1422,22 +1421,19 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         return strdup(mtd_devname);
     }
 #ifdef TARGET_NAD_PROD
-    else if (strncmp(blockdev_filename->data, MODEM_PATH, len) == 0) {
+    else if (strncmp(blockdev_filename->data, MODEM_PATH, strlen(MODEM_PATH)) == 0) {
         char modem_volume[PATH_MAX];
         mtd_scan_partitions();
 
-        const MtdPartition* mtd = mtd_find_partition_by_name("misc");
-        if (mtd == NULL) {
-            printf("no mtd partition named misc, AB firmware \n");
+        if(isEightPlusEightConfig()) {
             snprintf(modem_volume, PATH_MAX, "%s%s", "firmware", slot_suffix_arr[inactive_slot]);
             printf("Inactive firmware volume: %s\n", modem_volume);
         } else {
-            printf(" found mtd partition named misc, non-AB firmware \n");
             snprintf(modem_volume, PATH_MAX, "%s", "firmware");
             printf("firmware volume: %s\n", modem_volume);
         }
 
-        mtd = mtd_find_partition_by_name(modem_volume);
+        const MtdPartition* mtd = mtd_find_partition_by_name(modem_volume);
         if (mtd == NULL) {
             printf("no mtd partition named \"%s\"\n", modem_volume);
             return strdup("");
@@ -1445,6 +1441,30 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char mtd_devname[PATH_MAX];
         printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
               modem_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+    // for 4+4 recoveryfs is updated while performing ab sync operation after bootup
+    else if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
+        char recoveryfs_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isEightPlusEightConfig()) {
+            printf(" recoveryfs volume is not applicable for 8+8  \n");
+            return strdup("");
+        } else {
+            snprintf(recoveryfs_volume, PATH_MAX, "%s", "recoveryfs");
+            printf("recoveryfs_ volume: %s\n", recoveryfs_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(recoveryfs_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", recoveryfs_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              recoveryfs_volume, mtd->device_index);
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
@@ -1507,6 +1527,15 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
 #ifdef TARGET_NAND_BOOT
+#ifdef TARGET_NAD_PROD
+    // check if  8+8 and recoveryfs
+    if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
+        printf(" reocveryfs update only performed on 4+4 \n");
+        if(isEightPlusEightConfig()) {
+            return StringValue(strdup("t"));
+        }
+    }
+#endif
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
 #else
     char buf[PATH_MAX];
