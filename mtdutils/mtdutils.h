@@ -25,6 +25,10 @@
 extern "C" {
 #endif
 
+#ifdef TARGET_NAD_PROD
+#define VOLUME_NAME_LENGTH 10
+#endif
+
 struct MtdPartition {
     int device_index;
     unsigned int size;
@@ -73,6 +77,7 @@ int mtd_write_close(MtdWriteContext *);
 
 #ifdef TARGET_NAD_PROD
 MtdState *mtd_get_mtdstate(void);
+int isEightPlusEightConfig();
 #endif
 
 #ifdef __cplusplus

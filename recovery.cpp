@@ -152,6 +152,9 @@ static const char* locale = "en_US";
 char* stage = NULL;
 char* reason = NULL;
 bool modified_flash = false;
+#ifdef TARGET_NAD_PROD
+bool mirror_copy = false;
+#endif
 static bool has_cache = false;
 
 /*
@@ -1355,7 +1358,6 @@ static int apply_from_sdcard(Device* device, bool* wipe_cache) {
                 break;
             }
         }
-
         result = install_package(FUSE_SIDELOAD_HOST_PATHNAME, wipe_cache,
                                  TEMPORARY_INSTALL_FILE, false, 0/*retry_count*/);
         break;
@@ -1766,7 +1768,6 @@ int main(int argc, char **argv) {
     bool security_update = false;
     int status = INSTALL_SUCCESS;
     bool mount_required = true;
-
     int arg;
     int option_index;
     while ((arg = getopt_long(argc, argv, "", OPTIONS, &option_index)) != -1) {
@@ -1888,6 +1889,25 @@ int main(int argc, char **argv) {
                     ui->Print("Update via sdcard on EMMC dev. Using path from fstab\n");
             }
         }
+#ifdef TARGET_NAD_PROD
+        //  after AB update and success reboot to updated slots,
+        //  copy image to inactive partitions needs to be performed.
+        //  --mirror is set to enable this 
+        //  echo "--update_package=/data/update.zip;--mirror" > /cache/recovery/command
+        //  check in update package path if '--mirror' is present is yes, set mirror_copy true
+        //  to call copy only flow
+        const char *get_mirr = (char*) strchr(update_package, ';');
+        if((get_mirr !=NULL) && (strncmp("--mirror", get_mirr , 8))){
+            mirror_copy = true;
+            char *mirror_str = (char*)malloc(strlen(update_package));
+            strlcpy(mirror_str, update_package, strlen(update_package));
+            char* save = mirror_str;
+            update_package = strtok_r(mirror_str, "\;", &save);
+            printf("mirror flow update_package: %s \n",update_package);  
+        } else {
+            printf("not --mirror copy flow \n");
+        }
+#endif
     }
     printf("\n");
 #ifndef USE_LE_MODE
