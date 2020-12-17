@@ -346,12 +346,11 @@ static void redirect_stdio(const char* filename) {
             fflush(log_fp);
         }
 
-        LOGE("getline failed: %s\n", strerror(errno));
-
-        free(line);
+        if (line)
+            free(line);
         check_and_fclose(log_fp, filename);
         close(pipefd[0]);
-        _exit(1);
+        _exit(0);
     } else {
         // Redirect stdout/stderr to the logger process.
         // Close the unused read end.
