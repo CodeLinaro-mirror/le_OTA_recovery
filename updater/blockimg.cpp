@@ -63,6 +63,10 @@
 #endif
 #define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
 #endif
+#ifdef TARGET_NAND_NON_AB
+#include "mtdutils/mtdutils.h"
+#define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
+#endif
 
 #define BLOCKSIZE 4096
 
@@ -1474,6 +1478,26 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
             blockdev_filename->data);
 #endif
+#ifdef TARGET_NAND_NON_AB
+    int len = strlen(SYSTEM_PATH);
+    if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
+        char rootfs_volume[PATH_MAX];
+        snprintf(rootfs_volume, PATH_MAX, "%s", "rootfs");
+        mtd_scan_partitions();
+        const MtdPartition* mtd = mtd_find_partition_by_name(rootfs_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", rootfs_volume);
+            return StringValue(strdup(""));
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              rootfs_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        blockdev_filename->data = strdup(mtd_devname);
+    }
+    printf("PerformBlockImageUpdate: all operations will be performed on block: %s\n",
+            blockdev_filename->data);
+#endif
 
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
 
@@ -1803,6 +1827,26 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
             blockdev_filename->data);
 #endif
 
+#ifdef TARGET_NAND_NON_AB
+    int len = strlen(SYSTEM_PATH);
+    if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
+        char rootfs_volume[PATH_MAX];
+        snprintf(rootfs_volume, PATH_MAX, "%s", "rootfs");
+        mtd_scan_partitions();
+        const MtdPartition* mtd = mtd_find_partition_by_name(rootfs_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", rootfs_volume);
+            return StringValue(strdup(""));
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              rootfs_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        blockdev_filename->data = strdup(mtd_devname);
+    }
+    printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
+            blockdev_filename->data);
+#endif
     int fd = open(blockdev_filename->data, O_RDWR);
     unique_fd fd_holder(fd);
     if (fd < 0) {
