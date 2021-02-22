@@ -42,7 +42,9 @@
 #include <android-base/parseint.h>
 #include <base/strings.h>
 #include <base/stringprintf.h>
-
+#ifdef TARGET_NAND_NON_AB
+#include <limits.h>
+#endif
 #include "bootloader.h"
 #include "applypatch/applypatch.h"
 #include "cutils/android_reboot.h"
@@ -2017,6 +2019,33 @@ Value* Tune2FsFn(const char* name, State* state, int argc, Expr* argv[]) {
 }
 #endif
 
+#ifdef TARGET_NAND_NON_AB
+Value* scanMtdPartitions(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+    int result = mtd_scan_partitions();
+    if (result <= 0) {
+        printf("error scanning mtd partitions");
+        return StringValue(strdup(""));
+    }
+    printf("scannig of mtd partitions done\n");
+    return StringValue(strdup("success"));
+}
+
+static char* getMtdBlock(const char* rootfs_volume) {
+    const MtdPartition* mtd = mtd_find_partition_by_name(rootfs_volume);
+    if (mtd == NULL) {
+        printf("no mtd partition named \"%s\"\n", rootfs_volume);
+        return strdup("");
+    }
+    char mtd_devname[PATH_MAX];
+    snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+    return strdup(mtd_devname);
+}
+#endif
+
 #ifdef TARGET_SUPPORTS_AB
 /* Checks if a file exists.
    Takes as argument absolute filename path.
@@ -2623,5 +2652,8 @@ void RegisterInstallFunctions() {
     RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
     RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
 #endif
+#endif
+#ifdef TARGET_NAND_NON_AB
+    RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
 #endif
 }
