@@ -68,3 +68,7 @@ endif
 if TARGET_NAND_AB_BOOT
 updater_CPPFLAGS += -DTARGET_NAND_AB_BOOT
 endif
+
+if TARGET_NAND_NON_AB
+updater_CPPFLAGS += -DTARGET_NAND_NON_AB
+endif

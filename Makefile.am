@@ -120,3 +120,7 @@ endif
 if TARGET_NAND_AB_BOOT
 recovery_CPPFLAGS += -DTARGET_NAND_AB_BOOT
 endif
+
+if TARGET_NAND_NON_AB
+recovery_CPPFLAGS += -DTARGET_NAND_NON_AB
+endif
