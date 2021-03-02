@@ -116,3 +116,7 @@ if TARGET_SUPPORTS_AB
 recovery_CPPFLAGS += -DTARGET_SUPPORTS_AB
 recovery_LDADD += -labctl
 endif
+
+if TARGET_NAND_AB_BOOT
+recovery_CPPFLAGS += -DTARGET_NAND_AB_BOOT
+endif
