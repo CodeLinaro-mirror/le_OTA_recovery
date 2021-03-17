@@ -115,10 +115,8 @@ AM_CONDITIONAL(BUILD_DEVICE, [test "x$ARM$ARM64" != "xnono"])
 AM_CONDITIONAL([TARGET_SUPPORTS_AB],[test x$TARGET_SUPPORTS_AB = xtrue])
 
 # Compile nand ab ota code for targets supporting it
-AM_CONDITIONAL([TARGET_NAND_AB_BOOT],[test x$TARGET_NAND_AB_BOOT = xtrue])
+AM_CONDITIONAL([TARGET_NAND_BOOT],[test x$TARGET_NAND_BOOT = xtrue])
 
-# compile nand non-ab incremental update
-AM_CONDITIONAL([TARGET_NAND_NON_AB],[test x$TARGET_NAND_NON_AB = xtrue])
 AC_ARG_WITH([core-headers],
       AC_HELP_STRING([--with-core-headers=@<:@dir@:>@],
          [Specify the location of the system core headers]),
