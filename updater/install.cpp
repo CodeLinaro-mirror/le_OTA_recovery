@@ -42,7 +42,7 @@
 #include <android-base/parseint.h>
 #include <base/strings.h>
 #include <base/stringprintf.h>
-#ifdef TARGET_NAND_NON_AB
+#ifdef TARGET_NAND_BOOT
 #include <limits.h>
 #endif
 #include "bootloader.h"
@@ -81,15 +81,13 @@ extern "C" {    // Use till system/core is updated
 #include <errno.h>
 #include <dirent.h>
 #include "print_sha1.h"
-
 #define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
 #define BLOCKSIZE 4096*1024
-#ifdef TARGET_NAND_AB_BOOT
+#endif
+#ifdef TARGET_NAND_BOOT
 #define BOOT_NAME_LENGTH 7
 #define ROOTFS_NAME_LENGTH 10
 #endif
-#endif
-
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
 #endif
@@ -1441,8 +1439,7 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     mtd_scan_partitions();
-#ifdef TARGET_SUPPORTS_AB
-#ifdef TARGET_NAND_AB_BOOT
+#ifdef TARGET_NAND_BOOT
     char buffer[PATH_MAX];
     memset(buffer, 0, PATH_MAX);
     snprintf(buffer, PATH_MAX, "%s%s", partition, slot_suffix_arr[inactive_slot]);
@@ -1451,7 +1448,6 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         ErrorAbort(state, kArgsParsingFailure, "%s: strdup() failure at line %d: %s\n", name, __LINE__, strerror(errno));
         goto done;
     }
-#endif
 #endif
     const MtdPartition* mtd;
     mtd = mtd_find_partition_by_name(partition);
@@ -2019,33 +2015,6 @@ Value* Tune2FsFn(const char* name, State* state, int argc, Expr* argv[]) {
 }
 #endif
 
-#ifdef TARGET_NAND_NON_AB
-Value* scanMtdPartitions(const char* name, State* state, int argc, Expr* argv[]) {
-    if (argc != 0) {
-        return ErrorAbort(state, kArgsParsingFailure,
-                "%s() expects no args, got %d", name, argc);
-    }
-    int result = mtd_scan_partitions();
-    if (result <= 0) {
-        printf("error scanning mtd partitions");
-        return StringValue(strdup(""));
-    }
-    printf("scannig of mtd partitions done\n");
-    return StringValue(strdup("success"));
-}
-
-static char* getMtdBlock(const char* rootfs_volume) {
-    const MtdPartition* mtd = mtd_find_partition_by_name(rootfs_volume);
-    if (mtd == NULL) {
-        printf("no mtd partition named \"%s\"\n", rootfs_volume);
-        return strdup("");
-    }
-    char mtd_devname[PATH_MAX];
-    snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
-    return strdup(mtd_devname);
-}
-#endif
-
 #ifdef TARGET_SUPPORTS_AB
 /* Checks if a file exists.
    Takes as argument absolute filename path.
@@ -2370,7 +2339,60 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     printf("%s: The block device SHA1 doesn't match the reference SHA1\n", name);
     return StringValue(strdup(""));
 }
-#ifdef TARGET_NAND_AB_BOOT
+
+Value* SetInactiveAsUnbootableFn(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+
+    printf("%s: Setting inactive_slot(%s) as unbootable\n", name,
+            slot_suffix_arr[inactive_slot]);
+
+    int ret = libabctl_setUnbootable(inactive_slot);
+
+    if (ret == 0) {
+        printf("%s: %s set as unbootable successfully\n", name,
+                slot_suffix_arr[inactive_slot]);
+        return StringValue(strdup("Success"));
+    } else {
+        printf("%s: Couldn't set inactive slot as unbootable!\n", name);
+        return StringValue(strdup("")); // abort, if you want
+    }
+}
+
+Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+
+    printf("%s: Setting inactive_slot(%s) as active\n", name,
+            slot_suffix_arr[inactive_slot]);
+
+    int ret = libabctl_setActive(inactive_slot);
+
+    if (ret == 0) {
+        // Check again if it is actually set as active
+        ret = libabctl_getActiveStatus(inactive_slot);
+        if (ret == 1) { // slot is active
+            printf("%s: Set %s as active slot successfully\n", name,
+                    slot_suffix_arr[inactive_slot]);
+            return StringValue(strdup("Success"));
+        } else {
+            printf("That's weird! setActive() didn't return any errors "
+                   "but looks like the active status is not set..\n");
+        }
+    }
+
+    printf("%s: Couldn't set inactive slot as active!\n", name);
+    return StringValue(strdup("")); // abort, if you want
+}
+#endif
+
+#ifdef TARGET_NAND_BOOT
 Value* scanMtdPartitions(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
         return ErrorAbort(state, kArgsParsingFailure,
@@ -2526,57 +2548,6 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
     return StringValue(strdup("success"));
 }
 #endif
-Value* SetInactiveAsUnbootableFn(const char* name, State* state,
-        int argc, Expr* argv[]) {
-    if (argc != 0) {
-        return ErrorAbort(state, kArgsParsingFailure,
-                "%s() expects no args, got %d", name, argc);
-    }
-
-    printf("%s: Setting inactive_slot(%s) as unbootable\n", name,
-            slot_suffix_arr[inactive_slot]);
-
-    int ret = libabctl_setUnbootable(inactive_slot);
-
-    if (ret == 0) {
-        printf("%s: %s set as unbootable successfully\n", name,
-                slot_suffix_arr[inactive_slot]);
-        return StringValue(strdup("Success"));
-    } else {
-        printf("%s: Couldn't set inactive slot as unbootable!\n", name);
-        return StringValue(strdup("")); // abort, if you want
-    }
-}
-
-Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
-        int argc, Expr* argv[]) {
-    if (argc != 0) {
-        return ErrorAbort(state, kArgsParsingFailure,
-                "%s() expects no args, got %d", name, argc);
-    }
-
-    printf("%s: Setting inactive_slot(%s) as active\n", name,
-            slot_suffix_arr[inactive_slot]);
-
-    int ret = libabctl_setActive(inactive_slot);
-
-    if (ret == 0) {
-        // Check again if it is actually set as active
-        ret = libabctl_getActiveStatus(inactive_slot);
-        if (ret == 1) { // slot is active
-            printf("%s: Set %s as active slot successfully\n", name,
-                    slot_suffix_arr[inactive_slot]);
-            return StringValue(strdup("Success"));
-        } else {
-            printf("That's weird! setActive() didn't return any errors "
-                   "but looks like the active status is not set..\n");
-        }
-    }
-
-    printf("%s: Couldn't set inactive slot as active!\n", name);
-    return StringValue(strdup("")); // abort, if you want
-}
-#endif
 
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
@@ -2646,14 +2617,11 @@ void RegisterInstallFunctions() {
     RegisterFunction("block_device_check", BlockDeviceCheckFn);
     RegisterFunction("set_inactive_slot_as_unbootable", SetInactiveAsUnbootableFn);
     RegisterFunction("set_inactive_slot_as_active", SetInactiveSlotAsActiveFn);
-#ifdef TARGET_NAND_AB_BOOT
-    RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
     RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);
     RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
     RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
 #endif
-#endif
-#ifdef TARGET_NAND_NON_AB
+#ifdef TARGET_NAND_BOOT
     RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
 #endif
 }
