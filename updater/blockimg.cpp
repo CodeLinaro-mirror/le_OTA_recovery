@@ -56,12 +56,12 @@
 #include "unique_fd.h"
 #include "updater.h"
 
+#define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
 #ifdef TARGET_SUPPORTS_AB
 #include <libabctl.h>
-#ifdef TARGET_NAND_AB_BOOT
-#include "mtdutils/mtdutils.h"
 #endif
-#define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
+#ifdef TARGET_NAND_BOOT
+#include "mtdutils/mtdutils.h"
 #endif
 
 #define BLOCKSIZE 4096
@@ -1389,8 +1389,7 @@ static unsigned int HashString(const char *s) {
     return hash;
 }
 
-#ifdef TARGET_SUPPORTS_AB
-#ifdef TARGET_NAND_AB_BOOT
+#ifdef TARGET_NAND_BOOT
 static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     int len = strlen(SYSTEM_PATH);
     if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
@@ -1409,7 +1408,6 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     }
     return strdup("");
 }
-#endif
 #endif
 
 // args:
@@ -1463,10 +1461,9 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
         return StringValue(strdup(""));
     }
 
-#ifdef TARGET_SUPPORTS_AB
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
-#ifdef TARGET_NAND_AB_BOOT
+#ifdef TARGET_NAND_BOOT
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
 #else
     char buf[PATH_MAX];
@@ -1476,7 +1473,6 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
 #endif
     printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
             blockdev_filename->data);
-#endif
 
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
 
@@ -1791,10 +1787,9 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
         return StringValue(strdup(""));
     }
 
-#ifdef TARGET_SUPPORTS_AB
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
-#ifdef TARGET_NAND_AB_BOOT
+#ifdef TARGET_NAND_BOOT
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
 #else
     char buf[PATH_MAX];
@@ -1804,7 +1799,6 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
 #endif
     printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
             blockdev_filename->data);
-#endif
 
     int fd = open(blockdev_filename->data, O_RDWR);
     unique_fd fd_holder(fd);
