@@ -124,7 +124,7 @@ AM_CONDITIONAL([TARGET_SUPPORTS_OTA_VERIFICATION],[test x$TARGET_SUPPORTS_OTA_VE
 AM_CONDITIONAL([TARGET_SUPPORTS_NAND_DM_VERITY],[test x$TARGET_SUPPORTS_NAND_DM_VERITY = xtrue])
 
 # Compile nand ab ota code for targets supporting it
-AM_CONDITIONAL([TARGET_NAND_AB_BOOT],[test x$TARGET_NAND_AB_BOOT = xtrue])
+AM_CONDITIONAL([TARGET_NAND_BOOT],[test x$TARGET_NAND_BOOT = xtrue])
 
 AC_ARG_WITH([core-headers],
       AC_HELP_STRING([--with-core-headers=@<:@dir@:>@],

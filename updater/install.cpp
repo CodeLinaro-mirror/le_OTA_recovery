@@ -51,6 +51,9 @@
 #include <base/strings.h>
 #include <base/stringprintf.h>
 
+#ifdef TARGET_NAND_BOOT
+#include <limits.h>
+#endif
 #include "bootloader.h"
 #include "applypatch/applypatch.h"
 #include "cutils/android_reboot.h"
@@ -87,10 +90,9 @@ extern "C" {    // Use till system/core is updated
 #include <errno.h>
 #include <dirent.h>
 #include "print_sha1.h"
-
 #define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
 #define BLOCKSIZE 4096*1024
-#ifdef TARGET_NAND_AB_BOOT
+#ifdef TARGET_NAND_BOOT
 #define BOOT_NAME_LENGTH 7
 #define ROOTFS_NAME_LENGTH 10
 #endif
@@ -1466,14 +1468,16 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         ErrorAbort(state, kArgsParsingFailure, "%s: strdup() failure at line %d: %s\n", name, __LINE__, strerror(errno));
         goto done;
     }
-#ifdef TARGET_NAND_AB_BOOT
+#ifdef TARGET_NAND_BOOT
     if(NULL == mtd_find_partition_by_name(partition))
     {
         // this condition is to make sure we try partition without _a/_b suffix
         // for e.g. if a partition with name "sbl_a"/"sbl_b" does not exist
         // then try to update the partition with name "sbl"
         partition = partition_value->data;
-    }
+       printf ("single partition update \n");
+    } else
+       printf ("dual partition update \n");
 #endif
 #endif
     const MtdPartition* mtd;
@@ -2397,7 +2401,32 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     free(buffer);
     return StringValue(strdup(""));
 }
-#ifdef TARGET_NAND_AB_BOOT
+
+Value* SetInactiveAsUnbootableFn(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+
+    printf("%s: Setting inactive_slot(%s) as unbootable\n", name,
+            slot_suffix_arr[inactive_slot]);
+
+    int ret = libabctl_setUnbootable(inactive_slot);
+
+    if (ret == 0) {
+        printf("%s: %s set as unbootable successfully\n", name,
+                slot_suffix_arr[inactive_slot]);
+        return StringValue(strdup("Success"));
+    } else {
+        printf("%s: Couldn't set inactive slot as unbootable!\n", name);
+        return StringValue(strdup("")); // abort, if you want
+    }
+}
+
+#endif
+
+#ifdef TARGET_NAND_BOOT
 Value* scanMtdPartitions(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
         return ErrorAbort(state, kArgsParsingFailure,
@@ -2573,27 +2602,6 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
     return StringValue(strdup("success"));
 }
 #endif
-Value* SetInactiveAsUnbootableFn(const char* name, State* state,
-        int argc, Expr* argv[]) {
-    if (argc != 0) {
-        return ErrorAbort(state, kArgsParsingFailure,
-                "%s() expects no args, got %d", name, argc);
-    }
-
-    printf("%s: Setting inactive_slot(%s) as unbootable\n", name,
-            slot_suffix_arr[inactive_slot]);
-
-    int ret = libabctl_setUnbootable(inactive_slot);
-
-    if (ret == 0) {
-        printf("%s: %s set as unbootable successfully\n", name,
-                slot_suffix_arr[inactive_slot]);
-        return StringValue(strdup("Success"));
-    } else {
-        printf("%s: Couldn't set inactive slot as unbootable!\n", name);
-        return StringValue(strdup("")); // abort, if you want
-    }
-}
 
 #ifdef TARGET_SUPPORTS_ABC
 void tokenize(std::string const& str, char delim,
@@ -2735,7 +2743,6 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
     printf("%s: Couldn't set inactive slot as active!\n", name);
     return StringValue(strdup("")); // abort, if you want
 }
-#endif
 #ifdef TARGET_SUPPORTS_NAND_DM_VERITY
 Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
@@ -2854,14 +2861,14 @@ void RegisterInstallFunctions() {
     RegisterFunction("block_device_check", BlockDeviceCheckFn);
     RegisterFunction("set_inactive_slot_as_unbootable", SetInactiveAsUnbootableFn);
     RegisterFunction("set_inactive_slot_as_active", SetInactiveSlotAsActiveFn);
-#ifdef TARGET_NAND_AB_BOOT
+#endif
+#ifdef TARGET_SUPPORTS_NAND_DM_VERITY
+    RegisterFunction("update_rootfs_ubi_volume", updateRootfsUbiVolume);
+#endif
+#ifdef TARGET_NAND_BOOT
     RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
     RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);
     RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
     RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
-#endif
-#endif
-#ifdef TARGET_SUPPORTS_NAND_DM_VERITY
-    RegisterFunction("update_rootfs_ubi_volume", updateRootfsUbiVolume);
 #endif
 }

@@ -33,11 +33,9 @@ typedef struct {
 } UpdaterInfo;
 
 extern struct selabel_handle *sehandle;
-
-#ifdef TARGET_SUPPORTS_AB
+// this variables are defined specifically to append _a/_b to rootfs volume for AB devices
+// for non-AB devices also these are included to have a generic code applicable for both AB and non-AB
 extern int boot_slot;
 extern int inactive_slot;
 extern const char *slot_suffix_arr[];
-#endif
-
 #endif
