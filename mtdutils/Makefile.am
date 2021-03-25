@@ -11,7 +11,9 @@ AM_CPPFLAGS := \
               -DUSE_LE_MODE \
               -I. \
               -USE_GLIB \
-              -I$(WORKSPACE)/system/core/include
+              -I$(WORKSPACE)/system/core/include \
+              -Dstrlcpy=g_strlcpy \
+              -Dstrlcat=g_strlcat
 
 AM_LDFLAGS := -shared -version-info 1:0:0
 
@@ -19,15 +21,19 @@ min_c_sources := \
         mounts.c \
         mtdutils.c
 
+min_cpp_sources := \
+        copyrawpart.cpp
+
 h_sources := \
         mounts.h \
-        mtdutils.h
+        mtdutils.h \
+        copyrawpart.h
 
 library_includedir := $(pkgincludedir)
 library_include_HEADERS := $(h_sources)
 
 lib_LTLIBRARIES := libmtdutils.la
-libmtdutils_la_SOURCES := $(min_c_sources) $(h_sources)
+libmtdutils_la_SOURCES := $(min_c_sources) $(min_cpp_sources) $(h_sources)
 
 if USE_GLIB
 libmtdutils_la_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
@@ -40,3 +46,8 @@ libmtdutils_la_CPPFLAGS := $(AM_CPPFLAGS)
 libmtdutils_la_LIBADD := -lm -lpthread
 libmtdutils_la_LDFLAGS := -all-static
 endif
+
+if TARGET_NAD_PROD
+libmtdutils_la_CPPFLAGS += -DTARGET_NAD_PROD
+endif
+
