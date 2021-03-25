@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2021 The Linux Foundation. All rights reserved.
+ * Not a contribution.
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,6 +34,12 @@ struct MtdPartition {
 
 typedef struct MtdPartition MtdPartition;
 
+typedef struct {
+    MtdPartition *partitions;
+    int partitions_allocd;
+    int partition_count;
+} MtdState;
+
 int mtd_scan_partitions(void);
 
 const MtdPartition *mtd_find_partition_by_name(const char *name);
@@ -62,6 +70,10 @@ MtdWriteContext *mtd_write_partition(const MtdPartition *);
 ssize_t mtd_write_data(MtdWriteContext *, const char *data, size_t data_len);
 off_t mtd_erase_blocks(MtdWriteContext *, int blocks);  /* 0 ok, -1 for all */
 int mtd_write_close(MtdWriteContext *);
+
+#ifdef TARGET_NAD_PROD
+MtdState *mtd_get_mtdstate(void);
+#endif
 
 #ifdef __cplusplus
 }

@@ -123,6 +123,12 @@ AC_ARG_WITH([nand-boot],
 # Compile nand ab ota code for targets supporting it
 AM_CONDITIONAL([TARGET_NAND_BOOT],[test "x${with_nand_boot}" = "xtrue"])
 
+AC_ARG_WITH([nad-prod],
+      AC_HELP_STRING([--with-nad_prod],
+         [enable nad_prod, Use this for NAD OTA]), with_nad_prod=true)
+# Compile nad_prod ota code for targets supporting it
+AM_CONDITIONAL([TARGET_NAD_PROD],[test "x${with_nad_prod}" = "xtrue"])
+
 AC_ARG_WITH([core-headers],
       AC_HELP_STRING([--with-core-headers=@<:@dir@:>@],
          [Specify the location of the system core headers]),

@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2021 The Linux Foundation. All rights reserved.
+ * Not a contribution.
  * Copyright (C) 2008 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,6 +39,15 @@
 #include "edify/expr.h"
 #include "ota_io.h"
 #include "print_sha1.h"
+
+
+#ifdef TARGET_SUPPORTS_AB
+#include <libabctl.h>
+#include <limits.h>
+static int boot_slot;
+static int inactive_slot;
+static const char* slot_suffix_arr[] = {"_a", "_b", NULL};
+#endif
 
 static int LoadPartitionContents(const char* filename, FileContents* file);
 static ssize_t FileSink(const unsigned char* data, ssize_t len, void* token);
@@ -122,6 +133,7 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
         printf("LoadPartitionContents called with bad filename (%s)\n", filename);
         return -1;
     }
+
     const char* partition = pieces[1].c_str();
 
     size_t pairs = (pieces.size() - 2) / 2;    // # of (size, sha1) pairs in filename
@@ -156,7 +168,27 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
                 mtd_partitions_scanned = true;
             }
 
+#ifdef TARGET_SUPPORTS_AB
+            boot_slot = libabctl_getBootSlot();
+            if (boot_slot == -1) {
+              printf("That's odd.. I was told that A/B boot support be present\n"
+                "But libabctl_getBootSlot() returned -1, aborting!\n");
+              return 1;
+            }
+            // Set the inactive slot to the non-boot slot (1->0, 0->1)
+            inactive_slot = (boot_slot + 1)%2;
+            printf("boot_slot = %s, inactive_slot = %s\n", slot_suffix_arr[boot_slot],
+            slot_suffix_arr[inactive_slot]);
+
+            printf(" get inactive slot for partition and append it to this partition %s \n",partition);
+            char buff[PATH_MAX];
+            snprintf(buff, PATH_MAX, "%s%s", partition, slot_suffix_arr[inactive_slot]);
+
+            printf("Inactive partition: %s\n", buff);
+            const MtdPartition* mtd = mtd_find_partition_by_name(buff);
+#else
             const MtdPartition* mtd = mtd_find_partition_by_name(partition);
+#endif
             if (mtd == NULL) {
                 printf("mtd partition \"%s\" not found (loading %s)\n", partition, filename);
                 return -1;
@@ -333,7 +365,17 @@ int WriteToPartition(const unsigned char* data, size_t len, const char* target) 
                 mtd_partitions_scanned = true;
             }
 
+#ifdef TARGET_SUPPORTS_AB
+            printf(" get inactive slot for partition and append it to this partition %s \n",partition);
+            char buff[PATH_MAX];
+            snprintf(buff, PATH_MAX, "%s%s", partition, slot_suffix_arr[inactive_slot]);
+
+            printf("Inactive partition: %s\n", buff);
+            const MtdPartition* mtd = mtd_find_partition_by_name(buff);
+#else
             const MtdPartition* mtd = mtd_find_partition_by_name(partition);
+#endif
+
             if (mtd == NULL) {
                 printf("mtd partition \"%s\" not found for writing\n", partition);
                 return -1;
@@ -829,6 +871,7 @@ static int GenerateTarget(FileContents* source_file,
 
             // We still write the original source to cache, in case
             // the partition write is interrupted.
+#ifndef TARGET_NAD_PROD
             if (MakeFreeSpaceOnCache(source_file->data.size()) < 0) {
                 printf("not enough free space on /cache\n");
                 return 1;
@@ -838,6 +881,7 @@ static int GenerateTarget(FileContents* source_file,
                 return 1;
             }
             made_copy = 1;
+#endif
             retry = 0;
         } else {
             int enough_space = 0;
