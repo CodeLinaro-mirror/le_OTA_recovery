@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2021 The Linux Foundation. All rights reserved.
+ * Not a contribution.
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,11 +49,6 @@ struct MtdWriteContext {
     int bad_block_count;
 };
 
-typedef struct {
-    MtdPartition *partitions;
-    int partitions_allocd;
-    int partition_count;
-} MtdState;
 
 static MtdState g_mtd_state = {
     NULL,   // partitions
@@ -571,3 +568,74 @@ int mtd_write_close(MtdWriteContext *ctx)
     free(ctx);
     return r;
 }
+
+#ifdef TARGET_NAD_PROD
+MtdState *mtd_get_mtdstate(void)
+{
+    MtdState * mtd_state = (MtdState*)malloc(sizeof(MtdState));
+    if(mtd_state == NULL) return NULL;
+
+    if (g_mtd_state.partitions != NULL) {
+        int i,ab_start_indx,ab_end_index,index = 0;
+        for (i = 0; i < g_mtd_state.partitions_allocd; i++) {
+            MtdPartition *p = &g_mtd_state.partitions[i];
+            if (p->device_index >= 0 && p->name != NULL) {
+                // search for tz_a, since this is first partition supporting ab, absync operation starts
+                // from this partition
+                if (strcmp(p->name, "tz_a") == 0) {
+                   ab_start_indx = i;
+                }
+                if (strcmp(p->name, "tz_b") == 0) {
+                   ab_end_index = i;
+                   break;
+                } 
+            }
+        }
+        index = 0;
+        // start from tz and  write till boot ab raw partitions
+        // presently there are only 13 raw partitions which support ab slots
+        int nump;
+        if (ab_end_index > ab_start_indx) {
+            nump = ab_end_index - ab_start_indx;
+            mtd_state->partitions_allocd = nump;
+        }
+        else {
+            printf(" no raw ab partitions found \n");
+            return NULL;
+        }
+        MtdPartition *partitions = malloc(nump * sizeof(*partitions));
+        if (partitions == NULL) {
+            printf(" error while allocating space for mtdstate \n");
+            return NULL;
+        }
+        mtd_state->partitions = partitions;
+        mtd_state->partitions_allocd = nump;
+        mtd_state->partition_count = 0;
+        memset(partitions, 0, nump * sizeof(*partitions));
+
+        for (i = ab_start_indx; i < g_mtd_state.partitions_allocd; i++)
+        {
+            MtdPartition *p = &g_mtd_state.partitions[i];
+            if (p->device_index >= 0 && p->name != NULL) {
+                if (strcmp(p->name, "tz_b") == 0) {
+                    break;
+                }
+                // copy mtdindex, &mtdsize, &mtderasesize, mtdname
+                mtd_state->partitions[index].device_index = p->device_index;
+                mtd_state->partitions[index].size = p->size;
+                mtd_state->partitions[index].erase_size = p->erase_size;
+                mtd_state->partitions[index].name = strdup(p->name);
+                index++; 
+                mtd_state->partition_count = mtd_state->partition_count + 1; 
+            }
+        }
+    }
+    printf(" mtd state ab sync partiiton count %d \n",mtd_state->partition_count);
+    if (mtd_state != NULL) {
+       return mtd_state;
+    } else {
+       printf(" return NULL  \n");
+       return NULL;
+    }
+}
+#endif
