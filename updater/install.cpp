@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2021 The Linux Foundation. All rights reserved.
+ * Not a contribution.
  * Copyright (C) 2009 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,6 +57,9 @@
 #include "minzip/DirUtil.h"
 #include "mtdutils/mounts.h"
 #include "mtdutils/mtdutils.h"
+#ifdef TARGET_NAD_PROD
+#include "mtdutils/copyrawpart.h"
+#endif
 #include "openssl/sha.h"
 #include "otafault/ota_io.h"
 #include "updater.h"
@@ -87,6 +92,9 @@ extern "C" {    // Use till system/core is updated
 #ifdef TARGET_NAND_BOOT
 #define BOOT_NAME_LENGTH 7
 #define ROOTFS_NAME_LENGTH 10
+#endif
+#ifdef TARGET_NAD_PROD
+#define RAW_PART_LENGTH 20
 #endif
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
@@ -2527,6 +2535,7 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
     return StringValue(result);
 }
 
+
 Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
         return ErrorAbort(state, kArgsParsingFailure,
@@ -2555,6 +2564,116 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
     }
     printf("copying of active NonHlos to inactive NonHlos done\n");
     return StringValue(strdup("success"));
+}
+#endif
+
+#ifdef TARGET_NAD_PROD
+Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv[]) {
+    char* result = NULL;
+    Value* partition_value;
+    Value* contents;
+    Value* filepath_value;
+    if (ReadValueArgs(state, argv, 3, &contents, &partition_value, &filepath_value) < 0) {
+        return NULL;
+    }
+
+    char* partition = NULL;
+    if (partition_value->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "partition argument to %s must be string", name);
+        return StringValue(strdup(""));
+    }
+    partition = partition_value->data;
+    if (strlen(partition) == 0) {
+        ErrorAbort(state, kArgsParsingFailure, "partition argument to %s can't be empty", name);
+        return StringValue(strdup(""));
+    }
+    char *modem_ubifs = NULL;  // modem.ubifs is extracted to /tmp/modem.ubifs
+    if (filepath_value->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "filepath argument to %s must be string", name);
+        return StringValue(strdup(""));
+    }
+    modem_ubifs = filepath_value->data;
+    if (strlen(modem_ubifs) == 0) {
+        ErrorAbort(state, kArgsParsingFailure, "filepath argument to %s can't be empty", name);
+        return StringValue(strdup(""));
+    }
+    printf("modem_ubifs %s \n",modem_ubifs);
+
+    if (contents->type == VAL_STRING && strlen((char*) contents->data) == 0) {
+        ErrorAbort(state, kArgsParsingFailure, "file argument to %s can't be empty", name);
+        return StringValue(strdup(""));
+    }
+
+    mtd_scan_partitions();
+    int err = isEightPlusEightConfig();
+    if(err == -1){
+        printf(" error accessing ubi sysnode  \n");
+        return StringValue(strdup(""));
+    } else if (err == 1) {
+        char buffer[PATH_MAX];
+        memset(buffer, 0, PATH_MAX);
+        printf(" append suffix\n");
+        snprintf(buffer, PATH_MAX, "%s%s", partition, slot_suffix_arr[inactive_slot]);
+        partition = strdup(buffer);
+    } else {
+        printf(" single volume system \n");
+    }
+    char *volume_name;
+    if (ReadArgs(state, argv, 1, &volume_name) < 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+    }
+
+    if (partition == NULL) {
+        ErrorAbort(state, kArgsParsingFailure, "%s: strdup() failure at line %d: %s\n", name, __LINE__, strerror(errno));
+        unlink(modem_ubifs);
+        return StringValue(strdup(""));
+    }
+
+    char *inactive_mtd_block = getMtdBlock(partition);
+    char in_file[PATH_MAX], out_file[PATH_MAX];
+    if (chmod(modem_ubifs, 0777) < 0) {
+        printf("chmod of %s failed\n",modem_ubifs);
+        unlink(modem_ubifs);
+        return StringValue(strdup(""));
+    }
+    snprintf(in_file, PATH_MAX, "%s%s", "if=", modem_ubifs);
+    printf("Active volume mtd block: %s\n", in_file);
+    snprintf(out_file, PATH_MAX, "%s%s", "of=", inactive_mtd_block);
+    printf("Inactive volume mtd block: %s\n", out_file);
+    char *args[] = {"dd", in_file, out_file, 0};
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+    if (exec_command(ui->cmd_pipe, "/bin/dd", args) != 0) {
+        fprintf(stderr, "can not update ubifs volume %s", partition);
+        unlink(modem_ubifs);
+        return StringValue(strdup(""));
+    }
+    printf(" updated ubifs volume %s is done \n", partition);
+
+    unlink(modem_ubifs);
+    return StringValue(strdup("success"));
+}
+
+Value* copyAllRawPartitionsSrcToDestn(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 1) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects one args, got %d", name, argc);
+    }
+
+    char* src_slot_str;
+    if (ReadArgs(state, argv, 1, &src_slot_str) < 0) {
+        return NULL;
+    }
+
+    int src_slot,destn_slot;
+    android::base::ParseInt(src_slot_str, &src_slot);
+
+    free(src_slot_str);
+    printf("source slot :%d \n",src_slot);
+    int result = mrc_systems_raw_ab_sync(src_slot);
+
+    if(result == 0) return StringValue(strdup("success"));
+    else return StringValue(strdup("failed"));
 }
 #endif
 
@@ -2630,7 +2749,13 @@ void RegisterInstallFunctions() {
     RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
     RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
 #endif
+
 #ifdef TARGET_NAND_BOOT
     RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
+#endif
+
+#ifdef TARGET_NAD_PROD
+    RegisterFunction("copy_all_raw_partitions_src_to_destn", copyAllRawPartitionsSrcToDestn);
+    RegisterFunction("write_modem_ubifs_image", writeModemUbifsImage);
 #endif
 }
