@@ -110,6 +110,12 @@ AM_CONDITIONAL(X86_64, [test "x$X86_64" = "xyes"])
 AM_CONDITIONAL(BUILD_HOST, [test "x$X86_64" = "xyes"])
 AM_CONDITIONAL(BUILD_DEVICE, [test "x$ARM$ARM64" != "xnono"])
 
+# Compile nad_prod ota code for targets supporting it
+AM_CONDITIONAL([TARGET_NAD_PROD],[test x$TARGET_NAD_PROD = xtrue])
+
+# Compile nad_prod ota code for targets supporting it
+AM_CONDITIONAL([TARGET_SUPPORTS_AB],[test x$TARGET_SUPPORTS_AB = xtrue])
+
 AC_ARG_WITH([core-headers],
       AC_HELP_STRING([--with-core-headers=@<:@dir@:>@],
          [Specify the location of the system core headers]),
