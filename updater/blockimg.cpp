@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2021 The Linux Foundation. All rights reserved.
+ * Not a contribution.
  * Copyright (C) 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,6 +64,7 @@
 #endif
 #ifdef TARGET_NAND_BOOT
 #include "mtdutils/mtdutils.h"
+#define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
 #endif
 
 #define BLOCKSIZE 4096
@@ -1394,10 +1397,25 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     int len = strlen(SYSTEM_PATH);
     if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
         char rootfs_volume[PATH_MAX];
+        mtd_scan_partitions();
+#ifdef TARGET_NAD_PROD
+        const MtdPartition* mtd = mtd_find_partition_by_name("misc");
+        if (mtd == NULL) {
+            printf("no mtd partition named misc, AB system \n");
+            snprintf(rootfs_volume, PATH_MAX, "%s%s", "system", slot_suffix_arr[inactive_slot]);
+            printf("Inactive rootfs volume: %s\n", rootfs_volume);
+        } else {
+            printf(" found mtd partition named misc, non-AB system \n");
+            snprintf(rootfs_volume, PATH_MAX, "%s", "system");
+            printf("rootfs volume: %s\n", rootfs_volume);
+        }
+#else
+        const MtdPartition* mtd;
         snprintf(rootfs_volume, PATH_MAX, "%s%s", "rootfs", slot_suffix_arr[inactive_slot]);
         printf("Inactive rootfs volume: %s\n", rootfs_volume);
-        mtd_scan_partitions();
-        const MtdPartition* mtd = mtd_find_partition_by_name(rootfs_volume);
+
+#endif
+        mtd = mtd_find_partition_by_name(rootfs_volume);
         if (mtd == NULL) {
             printf("no mtd partition named \"%s\"\n", rootfs_volume);
             return strdup("");
@@ -1406,6 +1424,34 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
+#ifdef TARGET_NAD_PROD
+    else if (strncmp(blockdev_filename->data, MODEM_PATH, len) == 0) {
+        char modem_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        const MtdPartition* mtd = mtd_find_partition_by_name("misc");
+        if (mtd == NULL) {
+            printf("no mtd partition named misc, AB firmware \n");
+            snprintf(modem_volume, PATH_MAX, "%s%s", "firmware", slot_suffix_arr[inactive_slot]);
+            printf("Inactive firmware volume: %s\n", modem_volume);
+        } else {
+            printf(" found mtd partition named misc, non-AB firmware \n");
+            snprintf(modem_volume, PATH_MAX, "%s", "firmware");
+            printf("firmware volume: %s\n", modem_volume);
+        }
+
+        mtd = mtd_find_partition_by_name(modem_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", modem_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              modem_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+#endif
     return strdup("");
 }
 #endif
