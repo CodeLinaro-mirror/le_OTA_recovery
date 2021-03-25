@@ -70,6 +70,15 @@ applypatch_h_sources := applypatch.h utils.h
 
 applypatch_SOURCES := $(applypatch_c_sources) $(applypatch_h_sources)
 
+if TARGET_SUPPORTS_AB
+libapplypatch_la_CPPFLAGS += -DTARGET_SUPPORTS_AB
+libapplypatch_la_LIBADD += -labctl
+endif
+
+if TARGET_NAD_PROD
+libapplypatch_la_CPPFLAGS += -DTARGET_NAD_PROD
+endif
+
 bin_PROGRAMS := applypatch
 
 if USE_GLIB
@@ -99,5 +108,7 @@ imgdiff_LDADD := -lz -lbz2
 imgdiff_LDFLAGS := -all-static
 endif
 
+
 bin_PROGRAMS := imgdiff
+
 endif

@@ -82,3 +82,8 @@ endif
 if TARGET_NAND_BOOT
 updater_CPPFLAGS += -DTARGET_NAND_BOOT
 endif
+
+if TARGET_NAD_PROD
+updater_CPPFLAGS += -DTARGET_NAD_PROD
+endif
+
