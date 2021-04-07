@@ -1440,7 +1440,6 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     mtd_scan_partitions();
 #ifdef TARGET_SUPPORTS_AB
-#ifdef TARGET_NAND_AB_BOOT
     char buffer[PATH_MAX];
     memset(buffer, 0, PATH_MAX);
     snprintf(buffer, PATH_MAX, "%s%s", partition, slot_suffix_arr[inactive_slot]);
@@ -1448,6 +1447,14 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
     if (partition == NULL) {
         ErrorAbort(state, kArgsParsingFailure, "%s: strdup() failure at line %d: %s\n", name, __LINE__, strerror(errno));
         goto done;
+    }
+#ifdef TARGET_NAND_AB_BOOT
+    if(NULL == mtd_find_partition_by_name(partition))
+    {
+        // this condition is to make sure we try partition without _a/_b suffix
+        // for e.g. if a partition with name "sbl_a"/"sbl_b" does not exist
+        // then try to update the partition with name "sbl"
+        partition = partition_value->data;
     }
 #endif
 #endif
