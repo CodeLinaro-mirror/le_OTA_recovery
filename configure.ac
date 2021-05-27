@@ -114,8 +114,14 @@ AM_CONDITIONAL(BUILD_DEVICE, [test "x$ARM$ARM64" != "xnono"])
 # Compile recovery and updater for targets that support A/B boot
 AM_CONDITIONAL([TARGET_SUPPORTS_AB],[test x$TARGET_SUPPORTS_AB = xtrue])
 
+# Compile ota package verification code for targets supporting it
+AM_CONDITIONAL([TARGET_SUPPORTS_OTA_VERIFICATION],[test x$TARGET_SUPPORTS_OTA_VERIFICATION = xtrue])
+
+AC_ARG_WITH([nand-boot],
+      AC_HELP_STRING([--with-nand_boot],
+         [enable nand_boot, Use this for NAND OTA]), with_nand_boot=true)
 # Compile nand ab ota code for targets supporting it
-AM_CONDITIONAL([TARGET_NAND_BOOT],[test x$TARGET_NAND_BOOT = xtrue])
+AM_CONDITIONAL([TARGET_NAND_BOOT],[test "x${with_nand_boot}" = "xtrue"])
 
 AC_ARG_WITH([core-headers],
       AC_HELP_STRING([--with-core-headers=@<:@dir@:>@],
