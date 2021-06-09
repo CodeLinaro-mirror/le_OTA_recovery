@@ -1454,6 +1454,15 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         ErrorAbort(state, kArgsParsingFailure, "%s: strdup() failure at line %d: %s\n", name, __LINE__, strerror(errno));
         goto done;
     }
+
+    if(NULL == mtd_find_partition_by_name(partition))
+    {
+        // this condition is to make sure we try partition without _a/_b suffix
+        // for e.g. if a partition with name "sbl_a"/"sbl_b" does not exist
+        // then try to update the partition with name "sbl"
+        partition = partition_value->data;
+    }
+
 #endif
     const MtdPartition* mtd;
     mtd = mtd_find_partition_by_name(partition);
