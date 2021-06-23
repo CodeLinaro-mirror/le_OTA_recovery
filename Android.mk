@@ -64,7 +64,6 @@ LOCAL_C_INCLUDES += \
     system/core/adb \
 
 LOCAL_STATIC_LIBRARIES := \
-    libbatterymonitor \
     libbootloader_message \
     libext4_utils_static \
     libsparse_static \
@@ -72,7 +71,6 @@ LOCAL_STATIC_LIBRARIES := \
     libz \
     libmtdutils \
     libminadbd \
-    libfusesideload \
     libminui \
     libpng \
     libfs_mgr \
