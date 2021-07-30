@@ -135,6 +135,9 @@ static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
 static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
+#ifdef TARGET_NAD_PROD
+static const char *NAD_STATUS_COOKIE_FILE = "/cache/recovery/nad_ota_status";
+#endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
 // We will try to apply the update package 5 times at most in case of an I/O error.
@@ -635,6 +638,25 @@ error:
     if (fd >= 0) close(fd);
     return -1;
 }
+
+#ifdef TARGET_NAD_PROD
+static int set_nad_ota_cookie( const char * value ) {
+    FILE* status_fp;
+    if (strcmp(value, " OTA_PROG ") == 0){
+        status_fp = fopen(NAD_STATUS_COOKIE_FILE, "w+");
+    } else {
+        status_fp = fopen(NAD_STATUS_COOKIE_FILE, "a+");
+    }
+    if (status_fp != nullptr) {
+        fwrite(value, 1, 10, status_fp);
+        check_and_fclose(status_fp, NAD_STATUS_COOKIE_FILE);
+        return 0;
+    } else {
+        printf(" set nad ota cookie error \n");
+    }
+    return -1;
+}
+#endif
 
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
@@ -1888,6 +1910,9 @@ int main(int argc, char **argv) {
                     ui->Print("Update via sdcard on EMMC dev. Using path from fstab\n");
             }
         }
+#ifdef TARGET_NAD_PROD
+       set_nad_ota_cookie(" OTA_PROG ");
+#endif
     }
     printf("\n");
 #ifndef USE_LE_MODE
@@ -2014,6 +2039,14 @@ error:
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
 #endif
 
+#ifdef TARGET_NAD_PROD
+        printf("set nad ota cookie \n");
+    if ( status == INSTALL_SUCCESS ){
+        set_nad_ota_cookie(" OTA_DONE ");
+    } else {
+        set_nad_ota_cookie(" OTA_FAIL ");
+    }
+#endif
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
     bool reboot = false;

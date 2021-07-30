@@ -55,6 +55,24 @@ extern bool have_eio_error;
 
 struct selabel_handle *sehandle;
 
+#ifdef TARGET_NAD_PROD
+int set_nad_update_status( const char * value ) {
+    FILE* status_fp = fopen(NAD_UPDATE_STATUS, "a+");
+    if (status_fp != nullptr) {
+        char buf[4096];
+        size_t bytes;
+        fwrite(value, 1, 8, status_fp);
+        fflush(status_fp);
+        if (ferror(status_fp)) printf("Error in %s\n(%s)\n", NAD_UPDATE_STATUS, strerror(errno));
+        fclose(status_fp);
+        return 0;
+    } else {
+        printf(" set nad ota cookie error \n");
+    }
+    return -1;
+}
+#endif
+
 int main(int argc, char** argv) {
     // Various things log information to stdout or stderr more or less
     // at random (though we've tried to standardize on stdout).  The

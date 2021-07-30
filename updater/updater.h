@@ -32,6 +32,11 @@ typedef struct {
     size_t package_zip_len;
 } UpdaterInfo;
 
+#ifdef TARGET_NAD_PROD
+static const char *NAD_UPDATE_STATUS = "/cache/recovery/nad_ota_status";
+int set_nad_update_status( const char * value );
+#endif
+
 extern struct selabel_handle *sehandle;
 // this variables are defined specifically to append _a/_b to rootfs volume for AB devices
 // for non-AB devices also these are included to have a generic code applicable for both AB and non-AB
