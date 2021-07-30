@@ -1550,6 +1550,14 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     result = success ? partition : strdup("");
 
+#ifdef TARGET_NAND_BOOT
+#ifdef TARGET_NAD_PROD
+    if (success) {
+      set_nad_update_status(partition);
+    }
+#endif
+#endif
+
 done:
     if (result != partition) FreeValue(partition_value);
     FreeValue(contents);
@@ -1673,6 +1681,18 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
     int result = applypatch(source_filename, target_filename,
                             target_sha1, target_size,
                             patchcount, patch_sha_str.data(), patch_ptrs.data(), NULL);
+
+#ifdef TARGET_NAND_BOOT
+#ifdef TARGET_NAD_PROD
+    char* part_name;
+    part_name = strtok_r(source_filename, ":", &source_filename);
+    part_name = strtok_r(NULL, ":", &source_filename);
+    printf("%s\n", part_name);
+    if (result == 0) {
+      set_nad_update_status(part_name);
+    }
+#endif
+#endif
 
     return StringValue(strdup(result == 0 ? "t" : ""));
 }

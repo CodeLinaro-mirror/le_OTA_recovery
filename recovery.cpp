@@ -153,6 +153,9 @@ static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
 #ifdef TARGET_SUPPORTS_ABC
 static const char *ABC_OTA_STATUS_COOKIE_FILE = "/cache/recovery/abc_ota_status";
 #endif
+#ifdef TARGET_NAD_PROD
+static const char *NAD_STATUS_COOKIE_FILE = "/cache/recovery/nad_ota_status";
+#endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
 // We will try to apply the update package 5 times at most in case of an I/O error.
@@ -744,6 +747,25 @@ error:
     if (fd >= 0) close(fd);
     return -1;
 }
+
+#ifdef TARGET_NAD_PROD
+static int set_nad_ota_cookie( const char * value ) {
+    FILE* status_fp;
+    if (strcmp(value, " OTA_PROG ") == 0){
+        status_fp = fopen(NAD_STATUS_COOKIE_FILE, "w+");
+    } else {
+        status_fp = fopen(NAD_STATUS_COOKIE_FILE, "a+");
+    }
+    if (status_fp != nullptr) {
+        fwrite(value, 1, 10, status_fp);
+        check_and_fclose(status_fp, NAD_STATUS_COOKIE_FILE);
+        return 0;
+    } else {
+        printf(" set nad ota cookie error \n");
+    }
+    return -1;
+}
+#endif
 
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
@@ -1995,6 +2017,9 @@ int main(int argc, char **argv) {
             }
         }
 
+#ifdef TARGET_NAD_PROD
+       set_nad_ota_cookie(" OTA_PROG ");
+#endif
     }
     printf("\n");
 #ifndef USE_LE_MODE
@@ -2131,13 +2156,15 @@ error:
     printf("Recovery exiting, upgrade %s\n",
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
 #endif
-    ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
-    if (IS_LE_MODE() && ota_status != nullptr) {
-        printf("Write OTA status to OTA cookie %s\n", ota_status);
-        set_ota_cookie(ota_status);
+
+#ifdef TARGET_NAD_PROD
+    printf("set nad ota cookie \n");
+    if ( status == INSTALL_SUCCESS ){
+        set_nad_ota_cookie(" OTA_DONE ");
+    } else {
+        set_nad_ota_cookie(" OTA_FAIL ");
     }
-    int ota_status_val = get_ota_status();
-    printf("OTA status %d\n", ota_status_val);
+#endif
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
     bool reboot = false;
