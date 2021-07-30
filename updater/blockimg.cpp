@@ -1564,6 +1564,17 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
 #ifdef TARGET_NAND_BOOT
+#ifdef TARGET_NAD_PROD
+    char part_name[PATH_MAX];
+    snprintf(part_name, PATH_MAX, "%s", blockdev_filename->data);
+    // check if  8+8 and recoveryfs
+    if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
+        printf(" reocveryfs update only performed on 4+4 \n");
+        if(isEightPlusEightConfig()) {
+            return StringValue(strdup("t"));
+        }
+    }
+#endif
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
 #else
     char buf[PATH_MAX];
@@ -1755,6 +1766,21 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     }
 
     rc = 0;
+#ifdef TARGET_NAND_BOOT
+#ifdef TARGET_NAD_PROD
+    if (strncmp(part_name, SYSTEM_PATH, strlen(SYSTEM_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " system ");
+    } else if(strncmp(part_name, MODEM_PATH, strlen(MODEM_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " modem ");
+    } else if(strncmp(part_name, TELAF_PATH, strlen(TELAF_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " telaf ");
+    } else {
+      snprintf(part_name, sizeof(part_name), "%s", " ");
+    }
+    set_nad_update_status(part_name);
+    printf ("%s volume is updated \n", part_name);
+#endif
+#endif
 
 pbiudone:
     if (ota_fsync(params.fd) == -1) {

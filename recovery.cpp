@@ -157,6 +157,9 @@ static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
 static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/cache/recovery/mirror_copy_status";
 static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
 #endif
+#ifdef TARGET_NAD_PROD
+static const char *NAD_STATUS_COOKIE_FILE = "/cache/recovery/nad_ota_status";
+#endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
 // We will try to apply the update package 5 times at most in case of an I/O error.
@@ -818,6 +821,25 @@ error:
     if (fd >= 0) close(fd);
     return -1;
 }
+
+#ifdef TARGET_NAD_PROD
+static int set_nad_ota_cookie( const char * value ) {
+    FILE* status_fp;
+    if (strcmp(value, " OTA_PROG ") == 0){
+        status_fp = fopen(NAD_STATUS_COOKIE_FILE, "w+");
+    } else {
+        status_fp = fopen(NAD_STATUS_COOKIE_FILE, "a+");
+    }
+    if (status_fp != nullptr) {
+        fwrite(value, 1, 10, status_fp);
+        check_and_fclose(status_fp, NAD_STATUS_COOKIE_FILE);
+        return 0;
+    } else {
+        printf(" set nad ota cookie error \n");
+    }
+    return -1;
+}
+#endif
 
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
@@ -2111,6 +2133,9 @@ int main(int argc, char **argv) {
         }
 #endif
 
+#ifdef TARGET_NAD_PROD
+       set_nad_ota_cookie(" OTA_PROG ");
+#endif
     }
     printf("\n");
 #ifndef USE_LE_MODE
@@ -2277,6 +2302,15 @@ error:
     }
     int ota_status_val = get_ota_status();
     printf("OTA status %d\n", ota_status_val);
+
+#ifdef TARGET_NAD_PROD
+    printf("set nad ota cookie \n");
+    if ( status == INSTALL_SUCCESS ){
+        set_nad_ota_cookie(" OTA_DONE ");
+    } else {
+        set_nad_ota_cookie(" OTA_FAIL ");
+    }
+#endif
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
     bool reboot = false;
