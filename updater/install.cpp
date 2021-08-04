@@ -87,7 +87,11 @@ extern "C" {    // Use till system/core is updated
 #define ROOTFS_NAME_LENGTH 10
 #endif
 #endif
-
+#ifdef TARGET_SUPPORTS_NAND_DM_VERITY
+#define SYSTEM_ROOTFS_NAME  "system.img"
+#define SYSTEM_ROOTFS  "/tmp/system.img"
+#define ROOTFS_VOLUME "/dev/ubi1_0"
+#endif
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
 #endif
@@ -2555,7 +2559,53 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
     return StringValue(strdup("")); // abort, if you want
 }
 #endif
+#ifdef TARGET_SUPPORTS_NAND_DM_VERITY
+Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+    ZipArchive* zip = ui->package_zip;
+    //Extract system image
+    const ZipEntry* system_entry =
+            mzFindZipEntry(zip, SYSTEM_ROOTFS_NAME);
+    if (system_entry == NULL) {
+        printf("%s: can't find %s\n", name, SYSTEM_ROOTFS_NAME);
+        return StringValue(strdup(""));
+    }
+    const char* rootfs_volume = SYSTEM_ROOTFS;
+    unlink(rootfs_volume);
+    int fd = creat(rootfs_volume, 0644);
+    if (fd < 0) {
+        printf("%s: Can't make %s\n", name, rootfs_volume);
+        return StringValue(strdup(""));
+    }
+    bool ok = mzExtractZipEntryToFile(zip, system_entry, fd);
+    close(fd);
+    if (!ok) {
+        printf("%s: Can't extract %s from zip\n", name, SYSTEM_ROOTFS_NAME);
+        return StringValue(strdup(""));
+    }
+    printf("Extracting Rootfs volume is successful\n");
 
+    char *args_erase[] = {"ubiupdatevol", ROOTFS_VOLUME, "-t", 0};
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_erase) != 0) {
+        printf("%s: Couldn't erase Rootfs volume\n", name);
+        return StringValue(strdup(""));
+    }
+    printf("Erasing of Rootfs volume is successful\n");
+
+    char *args_update[] = {"ubiupdatevol", ROOTFS_VOLUME, SYSTEM_ROOTFS, 0};
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_update) != 0) {
+        printf("%s: Couldn't update Rootfs volume\n", name);
+        return StringValue(strdup(""));
+    }
+    printf("Updating of Rootfs volume is successful\n");
+
+    return StringValue(strdup("success"));
+}
+#endif //TARGET_SUPPORTS_NAND_DM_VERITY
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
     RegisterFunction("is_mounted", IsMountedFn);
@@ -2630,5 +2680,8 @@ void RegisterInstallFunctions() {
     RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
     RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
 #endif
+#endif
+#ifdef TARGET_SUPPORTS_NAND_DM_VERITY
+    RegisterFunction("update_rootfs_ubi_volume", updateRootfsUbiVolume);
 #endif
 }
