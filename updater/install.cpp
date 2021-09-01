@@ -1162,17 +1162,17 @@ static int ApplyParsedPerms(
 {
     int bad = 0;
 
+    /* ignore symlinks */
+    if (S_ISLNK(statptr->st_mode)) {
+        return bad;
+    }
+
     if (parsed.has_selabel) {
         if (lsetfilecon(filename, parsed.selabel) != 0) {
             uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
                     filename, parsed.selabel, strerror(errno));
             bad++;
         }
-    }
-
-    /* ignore symlinks */
-    if (S_ISLNK(statptr->st_mode)) {
-        return bad;
     }
 
     if (parsed.has_uid) {
