@@ -259,6 +259,7 @@ int exec_command(FILE *logfd, const char *name, char *const args[]) {
     int status = -1;
     int i;
     pid_t pid;
+    size_t size = 0;
 
     pid = fork();
     if (pid == -1) {
@@ -266,7 +267,8 @@ int exec_command(FILE *logfd, const char *name, char *const args[]) {
         goto cleanup;
     } else if (pid == 0) {
         fprintf(logfd, "ui_print executing \'%s\'", name);
-        for (i = 0; i < 10; i++) {  // limit logging to reduce verbage
+        size = sizeof(args)/sizeof(args[0]);
+        for (i = 0; i < size; i++) {
             if (args[i]) {
                 fprintf(logfd, "ui_print %s", args[i]);
             } else {
@@ -1162,17 +1164,17 @@ static int ApplyParsedPerms(
 {
     int bad = 0;
 
+    /* ignore symlinks */
+    if (S_ISLNK(statptr->st_mode)) {
+        return bad;
+    }
+
     if (parsed.has_selabel) {
         if (lsetfilecon(filename, parsed.selabel) != 0) {
             uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
                     filename, parsed.selabel, strerror(errno));
             bad++;
         }
-    }
-
-    /* ignore symlinks */
-    if (S_ISLNK(statptr->st_mode)) {
-        return bad;
     }
 
     if (parsed.has_uid) {
@@ -1311,7 +1313,7 @@ Value* GetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* key = Evaluate(state, argv[0]);
     if (key == NULL) return NULL;
 
-    char value[PROPERTY_VALUE_MAX];
+    char value[PROPERTY_VALUE_MAX] = "";
     property_get(key, value, "");
     free(key);
 
