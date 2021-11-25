@@ -65,6 +65,8 @@
 #ifdef TARGET_NAND_BOOT
 #include "mtdutils/mtdutils.h"
 #define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
+#define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
+#define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
 #endif
 
 #define BLOCKSIZE 4096
@@ -1413,7 +1415,6 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         const MtdPartition* mtd;
         snprintf(rootfs_volume, PATH_MAX, "%s%s", "rootfs", slot_suffix_arr[inactive_slot]);
         printf("Inactive rootfs volume: %s\n", rootfs_volume);
-
 #endif
         mtd = mtd_find_partition_by_name(rootfs_volume);
         if (mtd == NULL) {
@@ -1451,6 +1452,55 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
+#ifdef TARGET_NAND_BOOT
+    else if (strncmp(blockdev_filename->data, TELAF_PATH, strlen(TELAF_PATH)) == 0) {
+        char telaf_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isEightPlusEightConfig()) {
+            snprintf(telaf_volume, PATH_MAX, "%s%s", "telaf", slot_suffix_arr[inactive_slot]);
+            printf("Inactive telaf volume: %s\n", telaf_volume);
+        } else {
+            snprintf(telaf_volume, PATH_MAX, "%s", "telaf");
+            printf("telaf volume: %s\n", telaf_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(telaf_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", telaf_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              telaf_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+    // for 4+4 recoveryfs is updated while performing ab sync operation after bootup
+    else if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
+        char recoveryfs_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isEightPlusEightConfig()) {
+            printf(" recoveryfs volume is not applicable for 8+8  \n");
+            return strdup("");
+        } else {
+            snprintf(recoveryfs_volume, PATH_MAX, "%s", "recoveryfs");
+            printf("recoveryfs_ volume: %s\n", recoveryfs_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(recoveryfs_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", recoveryfs_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              recoveryfs_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+#endif
 #endif
     return strdup("");
 }
