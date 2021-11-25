@@ -65,6 +65,7 @@
 #ifdef TARGET_NAND_BOOT
 #include "mtdutils/mtdutils.h"
 #define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
+#define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
 #define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
 #endif
 
@@ -1441,6 +1442,29 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char mtd_devname[PATH_MAX];
         printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
               modem_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+    else if (strncmp(blockdev_filename->data, TELAF_PATH, strlen(TELAF_PATH)) == 0) {
+        char telaf_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isEightPlusEightConfig()) {
+            snprintf(telaf_volume, PATH_MAX, "%s%s", "telaf", slot_suffix_arr[inactive_slot]);
+            printf("Inactive telaf volume: %s\n", telaf_volume);
+        } else {
+            snprintf(telaf_volume, PATH_MAX, "%s", "telaf");
+            printf("telaf volume: %s\n", telaf_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(telaf_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", telaf_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              telaf_volume, mtd->device_index);
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
