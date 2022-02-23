@@ -22,13 +22,18 @@ min_c_sources := \
         mounts.c \
         mtdutils.c
 
+if TARGET_NAD_PROD
 min_cpp_sources := \
         copyrawpart.cpp
+endif
 
 h_sources := \
         mounts.h \
-        mtdutils.h \
+        mtdutils.h
+if TARGET_NAD_PROD
+h_sources := \
         copyrawpart.h
+endif
 
 library_includedir := $(pkgincludedir)
 library_include_HEADERS := $(h_sources)
