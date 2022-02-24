@@ -12,6 +12,7 @@ AM_CPPFLAGS := \
               -I. \
               -USE_GLIB \
               -I$(WORKSPACE)/system/core/include \
+              -I$(WORKSPACE)/OTA/recovery \
               -Dstrlcpy=g_strlcpy \
               -Dstrlcat=g_strlcat
 
