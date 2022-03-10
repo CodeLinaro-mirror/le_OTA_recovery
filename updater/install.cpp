@@ -57,6 +57,7 @@
 #include "otafault/ota_io.h"
 #include "updater.h"
 #include "install.h"
+#include "cutils/memory.h"
 
 #ifndef USE_LE_MODE
 #include "tune2fs.h"
@@ -2111,6 +2112,10 @@ bool PerformBlockCopyOperation(char* source, char* dest) {
     uint8_t src_hash[SHA_DIGEST_LENGTH], dest_hash[SHA_DIGEST_LENGTH];
 
     char* buffer = reinterpret_cast<char*>(malloc(BLOCKSIZE));
+    if (buffer == NULL) {
+        printf("PerformBlockCopyOperation: memory allocation failed");
+        return false;
+    }
     while (success && (read =
             TEMP_FAILURE_RETRY(ota_read(source_fd, buffer, BLOCKSIZE))) > 0) {
         // printf("Read %zd bytes from source_fd\n", read);
@@ -2181,13 +2186,14 @@ Value* CopyABPartitionsFn(const char* name, State* state,
     bool exclude_from_copy = false;
     int exclude_length = 0;
     char partitions_to_exclude[20][PATH_MAX];
+    char* saveptr = NULL; // to be passed to strtok_r()
 
     if (argc == 1) {
         if (ReadArgs(state, argv, 1, &exclude_arg) < 0) {
             return ErrorAbort(state, kArgsParsingFailure,
                 "%s: couldn't parse args!", name);
         }
-        char *p = strtok (exclude_arg, ",");
+        char *p = strtok_r(exclude_arg, ",", &saveptr);
         while (p != NULL) {
             // append the boot/active slot to the name and then save it
             char buffer[PATH_MAX];
@@ -2195,7 +2201,7 @@ Value* CopyABPartitionsFn(const char* name, State* state,
                     p, slot_suffix_arr[boot_slot]);
             printf("%s: Excluding partition \"%s\" from being copied\n", name, p);
             exclude_length ++;
-            p = strtok (NULL, ",");
+            p = strtok_r(NULL, ",", &saveptr);
         }
         if (exclude_length > 0)
             exclude_from_copy = true; // we have partitions that need not be copied
@@ -2255,8 +2261,11 @@ Value* CopyABPartitionsFn(const char* name, State* state,
                     BOOTDEVICE_DIR, de->d_name);
             char *p = strstr(inactive_block_dev_filename,
                               slot_suffix_arr[boot_slot]);
-            // p shouldn't be null as we already checked for the suffix earlier
-            strncpy(p,  slot_suffix_arr[inactive_slot], 2); // replace the slot
+            if (p == NULL) {
+                printf("CopyABPartitionsFn: Inactive Block device is null");
+                return StringValue(strdup(""));
+            }
+            strlcpy(p,  slot_suffix_arr[inactive_slot], 2); // replace the slot
 
             /* Perform the actual copy */
             printf("%s: Copying from %s to %s\n", name, active_block_dev_filename,
@@ -2302,6 +2311,10 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
         snprintf(buffer, PATH_MAX, "%s%s", block_dev,
                 slot_suffix_arr[inactive_slot]);
         block_dev = strdup(buffer);
+        if (block_dev == NULL) {
+            printf("BlockDeviceCheckFn: block device is null");
+            return StringValue(strdup(""));
+        }
         printf("%s: Checking sanity of %s\n", name, block_dev);
     } else {
         printf("%s: Expecting block-device but received something else!\n", name);
@@ -2330,6 +2343,10 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     SHA1_Init(&ctx);
     uint8_t block_dev_sha1[SHA_DIGEST_LENGTH];
     char* buffer = reinterpret_cast<char*>(malloc(BLOCKSIZE));
+    if (buffer == NULL) {
+        printf("BlockDeviceCheckFn: memory allocation failed");
+        return StringValue(strdup(""));
+    }
     size_t to_read = atoll(total_read_size), so_far = 0;
     size_t read = (size_t)min(BLOCKSIZE, to_read - so_far);
 
