@@ -11,7 +11,7 @@ infile = sys.argv[1]
 outfile = sys.argv[2]
 
 if not outfile.endswith(".bmp"):
-  print >> sys.stderr, "Warning: I'm expecting to write BMP files."
+  print("Warning: I'm expecting to write BMP files.", file=sys.stderr)
 
 im = Image.open(infile)
 if im.mode == 'RGB':
@@ -76,4 +76,4 @@ elif im.mode == 'RGBA':
       f.write(data[i+3])    # A
   f.close()
 else:
-  print >> sys.stderr, "Don't know how to handle image mode '%s'." % (im.mode,)
+  print("Don't know how to handle image mode '%s'." % (im.mode,), file=sys.stderr)
