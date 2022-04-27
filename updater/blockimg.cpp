@@ -675,7 +675,7 @@ static int WriteStash(const std::string& base, const std::string& id, int blocks
         *exists = false;
     }
 
-    fprintf(stderr, " writing %d blocks to %s\n", blocks, cn.c_str());
+    //fprintf(stderr, " writing %d blocks to %s\n", blocks, cn.c_str());
 
     int fd = TEMP_FAILURE_RETRY(open(fn.c_str(), O_WRONLY | O_CREAT | O_TRUNC, STASH_FILE_MODE));
     unique_fd fd_holder(fd);
@@ -1134,7 +1134,7 @@ static int PerformCommandZero(CommandParameters& params) {
     RangeSet tgt;
     parse_range(params.tokens[params.cpos++], tgt);
 
-    fprintf(stderr, "  zeroing %zu blocks\n", tgt.size);
+    //fprintf(stderr, "  zeroing %zu blocks\n", tgt.size);
 
     allocate(BLOCKSIZE, params.buffer);
     memset(params.buffer.data(), 0, BLOCKSIZE);
@@ -1179,7 +1179,7 @@ static int PerformCommandNew(CommandParameters& params) {
     parse_range(params.tokens[params.cpos++], tgt);
 
     if (params.canwrite) {
-        fprintf(stderr, " writing %zu blocks of new data\n", tgt.size);
+        //fprintf(stderr, " writing %zu blocks of new data\n", tgt.size);
 
         RangeSinkState rss(tgt);
         rss.fd = params.fd;

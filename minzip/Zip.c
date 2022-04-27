@@ -17,10 +17,10 @@
 #define LOG_TAG "minzip"
 #include "Zip.h"
 #include "Bits.h"
+#define NDEBUG // don't show verbose messages
 #include "Log.h"
 #include "DirUtil.h"
 
-#undef NDEBUG   // do this after including Log.h
 #include <assert.h>
 
 #define SORT_ENTRIES 1
@@ -435,6 +435,10 @@ int mzOpenZipArchive(unsigned char* addr, size_t length, ZipArchive* pArchive)
 
     pArchive->addr = addr;
     pArchive->length = length;
+
+    // Initialize the structure pointers as NULL before calling parseZipArchive
+    pArchive->pEntries = NULL;
+    pArchive->pHash = NULL;
 
     if (!parseZipArchive(pArchive)) {
         err = -1;
