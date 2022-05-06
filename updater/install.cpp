@@ -2265,7 +2265,7 @@ Value* CopyABPartitionsFn(const char* name, State* state,
                 printf("CopyABPartitionsFn: Inactive Block device is null");
                 return StringValue(strdup(""));
             }
-            strlcpy(p,  slot_suffix_arr[inactive_slot], 2); // replace the slot
+            strlcpy(p,  slot_suffix_arr[inactive_slot], 3); // replace the slot
 
             /* Perform the actual copy */
             printf("%s: Copying from %s to %s\n", name, active_block_dev_filename,
