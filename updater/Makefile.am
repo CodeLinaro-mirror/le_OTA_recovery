@@ -65,6 +65,11 @@ updater_CPPFLAGS += -DTARGET_SUPPORTS_AB
 updater_LDADD += -labctl
 endif
 
+if TARGET_SUPPORTS_ABC
+updater_CPPFLAGS += -DTARGET_SUPPORTS_ABC
+endif
+
+
 if TARGET_NAND_AB_BOOT
 updater_CPPFLAGS += -DTARGET_NAND_AB_BOOT
 endif

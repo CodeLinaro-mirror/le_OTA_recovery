@@ -37,6 +37,10 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include<iostream>
+#include <cstring>
+#include <fstream>
+#include <sstream>
 
 #include <base/file.h>
 #include <android-base/parseint.h>
@@ -95,7 +99,9 @@ extern "C" {    // Use till system/core is updated
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
 #endif
-
+#ifdef TARGET_SUPPORTS_ABC
+static const char *ABC_OTA_STATUS_COOKIE_FILE = "/cache/recovery/abc_ota_status";
+#endif
 // Send over the buffer to recovery though the command pipe.
 static void uiPrint(State* state, const std::string& buffer) {
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
@@ -2256,6 +2262,17 @@ Value* CopyABPartitionsFn(const char* name, State* state,
             char *p = strstr(inactive_block_dev_filename,
                               slot_suffix_arr[boot_slot]);
             // p shouldn't be null as we already checked for the suffix earlier
+#ifdef TARGET_SUPPORTS_ABC
+            if (strstr(inactive_block_dev_filename, "vendor_boot_b")) {
+                p = p + 5;
+            }
+            if (strstr(inactive_block_dev_filename, "aop_config_c")) {
+                p = p + 7;
+            }
+            if (strstr(inactive_block_dev_filename, "xbl_config_c")) {
+                p = p + 7;
+            }
+#endif
             strncpy(p,  slot_suffix_arr[inactive_slot], 2); // replace the slot
 
             /* Perform the actual copy */
@@ -2532,6 +2549,58 @@ Value* SetInactiveAsUnbootableFn(const char* name, State* state,
     }
 }
 
+#ifdef TARGET_SUPPORTS_ABC
+void tokenize(std::string const& str, char delim,
+              std::vector<std::string>& out) {
+    std::istringstream iss(str);
+    std::string token;
+    while (std::getline(iss, token, delim)) {
+        out.push_back(std::string(token));
+    }
+}
+bool is_file_empty(std::fstream& pFile) {
+    bool result = (pFile.peek() == std::fstream::traits_type::eof());
+    pFile.seekg(0, std::ios::beg);
+    return result;
+}
+
+std::string read_last_line(std::fstream& fin) {
+    // std::ifstream fin;
+    // fin.open(ABC_OTA_STATUS_COOKIE_FILE);
+    if (fin.is_open()) {
+        fin.seekg(-1, std::ios_base::end);  // go to one spot before the EOF
+        char ch;
+        fin.get(ch);
+        if (ch == '\n') fin.seekg(-2, std::ios_base::end);
+        bool keepLooping = true;
+        while (keepLooping) {
+            char ch;
+            fin.get(ch);  // Get current byte's data
+
+            if ((int)fin.tellg() <=
+                1) {           // If the data was at or before the 0th byte
+                fin.seekg(0);  // The first line is the last line
+                keepLooping = false;  // So stop there
+            } else if (ch == '\n') {  // If the data was a newline
+                keepLooping = false;  // Stop at the current position.
+            } else {  // If the data was neither a newline nor at the 0 byte
+                fin.seekg(-2, std::ios_base::cur);  // Move to the front of that
+                                                    // data, then to the front
+                                                    // of the data before it
+            }
+        }
+
+        std::string lastLine;
+        getline(fin, lastLine);  // Read the current line
+
+        std::cout << "Result: " << lastLine << '\n';  // Display it
+        // fin.close();
+        return lastLine;
+    }
+    return "";
+}
+#endif
+
 Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
         int argc, Expr* argv[]) {
     if (argc != 0) {
@@ -2550,6 +2619,66 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
         if (ret == 1) { // slot is active
             printf("%s: Set %s as active slot successfully\n", name,
                     slot_suffix_arr[inactive_slot]);
+#ifdef TARGET_SUPPORTS_ABC
+            int ret1 = libabctl_setPriority(inactive_slot, 3);
+            int ret2 = libabctl_setPriority(boot_slot, 1);
+            int ret3 = -1,other_slot;
+            std::fstream file;
+            std::string stage;
+            file.open(ABC_OTA_STATUS_COOKIE_FILE, std::ios::in);
+            if (!file) {
+                std::cout<<"File is not existed\n";
+                file.close();
+                return StringValue(strdup(""));
+            }
+            if (is_file_empty(file)) {
+                std::cout<<"File is empty\n";
+                file.close();
+                return StringValue(strdup(""));
+            }
+            else {
+                std::string last_line = read_last_line(file);
+                char delim = ':';
+                std::vector<std::string> out;
+                std::string slot_from_ota_status;
+                tokenize(last_line, delim, out);
+                stage = out[0];
+                slot_from_ota_status = out[2];
+                other_slot = slot_from_ota_status[0]-'0';
+                other_slot = (other_slot + 1) % 3;
+                if(stage == "STAGE2") {
+                    ret3 = libabctl_setPriority(other_slot, 2);
+                }
+                file.close();
+            }
+            if(stage == "STAGE2") {
+                if(ret1 == 0 && ret2 == 0 && ret3 == 0) {
+                    printf("Setting priority of slot %s as 3(high) successfully\n",
+                        slot_suffix_arr[inactive_slot]);
+                    printf("Setting priority of slot %s as 1(low) successfully\n",
+                        slot_suffix_arr[boot_slot]);
+                    printf("Setting priority of slot %s as 2(medium) successfully\n",
+                        slot_suffix_arr[other_slot]);
+                }
+                else {
+                    printf("Failed to set priority of one of the slot\n");
+                    return StringValue(strdup(""));
+                }
+            }
+            else {
+                if(ret1 == 0 && ret2 == 0) {
+                    printf("Setting priority of slot %s as 3(high) successfully\n",
+                        slot_suffix_arr[inactive_slot]);
+                    printf("Setting priority of slot %s as 1(low) successfully\n",
+                        slot_suffix_arr[boot_slot]);
+                }
+                else {
+                    printf("Failed to set priority of one of the slot\n");
+                    return StringValue(strdup(""));
+                }
+            }
+#endif
+
             return StringValue(strdup("Success"));
         } else {
             printf("That's weird! setActive() didn't return any errors "

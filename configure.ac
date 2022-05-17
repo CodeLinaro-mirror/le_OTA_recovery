@@ -114,6 +114,9 @@ AM_CONDITIONAL(BUILD_DEVICE, [test "x$ARM$ARM64" != "xnono"])
 # Compile recovery and updater for targets that support A/B boot
 AM_CONDITIONAL([TARGET_SUPPORTS_AB],[test x$TARGET_SUPPORTS_AB = xtrue])
 
+# Compile recovery and updater for targets that support A/B/C
+AM_CONDITIONAL([TARGET_SUPPORTS_ABC],[test x$TARGET_SUPPORTS_ABC = xtrue])
+
 # Compile ota package verification code for targets supporting it
 AM_CONDITIONAL([TARGET_SUPPORTS_OTA_VERIFICATION],[test x$TARGET_SUPPORTS_OTA_VERIFICATION = xtrue])
 
@@ -141,5 +144,7 @@ AC_CONFIG_FILES([     \
         otafault/Makefile \
         bootloader_message/Makefile \
         recovery.pc      \
+        update_engine/Makefile  \
+        recovery_wrapper/Makefile  \
         ])
 AC_OUTPUT
