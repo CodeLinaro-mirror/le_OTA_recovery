@@ -64,12 +64,16 @@
 #endif
 #ifdef TARGET_NAND_BOOT
 #include "mtdutils/mtdutils.h"
+#include <mtd/mtd-user.h>
 #define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
 #define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
 #define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
 #endif
 
 #define BLOCKSIZE 4096
+#ifdef TARGET_NAD_PROD
+#define LEBSIZE 253952
+#endif
 
 // Set this to 0 to interpret 'erase' transfers to mean do a
 // BLKDISCARD ioctl (the normal behavior).  Set to 1 to interpret
@@ -2066,7 +2070,90 @@ Value* BlockImageRecoverFn(const char* name, State* state, int argc, Expr* argv[
     return StringValue(strdup("t"));
 }
 #endif
+#ifdef TARGET_NAD_PROD
+Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
+    Value* blockdev_filename = nullptr;
+    Value* blockdev_num = nullptr;
+    char buf[PATH_MAX];
+    int ret;
+    int leb_size = 0;
+    size_t vol_size, image_size;
+    if (ReadValueArgs(state, argv, 2, &blockdev_filename, &blockdev_num) < 0) {
+        return StringValue(strdup(""));
+    }
+    printf ("BlockEraseFn \n");
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_filename_holder(blockdev_filename,
+            FreeValue);
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_num_holder(blockdev_num,
+            FreeValue);
 
+    if (blockdev_filename->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_filename argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+    if (blockdev_num->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_num argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+    image_size = atoi(blockdev_num->data);
+    // check if  8+8 and recoveryfs
+    if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
+        printf(" recoveryfs update only performed on 4+4 \n");
+        if(isEightPlusEightConfig()) {
+            return StringValue(strdup("t"));
+        }
+    }
+
+    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+    printf(" blockdev_filename_data %s \n", blockdev_filename->data);
+
+    int fd = open(blockdev_filename->data, O_RDWR);
+    if (fd == -1) {
+       printf(" file open error for %s \n", blockdev_filename->data);
+    }
+
+    if (ioctl(fd, BLKGETSIZE64, &vol_size) < 0) {
+        printf("BlockEraseFn: ioctl operation to get vol size failed \n");
+        return StringValue(strdup(""));
+    }
+
+    leb_size = LEBSIZE;
+    close(fd);
+
+    char mtd_erase_dev[PATH_MAX];
+    char* save = blockdev_filename->data;
+
+    char *mtd_num = strtok_r(blockdev_filename->data, "block", &save);
+    mtd_num = strtok_r(NULL, "block", &save);
+
+    snprintf(mtd_erase_dev, 12, "%s%s", "/dev/mtd", mtd_num);
+
+    fd = open(mtd_erase_dev, O_RDWR);
+    if (fd == -1) {
+       printf(" file open error for %s \n", mtd_erase_dev);
+    }
+
+    size_t total_eb_count = vol_size/leb_size;
+    size_t image_eb_count = (image_size * 4096) / leb_size;
+    struct erase_info_user ei;
+    struct erase_info_user64 ei64;
+    image_eb_count++;
+    for (int eb_cnt = image_eb_count ; eb_cnt < total_eb_count; eb_cnt++) {
+      ei64.start = (uint64_t)eb_cnt*leb_size;
+      ei64.length = (uint64_t)leb_size;
+      ret = ioctl(fd, MEMERASE64, &ei64);
+      if (ret == -1){
+        fprintf(stderr, "MEMERASE64 ioctl for eb:%zu, failed: %s\n", eb_cnt, strerror(errno));
+        continue;// should update be failed if erase operation is not success ?
+      }
+    }
+    close(fd);
+    printf ("erase operation complete \n");
+    return StringValue(strdup("t"));
+}
+#endif
 void RegisterBlockImageFunctions() {
     RegisterFunction("block_image_verify", BlockImageVerifyFn);
     RegisterFunction("block_image_update", BlockImageUpdateFn);
@@ -2075,4 +2162,7 @@ void RegisterBlockImageFunctions() {
 #endif
     RegisterFunction("check_first_block", CheckFirstBlockFn);
     RegisterFunction("range_sha1", RangeSha1Fn);
+#ifdef TARGET_NAD_PROD
+    RegisterFunction("block_erase", BlockEraseFn);
+#endif
 }
