@@ -83,7 +83,7 @@ std::string read_last_line(std::fstream &fin) {
 }
 
 int main() {
-    freopen(TEMPORARY_LOG_FILE, "a", stdout);
+    FILE *stream = freopen(TEMPORARY_LOG_FILE, "a", stdout);
     std::cout << "Update_Engine Started\n";
     std::fstream file;
     file.open(ABC_OTA_STATUS_COOKIE_FILE,
@@ -133,6 +133,7 @@ int main() {
             file.open(ABC_OTA_STATUS_COOKIE_FILE,
                       std::ofstream::out | std::ofstream::trunc);
             file.close();
+            fclose(stream);
             char *args[] = {"/usr/bin/recovery",
                             "--update_package=/data/update_ext4.zip", NULL};
             execv(args[0], args);
@@ -143,6 +144,7 @@ int main() {
                                        ota_status == "OTA_IN_PROGRESS" ||
                                        ota_status == "OTA_FAILED")) {
             std::cout << "retriggering the ota from where it was stuck\n";
+            fclose(stream);
             char *args[] = {"/usr/bin/recovery",
                             "--update_package=/data/update_ext4.zip", NULL};
             execv(args[0], args);
@@ -157,6 +159,7 @@ int main() {
                       std::ios::in | std::ios::out | std::ios::app);
             file << "STAGE1:BOOT_SUCCESSFUL:" << slot_from_ota_status << "\n";
             file.close();
+            fclose(stream);
             char *args[] = {"/usr/bin/recovery",
                             "--update_package=/data/update_ext4.zip", NULL};
             execv(args[0], args);
@@ -181,5 +184,6 @@ int main() {
         }
     }
     file.close();
+    fclose(stream);
 }
 
