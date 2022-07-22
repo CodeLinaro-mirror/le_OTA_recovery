@@ -4,6 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 *********************************************************/
 
 #include <getopt.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #include <iostream>
@@ -13,15 +14,17 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 using namespace std;
 
 static const char *TEMPORARY_LOG_FILE = "/cache/recovery/update_engine.log";
+static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
+static const int MAX_ARG_LENGTH = 4096;
 static const struct option OPTIONS[] = {
     {"boot_successful", no_argument, NULL, 'b'},
-    {"ota_update", no_argument, NULL, 'o'},
+    {"update_package", required_argument, NULL, 'o'},
     {NULL, 0, NULL, 0},
 };
 
 int main(int argc, char **argv) {
     bool boot_successful = false;
-    bool ota_update = false;
+    const char *update_package = NULL;
     int arg, option_index;
     while ((arg = getopt_long(argc, argv, "", OPTIONS, &option_index)) != -1) {
         switch (arg) {
@@ -29,18 +32,24 @@ int main(int argc, char **argv) {
                 boot_successful = true;
                 break;
             case 'o':
-                ota_update = true;
+                update_package = optarg;
                 break;
         }
     }
-    if (ota_update) {
-        if(remove(TEMPORARY_LOG_FILE) == 0) {
+    if (update_package != NULL) {
+        if (remove(TEMPORARY_LOG_FILE) == 0) {
             std::cout << "Removed update_engine logs file\n";
         }
-        char *args[] = {"/usr/bin/recovery",
-                        "--update_package=/data/update_ext4.zip", NULL};
+        char zip_path[MAX_ARG_LENGTH];
+        snprintf(zip_path, MAX_ARG_LENGTH, "--update_package=%s", update_package);
+        std::cout << "Received ota_update and update_package path: " << zip_path
+                  << endl;
+        FILE *fp;
+        fp = fopen(ZIP_FILE_PATH, "w");
+        fprintf(fp, "%s\n", zip_path);
+        fclose(fp);
+        char *args[] = {"/usr/bin/recovery", zip_path, NULL};
         execv(args[0], args);
-        std::cout << "Received ota_update\n";
     }
     if (boot_successful) {
         cout << "Received boot_successful\n";
@@ -52,4 +61,3 @@ int main(int argc, char **argv) {
         }
     }
 }
-

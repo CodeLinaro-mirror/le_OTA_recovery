@@ -3,7 +3,6 @@ Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
 SPDX-License-Identifier: BSD-3-Clause-Clear
 *********************************************************/
 
-
 #include <android/log.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -26,9 +25,11 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 static const char *ABC_OTA_STATUS_COOKIE_FILE =
     "/cache/recovery/abc_ota_status";
 static const char *TEMPORARY_LOG_FILE = "/cache/recovery/update_engine.log";
+static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
+static const int MAX_ARG_LENGTH = 4096;
 
-void tokenize(std::string const& str, char delim,
-              std::vector<std::string>& out) {
+void tokenize(std::string const &str, char delim,
+              std::vector<std::string> &out) {
     std::istringstream iss(str);
     std::string token;
     while (std::getline(iss, token, delim)) {
@@ -101,6 +102,11 @@ int main() {
         std::string stage, ota_status, slot_from_ota_status, first_line,
             last_line, ota_started_slot_str;
         char delim = ':';
+        char zip_path[MAX_ARG_LENGTH];
+        FILE *fp;
+        fp = fopen(ZIP_FILE_PATH, "r");
+        fscanf(fp, "%s\n", zip_path);
+        fclose(fp);
         int boot_slot, ota_started_slot, boot_slot_from_ota_status;
         std::vector<std::string> first_line_split;
         std::vector<std::string> last_line_split;
@@ -122,7 +128,7 @@ int main() {
         file.close();
         std::cout << "current boot slot" << boot_slot << "\n";
         std::cout << "stage: " << stage << " ota_status: " << ota_status
-                  << "\n";
+                  << " zip_path: " << zip_path << "\n";
 
         // clear the state machine and retrigger the ota from beginning
         if (stage == "STAGE1" &&
@@ -134,8 +140,7 @@ int main() {
                       std::ofstream::out | std::ofstream::trunc);
             file.close();
             fclose(stream);
-            char *args[] = {"/usr/bin/recovery",
-                            "--update_package=/data/update_ext4.zip", NULL};
+            char *args[] = {"/usr/bin/recovery", zip_path, NULL};
             execv(args[0], args);
         }
 
@@ -145,8 +150,7 @@ int main() {
                                        ota_status == "OTA_FAILED")) {
             std::cout << "retriggering the ota from where it was stuck\n";
             fclose(stream);
-            char *args[] = {"/usr/bin/recovery",
-                            "--update_package=/data/update_ext4.zip", NULL};
+            char *args[] = {"/usr/bin/recovery", zip_path, NULL};
             execv(args[0], args);
         }
 
@@ -160,8 +164,7 @@ int main() {
             file << "STAGE1:BOOT_SUCCESSFUL:" << slot_from_ota_status << "\n";
             file.close();
             fclose(stream);
-            char *args[] = {"/usr/bin/recovery",
-                            "--update_package=/data/update_ext4.zip", NULL};
+            char *args[] = {"/usr/bin/recovery", zip_path, NULL};
             execv(args[0], args);
         }
 
@@ -174,8 +177,8 @@ int main() {
             std::cout << "OTA_COMPLETED Overall\n";
             file.seekg(0, std::ios::beg);
             std::string line;
-            while(getline(file, line)) {
-                std::cout << line <<"\n";
+            while (getline(file, line)) {
+                std::cout << line << "\n";
             }
             file.close();
             file.open(ABC_OTA_STATUS_COOKIE_FILE,
@@ -186,4 +189,3 @@ int main() {
     file.close();
     fclose(stream);
 }
-
