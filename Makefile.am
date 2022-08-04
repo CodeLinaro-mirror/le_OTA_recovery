@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS := -I m4
 
-SUBDIRS := minzip mtdutils edify otafault applypatch updater minadbd bootloader_message
+SUBDIRS := minzip mtdutils edify otafault applypatch updater minadbd bootloader_message update_engine recovery_wrapper
 
 AM_CFLAGS := -Wundef \
              -Wstrict-prototypes \
@@ -115,6 +115,10 @@ EXTRA_DIST := $(pkgconfig_DATA)
 if TARGET_SUPPORTS_AB
 recovery_CPPFLAGS += -DTARGET_SUPPORTS_AB
 recovery_LDADD += -labctl
+endif
+
+if TARGET_SUPPORTS_ABC
+recovery_CPPFLAGS += -DTARGET_SUPPORTS_ABC
 endif
 
 if TARGET_SUPPORTS_OTA_VERIFICATION

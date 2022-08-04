@@ -25,6 +25,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cstring>
+#include <fstream>
+#include <sstream>
 #ifdef USE_LE_MODE
 #include <cutils/klog.h>
 #else
@@ -135,6 +138,9 @@ static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
 static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
+#ifdef TARGET_SUPPORTS_ABC
+static const char *ABC_OTA_STATUS_COOKIE_FILE = "/cache/recovery/abc_ota_status";
+#endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
 // We will try to apply the update package 5 times at most in case of an I/O error.
@@ -611,6 +617,60 @@ static void copy_logs() {
     chmod(LAST_INSTALL_FILE, 0644);
     sync();
 }
+
+#ifdef TARGET_SUPPORTS_ABC
+bool file_is_empty(std::fstream& pFile) {
+    bool result = (pFile.peek() == std::fstream::traits_type::eof());
+    pFile.seekg(0, std::ios::beg);
+    return result;
+}
+
+std::string read_first_line() {
+    std::fstream newfile;
+    newfile.open(ABC_OTA_STATUS_COOKIE_FILE, std::ios::in);
+    if (newfile.is_open()) {
+        std::string tp;
+        while (getline(newfile, tp)) {
+            return tp;
+        }
+        newfile.close();
+    }
+}
+
+static int set_abc_ota_cookie(bool package_install) {
+    std::fstream file;
+    int boot_slot = libabctl_getBootSlot();
+    int next_inactive_slot = (boot_slot + 1) % 3;
+    file.open(ABC_OTA_STATUS_COOKIE_FILE,
+              std::ios::in | std::ios::out | std::ios::app);
+    if (!file) {
+        LOGE("Failed to open %s : %s\n", ABC_OTA_STATUS_COOKIE_FILE,
+             strerror(errno));
+        file.close();
+        return -1;
+    }
+    if (file_is_empty(file)) {
+        file << "STAGE1:OTA_STARTED:" << boot_slot << "\n";
+        file << "STAGE1:OTA_IN_PROGRESS:" << next_inactive_slot << "\n";
+    } else {
+        std::string stage;
+        std::string first_line = read_first_line();
+        int ota_started_slot = first_line[19] - '0';
+        if (ota_started_slot == boot_slot) {
+            stage = "STAGE1";
+        } else if ((ota_started_slot + 1) % 3 == boot_slot) {
+            stage = "STAGE2";
+        }
+        if (!package_install) {
+            file << stage << ":OTA_IN_PROGRESS:" << next_inactive_slot << "\n";
+        } else {
+            file << stage << ":OTA_COMPLETED:" << next_inactive_slot << "\n";
+        }
+    }
+    file.close();
+    return 0;
+}
+#endif
 
 static int set_ota_cookie() {
     int fd = -1;
@@ -1915,6 +1975,9 @@ int main(int argc, char **argv) {
             log_failure_code(kBootreasonInBlacklist, update_package);
             status = INSTALL_SKIPPED;
         } else {
+#ifdef TARGET_SUPPORTS_ABC
+            set_abc_ota_cookie(false);
+#endif
             status = install_package(update_package, &should_wipe_cache,
                                      TEMPORARY_INSTALL_FILE, mount_required, retry_count);
             if (status == INSTALL_SUCCESS && should_wipe_cache) {
@@ -2010,6 +2073,10 @@ error:
         }
     }
 #else
+#ifdef TARGET_SUPPORTS_ABC
+    if(status == INSTALL_SUCCESS)
+        set_abc_ota_cookie(true);
+#endif
     printf("Recovery exiting, upgrade %s\n",
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
 #endif
@@ -2021,6 +2088,15 @@ error:
     sync();
 
 #ifdef TARGET_SUPPORTS_AB
+#ifdef TARGET_SUPPORTS_ABC
+     if(status == INSTALL_SUCCESS) {
+         ui->Print("Rebooting...\n");
+         property_set(ANDROID_RB_PROPERTY, "reboot,");
+         reboot = true;
+         printf("invoking reboot\n"); fflush(stdout);
+         syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
+     }
+#endif
     _exit((status == INSTALL_SUCCESS) ? EXIT_SUCCESS : EXIT_FAILURE);
 #else
     switch (after) {
