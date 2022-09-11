@@ -637,7 +637,7 @@ std::string read_first_line() {
     }
 }
 
-static int set_abc_ota_cookie(bool package_install) {
+static int set_abc_ota_cookie(std::string ota_status) {
     std::fstream file;
     int boot_slot = libabctl_getBootSlot();
     int next_inactive_slot = (boot_slot + 1) % 3;
@@ -661,10 +661,12 @@ static int set_abc_ota_cookie(bool package_install) {
         } else if ((ota_started_slot + 1) % 3 == boot_slot) {
             stage = "STAGE2";
         }
-        if (!package_install) {
+        if (ota_status == "STARTED") {
             file << stage << ":OTA_IN_PROGRESS:" << next_inactive_slot << "\n";
-        } else {
+        } else if (ota_status == "SUCCESS") {
             file << stage << ":OTA_COMPLETED:" << next_inactive_slot << "\n";
+        } else if (ota_status == "FAILED") {
+            file << stage << ":OTA_FAILED:" << next_inactive_slot << "\n";
         }
     }
     file.close();
@@ -1976,7 +1978,7 @@ int main(int argc, char **argv) {
             status = INSTALL_SKIPPED;
         } else {
 #ifdef TARGET_SUPPORTS_ABC
-            set_abc_ota_cookie(false);
+            set_abc_ota_cookie("STARTED");
 #endif
             status = install_package(update_package, &should_wipe_cache,
                                      TEMPORARY_INSTALL_FILE, mount_required, retry_count);
@@ -2074,8 +2076,12 @@ error:
     }
 #else
 #ifdef TARGET_SUPPORTS_ABC
-    if(status == INSTALL_SUCCESS)
-        set_abc_ota_cookie(true);
+    if(status == INSTALL_SUCCESS) {
+        set_abc_ota_cookie("SUCCESS");
+    }
+    else {
+        set_abc_ota_cookie("FAILED");
+    }
 #endif
     printf("Recovery exiting, upgrade %s\n",
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
