@@ -75,6 +75,11 @@
 #define LEBSIZE 253952
 #endif
 
+#ifdef TARGET_SUPPORT_FDE_OTA
+#define FDE_DMCRYPT_SYSTEM_PATH "/dev/mapper/system"
+#define FDE_OTA_SYSTEM_TMP_PATH "/tmp/system"
+#endif
+
 // Set this to 0 to interpret 'erase' transfers to mean do a
 // BLKDISCARD ioctl (the normal behavior).  Set to 1 to interpret
 // erase to mean fill the region with zeroes.
@@ -1501,6 +1506,132 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
 }
 #endif
 
+#ifdef TARGET_SUPPORT_FDE_OTA
+static int copy_image(const char* source, const char* destination, size_t image_size) {
+    FILE* dest = fopen(destination, "w");
+    int ret = 0;
+    if (dest == nullptr) {
+        printf("Can't open %s\n", destination);
+        return -1;
+    } else {
+        FILE* src = fopen(source, "r");
+        if (src != nullptr) {
+
+            char buf[4096];
+            size_t bytes;
+            size_t len = sizeof(buf);
+            size_t total = 0;
+            while ((bytes = fread(buf, 1, len, src)) != 0) {
+                if(fwrite(buf, 1, bytes, dest) != bytes){
+                    printf("write failed for fde tmp image %s, bytes written %d\n", destination, bytes);
+                    ret = -1;
+                    break;
+                }
+                total += bytes;
+                if(total >= image_size)
+                   break;
+                if((total + sizeof(buf)) > image_size)
+                   len = image_size - total;
+            }
+            fflush(src);
+            fclose(src);
+        } else {
+           ret = -1;
+        }
+        fflush(dest);
+        fclose(dest);
+    }
+    return ret;
+}
+
+Value* CopyDecryptedImageToParition(const char* name, State* state, int argc, Expr* argv[]) {
+    Value* blockdev_filename = nullptr;
+    Value* blockdev_num = nullptr;
+    char buf[PATH_MAX];
+    size_t image_size = 0;
+    if (ReadValueArgs(state, argv, 2, &blockdev_filename, &blockdev_num) < 0) {
+        return StringValue(strdup(""));
+    }
+    printf ("CopyDecryptedImageToParition \n");
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_filename_holder(blockdev_filename,
+            FreeValue);
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_num_holder(blockdev_num,
+            FreeValue);
+
+    if (blockdev_filename->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_filename argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+    if (blockdev_num->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_num argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+   image_size = atoi(blockdev_num->data) * 4096;
+
+    printf(" CopyDecryptedImageToParition: image size: %zu \n", image_size);
+    if(strcmp(blockdev_filename->data, SYSTEM_PATH) == 0) {
+       blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+       printf(" copy /tmp/system to partition %s \n", blockdev_filename->data);
+       if(copy_image(FDE_OTA_SYSTEM_TMP_PATH, blockdev_filename->data, image_size) != 0) {
+          printf("copy to %s failed \n", blockdev_filename->data);
+          return StringValue(strdup(""));
+       }
+    } else {
+        printf("currently fde not supported on %s \n", blockdev_filename->data);
+        return StringValue(strdup(""));
+    }
+    remove(FDE_OTA_SYSTEM_TMP_PATH);
+    return StringValue(strdup("t"));
+}
+
+Value* CopyDecryptedImageToTemp(const char* name, State* state, int argc, Expr* argv[]) {
+    Value* blockdev_filename = nullptr;
+    char buf[PATH_MAX];
+    char blockdev_path[PATH_MAX] = {0};
+    size_t vol_size;
+    if (ReadValueArgs(state, argv, 1, &blockdev_filename) < 0) {
+        return StringValue(strdup(""));
+    }
+    printf ("CopyDecryptedImageToTemp \n");
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_filename_holder(blockdev_filename,
+            FreeValue);
+
+    if (blockdev_filename->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_filename argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+
+    if(strcmp(blockdev_filename->data, SYSTEM_PATH) == 0) {
+       printf(" copy system fde image to /tmp/system \n");
+       snprintf(blockdev_path, PATH_MAX, "%s", getInactiveRootfsMtdBlock(blockdev_filename));
+       int fd = open(blockdev_path, O_RDWR);
+       if (fd == -1) {
+          printf(" file open error for %s \n", blockdev_path);
+       }
+
+       printf(" get volume size for %s \n", blockdev_path);
+       if (ioctl(fd, BLKGETSIZE64, &vol_size) < 0) {
+           printf("CopyDecryptedImageToTemp: ioctl operation to get vol size failed \n");
+           close(fd);
+           return StringValue(strdup(""));
+       }
+       close(fd);
+       printf(" CopyDecryptedImageToTemp: vol_size: %zu \n", vol_size);
+       if(copy_image(FDE_DMCRYPT_SYSTEM_PATH, FDE_OTA_SYSTEM_TMP_PATH, vol_size) != 0) {
+          printf("copy to %s failed \n", FDE_OTA_SYSTEM_TMP_PATH);
+          return StringValue(strdup(""));
+       }
+    } else {
+        printf("currently fde not supported on %s \n", blockdev_filename->data);
+        return StringValue(strdup(""));
+    }
+    return StringValue(strdup("t"));
+}
+#endif
+
 // args:
 //    - block device (or file) to modify in-place
 //    - transfer list (blob)
@@ -1552,6 +1683,11 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
         return StringValue(strdup(""));
     }
 
+#ifdef TARGET_SUPPORT_FDE_OTA
+   char blockdev_path[PATH_MAX] = {0};
+   snprintf(blockdev_path, PATH_MAX, "%s", blockdev_filename->data);
+#endif
+
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
 #ifdef TARGET_NAND_BOOT
@@ -1600,7 +1736,22 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
         return StringValue(strdup(""));
     }
 
+#ifdef TARGET_SUPPORT_FDE_OTA
+   //for 4+4 device FDE ota is not supported.
+   if(isEightPlusEightConfig() == 0) {
+        fprintf(stderr, "FDE OTA is not supported for 4+4 device \n");
+        return StringValue(strdup(""));
+   }
+
+   // use fde /tmp/sysem only for incremental update
+   if(strcmp(blockdev_path, SYSTEM_PATH) == 0 && patch_entry->uncompLen > 0) {
+       params.fd = TEMP_FAILURE_RETRY(open(FDE_OTA_SYSTEM_TMP_PATH, O_RDWR));
+   } else {
+       params.fd = TEMP_FAILURE_RETRY(open(blockdev_filename->data, O_RDWR));
+   }
+#else
     params.fd = TEMP_FAILURE_RETRY(open(blockdev_filename->data, O_RDWR));
+#endif
     unique_fd fd_holder(params.fd);
 
     if (params.fd == -1) {
@@ -2164,5 +2315,9 @@ void RegisterBlockImageFunctions() {
     RegisterFunction("range_sha1", RangeSha1Fn);
 #ifdef TARGET_NAD_PROD
     RegisterFunction("block_erase", BlockEraseFn);
+#endif
+#ifdef TARGET_SUPPORT_FDE_OTA
+   RegisterFunction("copy_decrypted_image_to_temp", CopyDecryptedImageToTemp);
+   RegisterFunction("copy_decrypted_image_to_partion", CopyDecryptedImageToParition);
 #endif
 }

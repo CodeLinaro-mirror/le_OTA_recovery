@@ -129,6 +129,12 @@ AC_ARG_WITH([nad-prod],
 # Compile nad_prod ota code for targets supporting it
 AM_CONDITIONAL([TARGET_NAD_PROD],[test "x${with_nad_prod}" = "xtrue"])
 
+AC_ARG_WITH([nad-fde],
+      AC_HELP_STRING([--with-nad_fde],
+         [enable nad_fde, Use this for NAD FDE OTA]), with_nad_fde=true)
+# Compile nad_fde ota code for targets supporting it
+AM_CONDITIONAL([TARGET_SUPPORT_FDE_OTA],[test "x${with_nad_fde}" = "xtrue"])
+
 AC_ARG_WITH([core-headers],
       AC_HELP_STRING([--with-core-headers=@<:@dir@:>@],
          [Specify the location of the system core headers]),
