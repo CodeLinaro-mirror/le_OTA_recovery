@@ -2262,10 +2262,10 @@ Value* CopyABPartitionsFn(const char* name, State* state,
             char *p = strstr(inactive_block_dev_filename,
                               slot_suffix_arr[boot_slot]);
             // p shouldn't be null as we already checked for the suffix earlier
-#ifdef TARGET_SUPPORTS_ABC
             if (strstr(inactive_block_dev_filename, "vendor_boot_b")) {
                 p = p + 5;
             }
+#ifdef TARGET_SUPPORTS_ABC
             if (strstr(inactive_block_dev_filename, "aop_config_c")) {
                 p = p + 7;
             }
