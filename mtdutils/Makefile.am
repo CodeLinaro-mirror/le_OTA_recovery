@@ -11,7 +11,10 @@ AM_CPPFLAGS := \
               -DUSE_LE_MODE \
               -I. \
               -USE_GLIB \
-              -I$(WORKSPACE)/system/core/include
+              -I$(WORKSPACE)/system/core/include \
+              -Dstrlcpy=g_strlcpy \
+              -Dstrlcat=g_strlcat
+
 AM_LDFLAGS := -shared -version-info 1:0:0
 
 min_c_sources := \

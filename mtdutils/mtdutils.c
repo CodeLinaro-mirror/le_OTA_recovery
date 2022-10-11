@@ -29,7 +29,7 @@
 #include <assert.h>
 
 #include "mtdutils.h"
-#include <common.h>
+#include "common.h"
 
 struct MtdReadContext {
     const MtdPartition *partition;
