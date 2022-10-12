@@ -45,9 +45,6 @@
 #endif
 
 extern bool modified_flash;
-#ifdef TARGET_NAD_PROD
-extern bool mirror_copy;
-#endif
 typedef struct fstab_rec Volume;
 
 // fopen a file, mounting volumes and making parent dirs as necessary.

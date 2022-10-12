@@ -57,9 +57,6 @@
 #include "minzip/DirUtil.h"
 #include "mtdutils/mounts.h"
 #include "mtdutils/mtdutils.h"
-#ifdef TARGET_NAD_PROD
-#include "mtdutils/copyrawpart.h"
-#endif
 #include "openssl/sha.h"
 #include "otafault/ota_io.h"
 #include "updater.h"
@@ -83,7 +80,6 @@ extern "C" {    // Use till system/core is updated
 
 #ifdef TARGET_SUPPORTS_AB
 #include <libabctl.h>
-#include <libabctl.h>
 #include <errno.h>
 #include <dirent.h>
 #include "print_sha1.h"
@@ -93,6 +89,10 @@ extern "C" {    // Use till system/core is updated
 #ifdef TARGET_NAND_BOOT
 #define BOOT_NAME_LENGTH 7
 #define ROOTFS_NAME_LENGTH 10
+#endif
+#ifdef TARGET_NAD_PROD
+#define RAW_PART_LENGTH 20
+#define VOLUME_NAME_LENGTH 10
 #endif
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
@@ -2699,15 +2699,6 @@ Value* copyActiveVolumeToInactiveVolume(const char* name, State* state, int argc
     return StringValue(strdup("success"));
 }
 
-Value* copyAllRawPartitionsActiveToInactive(const char* name, State* state, int argc, Expr* argv[]) {
-    if (argc != 0) {
-        return ErrorAbort(state, kArgsParsingFailure,
-               "%s() expects no args, got %d", name, argc);
-    }
-    int result = mrc_systems_raw_ab_sync(boot_slot);
-    if(result == 0) return StringValue(strdup("success"));
-    else return StringValue(strdup("failed"));
-}
 #endif
 
 void RegisterInstallFunctions() {
@@ -2789,7 +2780,6 @@ void RegisterInstallFunctions() {
 
 #ifdef TARGET_NAD_PROD
     RegisterFunction("write_modem_ubifs_image", writeModemUbifsImage);
-    RegisterFunction("copy_all_raw_partitions_active_to_inactive", copyAllRawPartitionsActiveToInactive);
     RegisterFunction("copy_volume_active_to_inactive", copyActiveVolumeToInactiveVolume);
 #endif
 }
