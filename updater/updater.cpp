@@ -50,9 +50,7 @@ extern void Register_librecovery_updater_msm();
 // Where in the package we expect to find the edify script to execute.
 // (Note it's "updateR-script", not the older "update-script".)
 #define SCRIPT_NAME "META-INF/com/google/android/updater-script"
-#ifdef TARGET_NAD_PROD
-#define MIRROR_SCRIPT_NAME "META-INF/com/google/android/updater-mirror-script"
-#endif
+
 extern bool have_eio_error;
 
 struct selabel_handle *sehandle;
@@ -69,13 +67,7 @@ int main(int argc, char** argv) {
         printf("unexpected number of arguments (%d)\n", argc);
         return 1;
     }
-#ifdef TARGET_NAD_PROD
-    printf("updater number of arguments (%d)\n", argc);
-    for (int arg = 0; arg < argc; arg++) {
-        printf(" \"%s\"", argv[arg]);
-    }
-    printf("\n");
-#endif
+
     char* version = argv[1];
     if ((version[0] != '1' && version[0] != '2' && version[0] != '3') ||
         version[1] != '\0') {
@@ -127,30 +119,7 @@ int main(int argc, char** argv) {
     ota_io_init(&za);
 #endif
 
-#ifdef TARGET_NAD_PROD
-    char* copy_mirror = argv[4];
-    char* script_name = NULL; 
-    if(copy_mirror != NULL)
-    {
-        printf(" copy_mirror arg : %s \n",copy_mirror);
-    }
-    if (argv[4] != NULL) {
-        if (strcmp(argv[4], "copy_to_inactive") == 0){ 
-        //if (strcmp(copy_mirror, "copy_to_inactive")){
-            script_name = MIRROR_SCRIPT_NAME;
-        } else {
-            script_name = SCRIPT_NAME;
-        }
-    } else {
-        script_name = SCRIPT_NAME;
-    }
-
-    printf(" updater using  script %s \n",script_name);
-    const ZipEntry* script_entry = mzFindZipEntry(&za, script_name);
-#else
     const ZipEntry* script_entry = mzFindZipEntry(&za, SCRIPT_NAME);
-#endif
-
     if (script_entry == NULL) {
         printf("failed to find %s in %s\n", SCRIPT_NAME, package_filename);
         fprintf(cmd_pipe, "ui_print failed to find %s in %s\n", SCRIPT_NAME, package_filename);
@@ -281,6 +250,5 @@ int main(int argc, char** argv) {
         free_volume_table();
     }
 
-    printf("return 0 from updater ");
     return 0;
 }

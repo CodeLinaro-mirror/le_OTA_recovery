@@ -301,34 +301,12 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
         return INSTALL_ERROR;
     }
 
-#ifdef TARGET_NAD_PROD
-    if(!mirror_copy) {
-         LOGI("update flow \n");
-         *cmd = {
-             binary,
-             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-             std::to_string(status_fd),
-             path,
-         };
-    } else {
-        LOGI("ab sync mirror flow \n");
-        *cmd = {
-            binary,
-            EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-            std::to_string(status_fd),
-            path,
-            "copy_to_inactive",
-        };
-    }
-#else
-     *cmd = {
-         binary,
-         EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-         std::to_string(status_fd),
-         path,
-     };
-#endif
-
+    *cmd = {
+        binary,
+        EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+        std::to_string(status_fd),
+        path,
+    };
     if (retry_count > 0)
         cmd->push_back("retry");
     return 0;
@@ -610,7 +588,6 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
     }
     ui->SetEnableReboot(false);
     int result = try_update_binary(path, &zip, wipe_cache, log_buffer, retry_count);
-    LOGI(" enum INSTALL_SUCCESS: %d , and update result:  %d \n",INSTALL_SUCCESS,result);
     ui->SetEnableReboot(true);
     ui->Print("\n");
 
@@ -626,6 +603,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
         ui->Print("Successfully verified integrity of /system for MDTP.\n");
     }
 #endif /* USE_MDTP */
+
     return result;
 }
 

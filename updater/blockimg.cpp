@@ -65,14 +65,14 @@
 #ifdef TARGET_NAND_BOOT
 #include "mtdutils/mtdutils.h"
 #include <mtd/mtd-user.h>
-#define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
-#define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
-#define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
 #endif
 
 #define BLOCKSIZE 4096
 #ifdef TARGET_NAD_PROD
 #define LEBSIZE 253952
+#define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
+#define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
+#define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
 #endif
 
 #ifdef TARGET_SUPPORT_FDE_OTA
@@ -1451,6 +1451,7 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char mtd_devname[PATH_MAX];
         printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
               modem_volume, mtd->device_index);
+
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }

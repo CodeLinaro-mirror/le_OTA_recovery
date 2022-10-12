@@ -11,9 +11,7 @@ AM_CPPFLAGS := \
               -DUSE_LE_MODE \
               -I. \
               -USE_GLIB \
-              -I$(WORKSPACE)/system/core/include \
-              -Dstrlcpy=g_strlcpy \
-              -Dstrlcat=g_strlcat
+              -I$(WORKSPACE)/system/core/include
 
 AM_LDFLAGS := -shared -version-info 1:0:0
 
@@ -22,23 +20,21 @@ min_c_sources := \
         mtdutils.c
 
 if TARGET_NAD_PROD
-min_cpp_sources := \
-        copyrawpart.cpp
+AM_CPPFLAGS += \
+              -I$(WORKSPACE)/OTA/recovery \
+              -Dstrlcpy=g_strlcpy \
+              -Dstrlcat=g_strlcat
 endif
 
 h_sources := \
         mounts.h \
         mtdutils.h
-if TARGET_NAD_PROD
-h_sources := \
-        copyrawpart.h
-endif
 
 library_includedir := $(pkgincludedir)
 library_include_HEADERS := $(h_sources)
 
 lib_LTLIBRARIES := libmtdutils.la
-libmtdutils_la_SOURCES := $(min_c_sources) $(min_cpp_sources) $(h_sources)
+libmtdutils_la_SOURCES := $(min_c_sources) $(h_sources)
 
 if USE_GLIB
 libmtdutils_la_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
