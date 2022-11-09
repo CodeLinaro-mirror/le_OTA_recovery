@@ -186,6 +186,14 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
 
             printf("Inactive partition: %s\n", buff);
             const MtdPartition* mtd = mtd_find_partition_by_name(buff);
+
+            // this condition is to make sure we try partition without _a/_b suffix
+            // for e.g. if a partition with name "sbl_a"/"sbl_b" does not exist
+            // then try to update the partition with name "sbl"
+            if(mtd == NULL) {
+                printf("partition %s not found, search without slot suffix\n", buff);
+                mtd = mtd_find_partition_by_name(partition);
+            }
 #else
             const MtdPartition* mtd = mtd_find_partition_by_name(partition);
 #endif
@@ -372,6 +380,14 @@ int WriteToPartition(const unsigned char* data, size_t len, const char* target) 
 
             printf("Inactive partition: %s\n", buff);
             const MtdPartition* mtd = mtd_find_partition_by_name(buff);
+
+            // this condition is to make sure we try partition without _a/_b suffix
+            // for e.g. if a partition with name "sbl_a"/"sbl_b" does not exist
+            // then try to update the partition with name "sbl"
+            if(mtd == NULL) {
+                printf("partition %s not found, search without slot suffix\n", buff);
+                mtd = mtd_find_partition_by_name(partition);
+            }
 #else
             const MtdPartition* mtd = mtd_find_partition_by_name(partition);
 #endif
