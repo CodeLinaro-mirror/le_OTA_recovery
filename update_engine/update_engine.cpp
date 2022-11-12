@@ -174,6 +174,14 @@ int main() {
             file.open(ABC_OTA_STATUS_COOKIE_FILE,
                       std::ios::in | std::ios::out | std::ios::app);
             file << "STAGE2:BOOT_SUCCESSFUL:" << slot_from_ota_status << "\n";
+#if defined(TARGET_SUPPORTS_AB) && defined(TARGET_SUPPORTS_ABC)
+            int ret1 = libabctl_setPriority(ota_started_slot, 1);
+            int ret2 = libabctl_setPriority(((ota_started_slot + 1) % 3), 2);
+            if(ret1 == 0 && ret2 == 0) {
+                printf("Setting priority of slot %d as 1(low) successfully\n",ota_started_slot);
+                printf("Setting priority of slot %d as 2(medium) successfully\n",((ota_started_slot + 1) % 3));
+            }
+#endif
             std::cout << "OTA_COMPLETED Overall\n";
             file.seekg(0, std::ios::beg);
             std::string line;
