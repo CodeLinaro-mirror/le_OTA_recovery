@@ -2769,13 +2769,13 @@ void RegisterInstallFunctions() {
     RegisterFunction("block_device_check", BlockDeviceCheckFn);
     RegisterFunction("set_inactive_slot_as_unbootable", SetInactiveAsUnbootableFn);
     RegisterFunction("set_inactive_slot_as_active", SetInactiveSlotAsActiveFn);
-    RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);
-    RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
-    RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
 #endif
 
 #ifdef TARGET_NAND_BOOT
     RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
+    RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);
+    RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
+    RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
 #endif
 
 #ifdef TARGET_NAD_PROD
