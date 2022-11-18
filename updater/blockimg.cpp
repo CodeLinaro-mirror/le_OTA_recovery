@@ -1508,6 +1508,29 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
 #endif
 
 #ifdef TARGET_SUPPORT_FDE_OTA
+static bool IsDeviceEncrypted() {
+   FILE *fp;
+   char buf[8] = {0};
+
+   fp = fopen("/dev/ubi0_0", "r");
+   if (NULL == fp) {
+      printf("IsDeviceEncrypted: Error opening %s \n", "/dev/ubi0_0");
+      return false;
+   }
+
+   fseek(fp, 0, SEEK_SET);
+   fread(buf, 4, 1, fp);
+   fclose(fp);
+
+   if (strcmp("hsqs", buf) != 0) {
+       printf("Device is encrypted \n");
+       return true;
+   }
+
+   printf("Device is NOT encrypted \n");
+   return false;
+}
+
 static int copy_image(const char* source, const char* destination, size_t image_size) {
     FILE* dest = fopen(destination, "w");
     int ret = 0;
@@ -1550,6 +1573,11 @@ Value* CopyDecryptedImageToParition(const char* name, State* state, int argc, Ex
     Value* blockdev_num = nullptr;
     char buf[PATH_MAX];
     size_t image_size = 0;
+
+    if(IsDeviceEncrypted() == false) {
+       return StringValue(strdup("t"));
+    }
+
     if (ReadValueArgs(state, argv, 2, &blockdev_filename, &blockdev_num) < 0) {
         return StringValue(strdup(""));
     }
@@ -1592,6 +1620,11 @@ Value* CopyDecryptedImageToTemp(const char* name, State* state, int argc, Expr* 
     char buf[PATH_MAX];
     char blockdev_path[PATH_MAX] = {0};
     size_t vol_size;
+
+    if(IsDeviceEncrypted() == false) {
+       return StringValue(strdup("t"));
+    }
+
     if (ReadValueArgs(state, argv, 1, &blockdev_filename) < 0) {
         return StringValue(strdup(""));
     }
@@ -1685,8 +1718,10 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     }
 
 #ifdef TARGET_SUPPORT_FDE_OTA
-   char blockdev_path[PATH_MAX] = {0};
-   snprintf(blockdev_path, PATH_MAX, "%s", blockdev_filename->data);
+  char blockdev_path[PATH_MAX] = {0};
+  if(IsDeviceEncrypted() == true) {
+     snprintf(blockdev_path, PATH_MAX, "%s", blockdev_filename->data);
+  }
 #endif
 
 // Now that the arguments have been populated,
@@ -1740,18 +1775,22 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     }
 
 #ifdef TARGET_SUPPORT_FDE_OTA
-   //for 4+4 device FDE ota is not supported.
-   if(isEightPlusEightConfig() == 0) {
-        fprintf(stderr, "FDE OTA is not supported for 4+4 device \n");
-        return StringValue(strdup(""));
-   }
+  if(IsDeviceEncrypted() == true) {
+      //for 4+4 device FDE ota is not supported.
+      if(isEightPlusEightConfig() == 0) {
+           fprintf(stderr, "FDE OTA is not supported for 4+4 device \n");
+           return StringValue(strdup(""));
+      }
 
-   // use fde /tmp/sysem only for incremental update
-   if(strcmp(blockdev_path, SYSTEM_PATH) == 0 && patch_entry->uncompLen > 0) {
-       params.fd = TEMP_FAILURE_RETRY(open(FDE_OTA_SYSTEM_TMP_PATH, O_RDWR));
-   } else {
-       params.fd = TEMP_FAILURE_RETRY(open(blockdev_filename->data, O_RDWR));
-   }
+      // use fde /tmp/sysem only for incremental update
+      if(strcmp(blockdev_path, SYSTEM_PATH) == 0 && patch_entry->uncompLen > 0) {
+          params.fd = TEMP_FAILURE_RETRY(open(FDE_OTA_SYSTEM_TMP_PATH, O_RDWR));
+      } else {
+          params.fd = TEMP_FAILURE_RETRY(open(blockdev_filename->data, O_RDWR));
+      }
+  } else {
+      params.fd = TEMP_FAILURE_RETRY(open(blockdev_filename->data, O_RDWR));
+  }
 #else
     params.fd = TEMP_FAILURE_RETRY(open(blockdev_filename->data, O_RDWR));
 #endif
