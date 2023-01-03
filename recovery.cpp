@@ -695,7 +695,7 @@ std::string read_first_line() {
 static int set_mirror_copy_cookie(std::string ota_status) {
     std::fstream file;
     int boot_slot = libabctl_getBootSlot();
-    int next_inactive_slot = (boot_slot + 1) % 3;
+    int next_inactive_slot = (boot_slot + 1) % 2;
     file.open(MIRROR_COPY_STATUS_COOKIE_FILE,
               std::ios::in | std::ios::out | std::ios::app);
     if (!file) {
