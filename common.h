@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef RECOVERY_COMMON_H
 #define RECOVERY_COMMON_H
@@ -43,6 +47,11 @@
 #endif
 
 extern bool modified_flash;
+
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+extern bool mirror_copy;
+#endif
+
 typedef struct fstab_rec Volume;
 
 // fopen a file, mounting volumes and making parent dirs as necessary.
