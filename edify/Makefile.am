@@ -42,6 +42,10 @@ if TARGET_SUPPORTS_AB
 libedify_la_CPPFLAGS += -DTARGET_SUPPORTS_AB
 endif
 
+if TARGET_SUPPORTS_MIRROR_AB_COPY
+libedify_la_CPPFLAGS += -DTARGET_SUPPORTS_MIRROR_AB_COPY
+endif
+
 edify_c_sources := parser.yy \
              lexer.ll \
              expr.cpp \
