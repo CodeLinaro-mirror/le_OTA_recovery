@@ -261,6 +261,7 @@ int exec_command(FILE *logfd, const char *name, char *const args[]) {
     int status = -1;
     int i;
     pid_t pid;
+    int size = 0;
 
     pid = fork();
     if (pid == -1) {
@@ -268,7 +269,8 @@ int exec_command(FILE *logfd, const char *name, char *const args[]) {
         goto cleanup;
     } else if (pid == 0) {
         fprintf(logfd, "ui_print executing \'%s\'", name);
-        for (i = 0; i < 10; i++) {  // limit logging to reduce verbage
+        size = sizeof(args)/sizeof(args[0]);
+        for (i = 0; i < size; i++) {
             if (args[i]) {
                 fprintf(logfd, "ui_print %s", args[i]);
             } else {
@@ -1313,7 +1315,7 @@ Value* GetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* key = Evaluate(state, argv[0]);
     if (key == NULL) return NULL;
 
-    char value[PROPERTY_VALUE_MAX];
+    char value[PROPERTY_VALUE_MAX] = "";
     property_get(key, value, "");
     free(key);
 
@@ -2463,11 +2465,19 @@ Value* copyActiveRootfsToInactiveRootfs(const char* name, State* state, int argc
     snprintf(inactive_rootfs_volume, ROOTFS_NAME_LENGTH, "%s%s", "rootfs",
             slot_suffix_arr[inactive_slot]);
     char *inactive_mtd_block = getMtdBlock(inactive_rootfs_volume);
+    if(inactive_mtd_block == NULL){
+        printf("inactive_mtd_block failed\n");
+        return StringValue(strdup(""));
+    }
     char active_rootfs_volume[ROOTFS_NAME_LENGTH];
     snprintf(active_rootfs_volume, ROOTFS_NAME_LENGTH, "%s%s", "rootfs",
             slot_suffix_arr[boot_slot]);
     printf("copying %s to %s\n", active_rootfs_volume, inactive_rootfs_volume);
     char *active_mtd_block = getMtdBlock(active_rootfs_volume);
+    if(active_mtd_block == NULL){
+        printf("active_mtd_block failed\n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     snprintf(in_file, PATH_MAX, "%s%s", "if=", active_mtd_block);
     printf("Active rootfs mtd block: %s\n", in_file);
@@ -2493,11 +2503,19 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
     snprintf(inactive_boot_partition, BOOT_NAME_LENGTH, "%s%s", "boot",
             slot_suffix_arr[inactive_slot]);
     char *inactive_boot_mtd_block = getMtdBlock(inactive_boot_partition);
+    if(inactive_boot_mtd_block == NULL){
+        printf("inactive_boot_mtd_block failed\n");
+        return StringValue(strdup(""));
+    }
     char active_boot_partition[BOOT_NAME_LENGTH];
     snprintf(active_boot_partition, BOOT_NAME_LENGTH, "%s%s", "boot",
             slot_suffix_arr[boot_slot]);
     printf("copying %s to %s\n", active_boot_partition, inactive_boot_partition);
     char *active_boot_mtd_block = getMtdBlock(active_boot_partition);
+    if(active_boot_mtd_block == NULL){
+        printf("active_boot_mtd_block failed\n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     snprintf(in_file, PATH_MAX, "%s%s", "active boot=", active_boot_mtd_block);
     printf("Active boot mtd block: %s\n", in_file);
@@ -2529,6 +2547,10 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
 
     success = true;
     char* buffer = reinterpret_cast<char*>(malloc(BUFSIZ));
+    if(buffer == NULL){
+        printf("buffer allocation failed\n");
+        return StringValue(strdup(""));
+    }
     int read;
     while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
         int wrote = mtd_write_data(ctx, buffer, read);
@@ -2564,11 +2586,19 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
     snprintf(inactive_nonhlos_volume, PATH_MAX, "%s%s", "nonhlos-fs",
             slot_suffix_arr[inactive_slot]);
     char *inactive_mtd_block = getMtdBlock(inactive_nonhlos_volume);
+    if(inactive_mtd_block == NULL){
+        printf("inactive_mtd_block failed\n");
+        return StringValue(strdup(""));
+    }
     char active_nonhlos_volume[PATH_MAX];
     snprintf(active_nonhlos_volume, PATH_MAX, "%s%s", "nonhlos-fs",
             slot_suffix_arr[boot_slot]);
     printf("copying %s to %s\n", active_nonhlos_volume, inactive_nonhlos_volume);
     char *active_mtd_block = getMtdBlock(active_nonhlos_volume);
+    if(active_mtd_block == NULL){
+        printf("active_mtd_block failed\n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     snprintf(in_file, PATH_MAX, "%s%s", "if=", active_mtd_block);
     printf("Active nonhlos mtd block: %s\n", in_file);
@@ -2650,6 +2680,10 @@ Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv
     }
 
     char *inactive_mtd_block = getMtdBlock(partition);
+    if(inactive_mtd_block == NULL){
+        printf("inactive_mtd_block failed\n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     if (chmod(modem_ubifs, 0777) < 0) {
         printf("chmod of %s failed\n",modem_ubifs);
@@ -2702,7 +2736,15 @@ Value* copyActiveVolumeToInactiveVolume(const char* name, State* state, int argc
             slot_suffix_arr[boot_slot]);
     printf("copying %s to %s\n", active_volume, inactive_volume);
     char *active_mtd_block = getMtdBlock(active_volume);
+    if(active_mtd_block == NULL){
+        printf("active_mtd_block failed\n");
+        return StringValue(strdup(""));
+    }
     char *inactive_mtd_block = getMtdBlock(inactive_volume);
+    if(inactive_mtd_block == NULL){
+        printf("inactive_mtd_block failed\n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     snprintf(in_file, PATH_MAX, "%s%s", "if=", active_mtd_block);
     printf("Active volume mtd block: %s\n", in_file);
