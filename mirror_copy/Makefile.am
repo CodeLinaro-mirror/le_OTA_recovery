@@ -17,6 +17,7 @@ AM_CPPFLAGS = \
               -DUSE_LE_MODE \
               -I.\
               -I../otafault \
+              -I../updater \
               -I.. \
                $(LIBSELINUX_CFLAGS) \
               -I$(WORKSPACE)/system/core/base/include \
@@ -27,52 +28,27 @@ AM_CPPFLAGS = \
               -std=c++11
 
 AM_LDFLAGS = -shared -version-info 1:0:0
-c_sources = install.cpp \
-            blockimg.cpp \
-            updater.cpp
-
+c_sources = mirror_copy.cpp
 library_includedir = $(pkgincludedir)
 library_include_HEADERS = $(h_sources)
 
-requiredlibs = -lm \
-               -lpthread \
-               -lz \
-               -lcutils \
-               -lselinux \
-               -lext4_utils \
-               -lcrypto \
-               -lrecovery_updater_msm \
-               ../mtdutils/libmtdutils.la \
-               ../edify/libedify.la \
-               ../minzip/libminzip.la \
-               ../applypatch/libapplypatch.la
-
-bin_PROGRAMS = updater
+bin_PROGRAMS = mirror_copy
 if USE_GLIB
-updater_SOURCES = $(c_sources) $(h_sources)
-updater_CFLAGS = $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
-updater_CPPFLAGS = $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
-updater_LDADD = $(requiredlibs) @GLIB_LIBS@
+mirror_copy_SOURCES = $(c_sources) $(h_sources)
+mirror_copy_CFLAGS = $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
+mirror_copy_CPPFLAGS = $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 else
-updater_SOURCES = $(c_sources) $(h_sources)
-updater_CFLAGS = $(AM_CFLAGS)
-updater_CPPFLAGS = $(AM_CPPFLAGS)
-updater_LDADD = $(requiredlibs)
+mirror_copy_SOURCES = $(c_sources) $(h_sources)
+mirror_copy_CFLAGS = $(AM_CFLAGS)
+mirror_copy_CPPFLAGS = $(AM_CPPFLAGS)
 endif
 
 if TARGET_SUPPORTS_AB
-updater_CPPFLAGS += -DTARGET_SUPPORTS_AB
-updater_LDADD += -labctl
+mirror_copy_CPPFLAGS += -DTARGET_SUPPORTS_AB
+mirror_copy_LDADD = -labctl
 endif
 
 if TARGET_SUPPORTS_MIRROR_AB_COPY
-updater_CPPFLAGS += -DTARGET_SUPPORTS_MIRROR_AB_COPY
+mirror_copy_CPPFLAGS += -DTARGET_SUPPORTS_MIRROR_AB_COPY
 endif
 
-if TARGET_NAND_AB_BOOT
-updater_CPPFLAGS += -DTARGET_NAND_AB_BOOT
-endif
-
-if TARGET_SUPPORTS_NAND_DM_VERITY
-updater_CPPFLAGS += -DTARGET_SUPPORTS_NAND_DM_VERITY
-endif
