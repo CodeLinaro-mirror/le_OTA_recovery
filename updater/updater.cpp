@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include <stdio.h>
 #include <unistd.h>
@@ -47,6 +51,10 @@ extern void Register_librecovery_updater_msm();
 // Where in the package we expect to find the edify script to execute.
 // (Note it's "updateR-script", not the older "update-script".)
 #define SCRIPT_NAME "META-INF/com/google/android/updater-script"
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+#define MIRROR_SCRIPT_NAME "META-INF/com/google/android/updater-mirror-script"
+#endif
+
 
 extern bool have_eio_error;
 
@@ -64,6 +72,14 @@ int main(int argc, char** argv) {
         printf("unexpected number of arguments (%d)\n", argc);
         return 1;
     }
+
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    printf("updater number of arguments (%d)\n", argc);
+    for (int arg = 0; arg < argc; arg++) {
+        printf(" \"%s\"", argv[arg]);
+    }
+    printf("\n");
+#endif
 
     char* version = argv[1];
     if ((version[0] != '1' && version[0] != '2' && version[0] != '3') ||
@@ -102,7 +118,7 @@ int main(int argc, char** argv) {
         printf("failed to map package %s\n", argv[3]);
         return 3;
     }
-    ZipArchive za;
+    ZipArchive za = {0};
     int err;
     err = mzOpenZipArchive(map.addr, map.length, &za);
     if (err != 0) {
@@ -116,7 +132,29 @@ int main(int argc, char** argv) {
     ota_io_init(&za);
 #endif
 
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    char* copy_mirror = argv[4];
+    char* script_name = NULL;
+    if(copy_mirror != NULL)
+    {
+        printf(" copy_mirror arg : %s \n",copy_mirror);
+    }
+    if (argv[4] != NULL) {
+        if (strcmp(argv[4], "copy_to_inactive") == 0){
+        //if (strcmp(copy_mirror, "copy_to_inactive")){
+            script_name = MIRROR_SCRIPT_NAME;
+        } else {
+            script_name = SCRIPT_NAME;
+        }
+    } else {
+        script_name = SCRIPT_NAME;
+    }
+
+    printf(" updater using  script %s \n",script_name);
+    const ZipEntry* script_entry = mzFindZipEntry(&za, script_name);
+#else
     const ZipEntry* script_entry = mzFindZipEntry(&za, SCRIPT_NAME);
+#endif
     if (script_entry == NULL) {
         printf("failed to find %s in %s\n", SCRIPT_NAME, package_filename);
         fprintf(cmd_pipe, "ui_print failed to find %s in %s\n", SCRIPT_NAME, package_filename);
@@ -246,6 +284,6 @@ int main(int argc, char** argv) {
     if (IS_LE_MODE()) {
         free_volume_table();
     }
-
+    printf("return 0 from updater ");
     return 0;
 }
