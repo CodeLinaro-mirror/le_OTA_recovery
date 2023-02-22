@@ -46,8 +46,15 @@ int main(int argc, char **argv) {
                   << endl;
         FILE *fp;
         fp = fopen(ZIP_FILE_PATH, "w");
-        fprintf(fp, "%s\n", zip_path);
-        fclose(fp);
+        if (fp == NULL) {
+            std::cout << "Zip file open failed\n";
+            return 0;
+        }
+        else
+        {
+            fprintf(fp, "%s\n", zip_path);
+            fclose(fp);
+        }
         char *args[] = {"/usr/bin/recovery", zip_path, NULL};
         execv(args[0], args);
     }
@@ -60,4 +67,5 @@ int main(int argc, char **argv) {
             std::cout << "Booting failed from the given slot\n";
         }
     }
+    return 0;
 }
