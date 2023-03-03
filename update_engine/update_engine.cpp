@@ -50,6 +50,7 @@ std::string read_first_line(std::fstream &newfile) {
             return tp;
         }
     }
+    return "";
 }
 
 std::string read_last_line(std::fstream &fin) {
@@ -85,6 +86,10 @@ std::string read_last_line(std::fstream &fin) {
 
 int main() {
     FILE *stream = freopen(TEMPORARY_LOG_FILE, "a", stdout);
+    if(stream == NULL){
+        std::cout << "Temp Log file re-open failed\n";
+        return 0;
+    }
     std::cout << "Update_Engine Started\n";
     std::fstream file;
     file.open(ABC_OTA_STATUS_COOKIE_FILE,
@@ -105,9 +110,16 @@ int main() {
         char zip_path[MAX_ARG_LENGTH];
         FILE *fp;
         fp = fopen(ZIP_FILE_PATH, "r");
-        fscanf(fp, "%s\n", zip_path);
-        fclose(fp);
-        int boot_slot, ota_started_slot, boot_slot_from_ota_status;
+        if (fp == NULL) {
+            std::cout << "Zip file open failed\n";
+            return 0;
+        }
+        else
+        {
+            fscanf(fp, "%s\n", zip_path);
+            fclose(fp);
+        }
+        int boot_slot = -1, ota_started_slot = -1, boot_slot_from_ota_status = -1;
         std::vector<std::string> first_line_split;
         std::vector<std::string> last_line_split;
         first_line = read_first_line(file);
@@ -174,12 +186,14 @@ int main() {
             file.open(ABC_OTA_STATUS_COOKIE_FILE,
                       std::ios::in | std::ios::out | std::ios::app);
             file << "STAGE2:BOOT_SUCCESSFUL:" << slot_from_ota_status << "\n";
+#if defined(TARGET_SUPPORTS_AB) && defined(TARGET_SUPPORTS_ABC)
             int ret1 = libabctl_setPriority(ota_started_slot, 1);
             int ret2 = libabctl_setPriority(((ota_started_slot + 1) % 3), 2);
             if(ret1 == 0 && ret2 == 0) {
                 printf("Setting priority of slot %d as 1(low) successfully\n",ota_started_slot);
                 printf("Setting priority of slot %d as 2(medium) successfully\n",((ota_started_slot + 1) % 3));
             }
+#endif
             std::cout << "OTA_COMPLETED Overall\n";
             file.seekg(0, std::ios::beg);
             std::string line;
@@ -194,4 +208,5 @@ int main() {
     }
     file.close();
     fclose(stream);
+    return 0;
 }

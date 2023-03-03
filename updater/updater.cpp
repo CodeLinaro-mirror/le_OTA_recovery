@@ -85,6 +85,10 @@ int main(int argc, char** argv) {
 
     int fd = atoi(argv[2]);
     FILE* cmd_pipe = fdopen(fd, "wb");
+    if (cmd_pipe == NULL) {
+        printf("failed to open command pipe \n");
+        return 8;
+    }
     setlinebuf(cmd_pipe);
 
 #if defined(TARGET_SUPPORTS_AB) && !defined(TARGET_SUPPORTS_ABC)
