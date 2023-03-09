@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
         printf("failed to map package %s\n", argv[3]);
         return 3;
     }
-    ZipArchive za;
+    ZipArchive za = {0};
     int err;
     err = mzOpenZipArchive(map.addr, map.length, &za);
     if (err != 0) {
