@@ -64,7 +64,7 @@ extern RecoveryUI* ui;
 #define SIGNATURE_FILE  "/tmp/update.sig"
 #define CMD_BUFFER_SIZE 256
 #define OTA_VERIFICATION_SUCCESS "Verified OK"
-#define PUBLIC_KEY "/res/public.pem"
+#define PUBLIC_KEY "/etc/public.pem"
 #endif //TARGET_SUPPORTS_OTA_VERIFICATION
 static constexpr const char* AB_OTA_PAYLOAD_PROPERTIES = "payload_properties.txt";
 static constexpr const char* AB_OTA_PAYLOAD = "payload.bin";

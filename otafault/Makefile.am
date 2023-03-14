@@ -8,6 +8,8 @@ AM_CFLAGS := -Wundef \
              -D_GNU_SOURCE \
              -I..
 
+WORKSPACE := $(TOPDIR)/src
+
 AM_CPPFLAGS := \
               -DUSE_LE_MODE \
               -I. \

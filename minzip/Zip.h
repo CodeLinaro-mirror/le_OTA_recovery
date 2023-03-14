@@ -3,6 +3,11 @@
  *
  * Simple Zip archive support.
  */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef _MINZIP_ZIP
 #define _MINZIP_ZIP
 
@@ -20,6 +25,8 @@ extern "C" {
 
 #include <selinux/selinux.h>
 #include <selinux/label.h>
+
+#include "musl_macro_defs.h"
 
 /*
  * One entry in the Zip archive.  Treat this as opaque -- use accessors below.

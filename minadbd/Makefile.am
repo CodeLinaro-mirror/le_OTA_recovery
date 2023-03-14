@@ -5,6 +5,8 @@ AM_CFLAGS := -Wundef \
         -fno-short-enums \
         -fpic
 
+WORKSPACE := $(TOPDIR)/src
+
 AM_CPPFLAGS := \
               -DUSE_LE_MODE \
               -I. \

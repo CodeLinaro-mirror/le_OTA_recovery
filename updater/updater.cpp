@@ -55,6 +55,7 @@ extern void Register_librecovery_updater_msm();
 #define MIRROR_SCRIPT_NAME "META-INF/com/google/android/updater-mirror-script"
 #endif
 
+enum DeviceType device_type;
 
 extern bool have_eio_error;
 
@@ -67,6 +68,14 @@ int main(int argc, char** argv) {
     // appear in the right order.
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
+
+    //set device type nand/emmc
+    const char* comm = "if [ /proc/mtd ] && [ `cat /proc/mtd | wc -l` -ge '2' ]";
+    int ret = system(comm);
+    if(ret == 0) {
+        printf("NAND Device");
+        device_type = NAND;
+    }
 
     if (argc != 4 && argc != 5) {
         printf("unexpected number of arguments (%d)\n", argc);

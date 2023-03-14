@@ -65,7 +65,7 @@ bool is_ro_debuggable();
 typedef unsigned long long __u64;
 
 // used in ui.h
-#define __printflike(x, y) __attribute__((__format__(printf, x, y))) __nonnull((x))
+#define __printflike(x, y) __attribute__((__format__(printf, x, y))) __attribute__((nonnull((x))))
 
 //From vold/cryptfs.h
 #define CRYPT_FOOTER_OFFSET 0x4000

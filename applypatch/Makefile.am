@@ -1,3 +1,5 @@
+WORKSPACE := $(TOPDIR)/src
+
 if BUILD_DEVICE
 AM_CFLAGS := -Wundef \
              -Wstrict-prototypes \
@@ -13,6 +15,7 @@ AM_CPPFLAGS := \
               -I. \
               -I.. \
               -I../otafault \
+              -DUSE_MUSL \
               -I$(WORKSPACE)/system/core/include \
               -I$(WORKSPACE)/system/core/base/include \
               -I$(WORKSPACE)/OTA/system/core/base/include \

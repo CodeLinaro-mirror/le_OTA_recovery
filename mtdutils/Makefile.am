@@ -7,11 +7,14 @@ AM_CFLAGS := -Wundef \
         -fpic \
         -D_GNU_SOURCE
 
+WORKSPACE := $(TOPDIR)/src
+
 AM_CPPFLAGS := \
               -DUSE_LE_MODE \
               -I. \
               -USE_GLIB \
-              -I$(WORKSPACE)/system/core/include
+              -I$(WORKSPACE)/system/core/include \
+              -DUSE_MUSL
 
 AM_LDFLAGS := -shared -version-info 1:0:0
 
