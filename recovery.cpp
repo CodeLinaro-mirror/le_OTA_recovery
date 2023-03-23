@@ -429,6 +429,7 @@ get_args(int *argc, char ***argv) {
         FILE *fp = fopen_path(COMMAND_FILE, "r");
         if (fp != NULL) {
             char *token;
+            char *saveptr = NULL;
             char *argv0 = (*argv)[0];
             *argv = (char **) malloc(sizeof(char *) * MAX_ARGS);
             (*argv)[0] = argv0;  // use the same program name
@@ -436,7 +437,7 @@ get_args(int *argc, char ***argv) {
             char buf[MAX_ARG_LENGTH];
             for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
                 if (!fgets(buf, sizeof(buf), fp)) break;
-                token = strtok(buf, "\r\n");
+                token = strtok_r(buf, "\r\n", &saveptr);
                 if (token != NULL) {
                     (*argv)[*argc] = strdup(token);  // Strip newline.
                 } else {
@@ -810,10 +811,12 @@ static bool erase_volume(const char* volume) {
                         }
                         p->data = (unsigned char*) malloc(p->st.st_size);
                         FILE* f = fopen(path, "rb");
-                        fread(p->data, 1, p->st.st_size, f);
-                        fclose(f);
-                        p->next = head;
-                        head = p;
+                        if(f != nullptr) {
+                            fread(p->data, 1, p->st.st_size, f);
+                            fclose(f);
+                            p->next = head;
+                            head = p;
+                        }
                     } else {
                         free(p);
                     }
@@ -966,7 +969,7 @@ static char* browse_directory(const char* path, Device* device) {
                 dirs = (char**)realloc(dirs, d_alloc * sizeof(char*));
             }
             dirs[d_size] = (char*)malloc(name_len + 2);
-            strcpy(dirs[d_size], de->d_name);
+            strlcpy(dirs[d_size], de->d_name, sizeof(dirs[d_size]));
             dirs[d_size][name_len] = '/';
             dirs[d_size][name_len+1] = '\0';
             ++d_size;
@@ -1572,7 +1575,8 @@ load_locale_from_cache() {
                 buffer[j++] = buffer[i];
             }
         }
-        buffer[j] = 0;
+        if(j < 80)
+            buffer[j] = 0;
         locale = strdup(buffer);
         check_and_fclose(fp, LOCALE_FILE);
     }
@@ -1938,6 +1942,7 @@ int main(int argc, char **argv) {
                     ui->Print("Update via sdcard on EMMC dev. Using path from fstab\n");
             }
         }
+
     }
     printf("\n");
 #ifndef USE_LE_MODE

@@ -11,7 +11,10 @@ AM_CFLAGS = -Wundef \
             -I$(WORKSPACE)/system/extras/ext4_utils \
             -D_GNU_SOURCE \
             -D_LARGEFILE64_SOURCE \
-            -I..
+            -I.. \
+            -include glib.h \
+            -Dstrlcpy=g_strlcpy \
+            -Dstrlcat=g_strlcat
 
 AM_CPPFLAGS = \
               -DUSE_LE_MODE \
@@ -24,6 +27,9 @@ AM_CPPFLAGS = \
               -I$(WORKSPACE)/system/core/fs_mgr/include \
               -I$(WORKSPACE)/system/extras/ext4_utils \
               -I$(WORKSPACE)/OTA/system/core/base/include \
+              -include glib.h \
+              -Dstrlcpy=g_strlcpy \
+              -Dstrlcat=g_strlcat \
               -std=c++11
 
 AM_LDFLAGS = -shared -version-info 1:0:0
