@@ -23,9 +23,7 @@
 
 #include "sysdeps.h"
 
-#ifdef USE_LE_MODE
-#define  TRACE_TAG  TRACE_SERVICES
-#endif
+#define TRACE_TAG SERVICES
 
 #include "adb.h"
 #include "fdevent.h"
