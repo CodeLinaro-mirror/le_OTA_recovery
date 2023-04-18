@@ -1651,6 +1651,10 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* part_name;
     part_name = strtok_r(source_filename, ":", &source_filename);
     part_name = strtok_r(NULL, ":", &source_filename);
+      if (part_name == nullptr) {
+         printf("Failed in getting source file name\n");
+         return nullptr;
+      }
     printf("%s\n", part_name);
     if (result == 0) {
       set_nad_update_status(part_name);
@@ -2278,6 +2282,10 @@ Value* CopyABPartitionsFn(const char* name, State* state,
                     BOOTDEVICE_DIR, de->d_name);
             char *p = strstr(inactive_block_dev_filename,
                               slot_suffix_arr[boot_slot]);
+            if (p == nullptr) {
+               printf("Failed str compare\n");
+               return nullptr;
+            }
             // p shouldn't be null as we already checked for the suffix earlier
             strncpy(p,  slot_suffix_arr[inactive_slot], 2); // replace the slot
 
@@ -2325,6 +2333,10 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
         snprintf(buffer, PATH_MAX, "%s%s", block_dev,
                 slot_suffix_arr[inactive_slot]);
         block_dev = strdup(buffer);
+        if (block_dev == nullptr) {
+           printf("Sanity check failed \n");
+           return nullptr;
+        }
         printf("%s: Checking sanity of %s\n", name, block_dev);
     } else {
         printf("%s: Expecting block-device but received something else!\n", name);

@@ -1601,7 +1601,11 @@ Value* CopyDecryptedImageToParition(const char* name, State* state, int argc, Ex
 
     printf(" CopyDecryptedImageToParition: image size: %zu \n", image_size);
     if(strcmp(blockdev_filename->data, SYSTEM_PATH) == 0) {
-       blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+        if (blockdev_filename->data == nullptr) {
+          printf(" Failed copy of /tmp/system to partition blockdev_filename->data \n");
+          return StringValue(strdup(""));
+        }
        printf(" copy /tmp/system to partition %s \n", blockdev_filename->data);
        if(copy_image(FDE_OTA_SYSTEM_TMP_PATH, blockdev_filename->data, image_size) != 0) {
           printf("copy to %s failed \n", blockdev_filename->data);
@@ -1641,6 +1645,10 @@ Value* CopyDecryptedImageToTemp(const char* name, State* state, int argc, Expr* 
     if(strcmp(blockdev_filename->data, SYSTEM_PATH) == 0) {
        printf(" copy system fde image to /tmp/system \n");
        snprintf(blockdev_path, PATH_MAX, "%s", getInactiveRootfsMtdBlock(blockdev_filename));
+       if (blockdev_path == nullptr) {
+          printf(" Empty File path \n ");
+          return StringValue(strdup(""));
+       }
        int fd = open(blockdev_path, O_RDWR);
        if (fd == -1) {
           printf(" file open error for %s \n", blockdev_path);
@@ -1739,6 +1747,10 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     }
 #endif
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+       if (blockdev_path == nullptr) {
+          printf(" Failed to get partition \n ");
+          return StringValue(strdup(""));
+        }
 #else
     char buf[PATH_MAX];
     snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
@@ -2099,6 +2111,10 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
 // make A/B specific changes to block-device name
 #ifdef TARGET_NAND_BOOT
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+    if (blockdev_filename->data == nullptr) {
+        printf(" Failed to get partition \n");
+        return StringValue(strdup(""));
+    }
 #else
     char buf[PATH_MAX];
     snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
@@ -2315,6 +2331,10 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+    if (blockdev_filename->data == nullptr) {
+        printf(" Failed to get partition %s \n", blockdev_filename->data);
+        return StringValue(strdup(""));
+    }
     printf(" blockdev_filename_data %s \n", blockdev_filename->data);
 
     int fd = open(blockdev_filename->data, O_RDWR);
@@ -2357,6 +2377,10 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     char *mtd_num = strtok_r(blockdev_filename->data, "block", &save);
     mtd_num = strtok_r(NULL, "block", &save);
+    if (mtd_num == nullptr) {
+        printf("Failed for strtok\n");
+        return StringValue(strdup(""));
+    }
 
     snprintf(mtd_erase_dev, 12, "%s%s", "/dev/mtd", mtd_num);
 
