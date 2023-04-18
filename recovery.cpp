@@ -100,6 +100,7 @@
 #endif
 
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
+#define OTA_STATUS_LEN 15
 
 struct selabel_handle *sehandle;
 
@@ -127,6 +128,13 @@ static const struct option OPTIONS[] = {
 static const std::vector<std::string> bootreason_blacklist {
   "kernel_panic",
   "Panic",
+};
+
+enum ota_status_value {
+  OTA_STATUS_UNKNOWN = 0,
+  OTA_STATUS_INPROGRESS = 1,
+  OTA_STATUS_SUCCESS = 2,
+  OTA_STATUS_FAILED  = 3,
 };
 
 static const char *CACHE_LOG_DIR = "/cache/recovery";
@@ -170,6 +178,7 @@ static bool has_cache = false;
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
 bool mirror_copy = false;
 #endif
+static char* ota_status = NULL;
 /*
  * The recovery tool communicates with the main system through /cache files.
  *   /cache/recovery/command - INPUT - command line for tool, one arg per line
@@ -727,6 +736,63 @@ static int set_mirror_copy_cookie(std::string ota_status) {
     return 0;
 }
 #endif
+
+int get_ota_status() {
+    int fd = -1;
+    int status = OTA_STATUS_UNKNOWN;
+    char buf[OTA_STATUS_LEN] = { 0 };
+    fd = open(STATUS_COOKIE_FILE, O_RDONLY, S_IRUSR | S_IRGRP | S_IROTH);
+    if (fd < 0) {
+        printf("Failed to open %s : %s\n",
+             STATUS_COOKIE_FILE,
+             strerror(errno));
+        return status;
+    }
+    int len = read(fd, buf, OTA_STATUS_LEN - 1);
+    if (len < 0) {
+        printf("Failed to read to %s : %s\n", STATUS_COOKIE_FILE,
+             strerror(errno));
+        close(fd);
+        return status;
+    }
+    printf("ota status %s\n", buf);
+    if (!strncmp(buf, "OTA_INPROGRESS", strlen("OTA_INPROGRESS"))) {
+        status = OTA_STATUS_INPROGRESS;
+    } else if (!strncmp(buf, "OTA_SUCCESS", strlen("OTA_SUCCESS"))) {
+        status = OTA_STATUS_SUCCESS;
+    } else if (!strncmp(buf, "OTA_FAILED", strlen("OTA_FAILED"))) {
+        status = OTA_STATUS_FAILED;
+    } else {
+        status = OTA_STATUS_UNKNOWN;
+    }
+    printf("ota status value %d\n", status);
+    close(fd);
+    return status;
+}
+
+static int set_ota_cookie(const char* ota_status) {
+    int fd = -1;
+    int rcode = 0;
+    fd = open(STATUS_COOKIE_FILE, O_CREAT | O_WRONLY , S_IRUSR | S_IWUSR);
+    if (fd < 0) {
+        LOGE("Failed to open %s : %s\n",
+             STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    rcode = write(fd, ota_status, strlen(ota_status)+1);
+    if (rcode < 0) {
+        LOGE("Failed to write to %s : %s\n", STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    LOGI("ota_status cookie set");
+    close(fd);
+    return 0;
+error:
+    if (fd >= 0) close(fd);
+    return -1;
+}
 
 static int set_ota_cookie() {
     int fd = -1;
@@ -1880,7 +1946,7 @@ int main(int argc, char **argv) {
     bool shutdown_after = false;
     int retry_count = 0;
     bool security_update = false;
-    int status = INSTALL_SUCCESS;
+    int status = INSTALL_NONE;
     bool mount_required = true;
 
     int arg;
@@ -1966,7 +2032,11 @@ int main(int argc, char **argv) {
         printf(" \"%s\"", argv[arg]);
     }
     printf("\n");
-
+    if (IS_LE_MODE()) {
+        LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
+        ota_status = strdup("OTA_INPROGRESS");
+        set_ota_cookie(ota_status);
+    }
     if (update_package) {
         // For backwards compatibility on the cache partition only, if
         // we're given an old 'root' path "CACHE:foo", change it to
@@ -2192,7 +2262,13 @@ error:
     printf("Recovery exiting, upgrade %s\n",
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
 #endif
-
+    ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
+    if (IS_LE_MODE()) {
+        printf("Write OTA status to OTA cookie %s\n", ota_status);
+        set_ota_cookie(ota_status);
+    }
+    int ota_status_val = get_ota_status();
+    printf("OTA status %d\n", ota_status_val);
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
     bool reboot = false;
