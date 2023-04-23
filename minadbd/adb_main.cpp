@@ -25,9 +25,7 @@
 #include "adb_auth.h"
 #include "transport.h"
 
-#ifdef USE_LE_MODE
-#define TRACE_TAG TRACE_ADB
-#endif
+#define TRACE_TAG ADB
 
 // Define this variable here as this has an "extern"
 // linkage in libadbd.so.
@@ -43,11 +41,7 @@ int adb_server_main(int is_daemon, int server_port, int /* reply_fd */) {
 
     init_transport_registration();
     usb_init();
-#ifdef USE_LE_MODE
-    D("Event loop starting\n");
-#else
-    VLOG(TRACE_ADB) << "Event loop starting";
-#endif
+    VLOG(ADB) << "Event loop starting";
 
     fdevent_loop();
 

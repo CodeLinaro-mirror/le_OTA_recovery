@@ -196,7 +196,6 @@ int parse_fstab(FILE *logfd, char *name, int *alloc) {
 
 void load_volume_table(FILE *logfd) {
     int alloc = 2;
-    int i;
 
     if (device_volumes)
         return;
@@ -1609,6 +1608,10 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
     std::unique_ptr<Value*, decltype(&free)> arg_values(ReadValueVarArgs(state, argc-4, argv+4),
                                                         free);
     if (!arg_values) {
+        free(source_filename);
+        free(target_filename);
+        free(target_sha1);
+        free(target_size_str);
         return nullptr;
     }
     std::vector<std::unique_ptr<Value, decltype(&FreeValue)>> patch_shas;
@@ -1622,10 +1625,18 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
     for (int i = 0; i < patchcount; ++i) {
         if (patch_shas[i]->type != VAL_STRING) {
             ErrorAbort(state, kArgsParsingFailure, "%s(): sha-1 #%d is not string", name, i);
+            free(source_filename);
+            free(target_filename);
+            free(target_sha1);
+            free(target_size_str);
             return nullptr;
         }
         if (patches[i]->type != VAL_BLOB) {
             ErrorAbort(state, kArgsParsingFailure, "%s(): patch #%d is not blob", name, i);
+            free(source_filename);
+            free(target_filename);
+            free(target_sha1);
+            free(target_size_str);
             return nullptr;
         }
     }
@@ -1687,7 +1698,7 @@ Value* ApplyPatchCheckFn(const char* name, State* state,
         free(sha1s[i]);
     }
     free(sha1s);
-
+    free(filename);
     return StringValue(strdup(result == 0 ? "t" : ""));
 }
 
@@ -2166,6 +2177,7 @@ bool PerformBlockCopyOperation(char* source, char* dest) {
 end:
     ota_close(source_fd);
     ota_close(dest_fd);
+    free(buffer);
     return success;
 }
 
@@ -2196,7 +2208,6 @@ Value* CopyABPartitionsFn(const char* name, State* state,
         char *p = strtok (exclude_arg, ",");
         while (p != NULL) {
             // append the boot/active slot to the name and then save it
-            char buffer[PATH_MAX];
             snprintf(partitions_to_exclude[exclude_length], PATH_MAX, "%s%s",
                     p, slot_suffix_arr[boot_slot]);
             printf("%s: Excluding partition \"%s\" from being copied\n", name, p);
@@ -2247,7 +2258,6 @@ Value* CopyABPartitionsFn(const char* name, State* state,
                 // check if the current entry is one of them
                 bool match_found = false;
                 for (int i = 0; i < exclude_length; i++) {
-                    int maxlen = strlen(partitions_to_exclude[i]);
                     // printf("Matching %s against %s\n", de->d_name, partitions_to_exclude[i]);
                     if (strcmp(de->d_name, partitions_to_exclude[i]) == 0) {
                         match_found = true;
@@ -2329,6 +2339,7 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     uint8_t reference_sha1[SHA_DIGEST_LENGTH];
     if (ParseSha1(reference_sha1_str, reference_sha1) != 0) {
         printf("%s: failed to parse sha1 \"%s\"\n", name, reference_sha1_str);
+        free(block_dev);
         return StringValue(strdup(""));
     }
 
@@ -2339,6 +2350,7 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     if (block_dev_fd == -1) {
         printf("%s: open failed \"%s\": %s\n", name,
                 block_dev, strerror(errno));
+        free(block_dev);
         return StringValue(strdup(""));
     }
 
@@ -2365,10 +2377,14 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     // Now compare this against the reference SHA1
     if (memcmp(block_dev_sha1, reference_sha1, SHA_DIGEST_LENGTH) == 0) {
         printf("%s: The block device SHA1 matches the reference SHA1\n", name);
+        free(block_dev);
+        free(buffer);
         return StringValue(strdup("success"));
     }
 
     printf("%s: The block device SHA1 doesn't match the reference SHA1\n", name);
+    free(block_dev);
+    free(buffer);
     return StringValue(strdup(""));
 }
 #ifdef TARGET_NAND_AB_BOOT
