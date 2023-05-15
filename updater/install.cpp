@@ -170,6 +170,7 @@ int parse_fstab(FILE *logfd, char *name, int *alloc) {
                 device_volumes = (Volume*) realloc(device_volumes, (*alloc)*sizeof(Volume));
                 if (!device_volumes) {
                     printf("parse_fstab: realloc() failed, line: %d", __LINE__);
+                    free(original);
                     return -1;
                 }
             }
@@ -191,7 +192,6 @@ int parse_fstab(FILE *logfd, char *name, int *alloc) {
 
 void load_volume_table(FILE *logfd) {
     int alloc = 2;
-    int i;
 
     if (device_volumes)
         return;
@@ -1331,6 +1331,7 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* buffer = NULL;
     char* filename;
     char* key;
+    char* saveptr = NULL; // to be passed to strtok_r()
     if (ReadArgs(state, argv, 2, &filename, &key) < 0) {
         return NULL;
     }
@@ -1376,7 +1377,7 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
     fclose(f);
 
     char* line;
-    line = strtok(buffer, "\n");
+    line = strtok_r(buffer, "\n", &saveptr);
     do {
         // skip whitespace at start of line
         while (*line && isspace(*line)) ++line;
@@ -1409,7 +1410,7 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
         result = strdup(val_start);
         break;
 
-    } while ((line = strtok(NULL, "\n")));
+    } while ((line = strtok_r(NULL, "\n", &saveptr)));
 
     if (result == NULL) result = strdup("");
 
@@ -1497,9 +1498,11 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         success = true;
         char* buffer = reinterpret_cast<char*>(malloc(BUFSIZ));
         int read;
-        while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
-            int wrote = mtd_write_data(ctx, buffer, read);
-            success = success && (wrote == read);
+        if(buffer != nullptr) {
+            while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
+                int wrote = mtd_write_data(ctx, buffer, read);
+                success = success && (wrote == read);
+            }
         }
         free(buffer);
         ota_fclose(f);
@@ -1617,10 +1620,19 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
     for (int i = 0; i < patchcount; ++i) {
         if (patch_shas[i]->type != VAL_STRING) {
             ErrorAbort(state, kArgsParsingFailure, "%s(): sha-1 #%d is not string", name, i);
+            free(source_filename);
+            free(target_filename);
+            free(target_sha1);
+            free(target_size_str);
             return nullptr;
+
         }
         if (patches[i]->type != VAL_BLOB) {
             ErrorAbort(state, kArgsParsingFailure, "%s(): patch #%d is not blob", name, i);
+            free(source_filename);
+            free(target_filename);
+            free(target_sha1);
+            free(target_size_str);
             return nullptr;
         }
     }
@@ -1896,7 +1908,7 @@ Value* RebootNowFn(const char* name, State* state, int argc, Expr* argv[]) {
     fclose(f);
     free(filename);
 
-    strcpy(buffer, "reboot,");
+    strlcpy(buffer, "reboot,", sizeof(buffer));
     if (property != NULL) {
         strncat(buffer, property, sizeof(buffer)-10);
     }
@@ -2196,7 +2208,6 @@ Value* CopyABPartitionsFn(const char* name, State* state,
         char *p = strtok_r(exclude_arg, ",", &saveptr);
         while (p != NULL) {
             // append the boot/active slot to the name and then save it
-            char buffer[PATH_MAX];
             snprintf(partitions_to_exclude[exclude_length], PATH_MAX, "%s%s",
                     p, slot_suffix_arr[boot_slot]);
             printf("%s: Excluding partition \"%s\" from being copied\n", name, p);
@@ -2247,7 +2258,6 @@ Value* CopyABPartitionsFn(const char* name, State* state,
                 // check if the current entry is one of them
                 bool match_found = false;
                 for (int i = 0; i < exclude_length; i++) {
-                    int maxlen = strlen(partitions_to_exclude[i]);
                     // printf("Matching %s against %s\n", de->d_name, partitions_to_exclude[i]);
                     if (strcmp(de->d_name, partitions_to_exclude[i]) == 0) {
                         match_found = true;
