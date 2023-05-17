@@ -931,7 +931,7 @@ static bool erase_volume(const char* volume) {
                         }
                         p->data = (unsigned char*) malloc(p->st.st_size);
                         FILE* f = fopen(path, "rb");
-                        if(f != nullptr) {
+                        if(f != nullptr && p->data != nullptr) {
                             fread(p->data, 1, p->st.st_size, f);
                             fclose(f);
                             p->next = head;
@@ -2039,7 +2039,8 @@ int main(int argc, char **argv) {
     if (IS_LE_MODE()) {
         LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
         ota_status = strdup("OTA_INPROGRESS");
-        set_ota_cookie(ota_status);
+        if(ota_status != nullptr)
+            set_ota_cookie(ota_status);
     }
     if (update_package) {
         // For backwards compatibility on the cache partition only, if
@@ -2270,7 +2271,7 @@ error:
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
 #endif
     ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
-    if (IS_LE_MODE()) {
+    if (IS_LE_MODE() && ota_status != nullptr) {
         printf("Write OTA status to OTA cookie %s\n", ota_status);
         set_ota_cookie(ota_status);
     }
