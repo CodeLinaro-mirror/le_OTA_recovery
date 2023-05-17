@@ -180,6 +180,9 @@ static int write_all(int fd, const uint8_t* data, size_t size) {
         if (w == -1) {
             failure_type = kFwriteFailure;
             fprintf(stderr, "write failed: %s\n", strerror(errno));
+            if(errno == ENOSPC) {
+                exit(1);
+            }
             return -1;
         }
         written += w;
