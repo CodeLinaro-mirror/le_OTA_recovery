@@ -241,7 +241,8 @@ int main(int argc, char** argv) {
             fprintf(cmd_pipe, "ui_print script aborted (no error message)\n");
         } else {
             printf("script aborted: %s\n", state.errmsg);
-            char* line = strtok(state.errmsg, "\n");
+            char* saveptr =NULL;
+            char* line = strtok_r(state.errmsg, "\n", &saveptr);
             while (line) {
                 // Parse the error code in abort message.
                 // Example: "E30: This package is for bullhead devices."
@@ -251,7 +252,7 @@ int main(int argc, char** argv) {
                     }
                 }
                 fprintf(cmd_pipe, "ui_print %s\n", line);
-                line = strtok(NULL, "\n");
+                line = strtok_r(NULL, "\n", &saveptr);
             }
             fprintf(cmd_pipe, "ui_print\n");
         }
