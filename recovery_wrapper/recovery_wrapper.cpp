@@ -60,7 +60,10 @@ int main(int argc, char **argv) {
     }
     if (boot_successful) {
         cout << "Received boot_successful\n";
-        int ret = libabctl_SetBootSuccess();
+        int ret=-1;
+#ifdef TARGET_SUPPORTS_AB
+        ret = libabctl_SetBootSuccess();
+#endif
         if (ret == 0) {
             std::cout << "Marked bootsuccessful\n";
         } else {
