@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /* Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -34,7 +34,11 @@
 #include "common.h"
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 const char* slot_suffix_arr[] = {"_a", "_b", NULL};
 #else
 const char* slot_suffix_arr[] = {"", "", ""};
@@ -63,7 +67,7 @@ extern bool have_eio_error;
 
 struct selabel_handle *sehandle;
 
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
 int set_nad_update_status( const char * value ) {
     FILE* status_fp = fopen(NAD_UPDATE_STATUS, "a+");
     if (status_fp != nullptr) {
@@ -119,7 +123,14 @@ int main(int argc, char** argv) {
     setlinebuf(cmd_pipe);
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
+    printf (" call libabctl \n");
     boot_slot = libabctl_getBootSlot();
+#else
+    printf (" call nadabctl \n");
+    boot_slot = libnadab_get_boot_slot();
+    boot_slot = 0;
+#endif
     if (boot_slot == -1) {
         printf("That's odd.. I was told that A/B boot support be present\n"
                "But libabctl_getBootSlot() returned -1, aborting!\n");

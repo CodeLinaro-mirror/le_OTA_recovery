@@ -15,6 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -42,7 +47,11 @@
 
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #include <limits.h>
 static int boot_slot;
 static int inactive_slot;
@@ -169,7 +178,11 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
             }
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
             boot_slot = libabctl_getBootSlot();
+#else
+            boot_slot = libnadab_get_boot_slot();
+#endif
             if (boot_slot == -1) {
               printf("That's odd.. I was told that A/B boot support be present\n"
                 "But libabctl_getBootSlot() returned -1, aborting!\n");
@@ -889,7 +902,7 @@ static int GenerateTarget(FileContents* source_file,
 
             // We still write the original source to cache, in case
             // the partition write is interrupted.
-#ifndef TARGET_NAD_PROD
+#ifndef TARGET_NAD_OTA
             if (MakeFreeSpaceOnCache(source_file->data.size()) < 0) {
                 printf("not enough free space on /cache\n");
                 return 1;

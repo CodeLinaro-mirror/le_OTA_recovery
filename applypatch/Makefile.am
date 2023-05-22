@@ -72,11 +72,15 @@ applypatch_SOURCES := $(applypatch_c_sources) $(applypatch_h_sources)
 
 if TARGET_SUPPORTS_AB
 libapplypatch_la_CPPFLAGS += -DTARGET_SUPPORTS_AB
+if TARGET_NAD_OTA
+libapplypatch_la_LIBADD += -lnad_ab_al
+else
 libapplypatch_la_LIBADD += -labctl
 endif
+endif
 
-if TARGET_NAD_PROD
-libapplypatch_la_CPPFLAGS += -DTARGET_NAD_PROD
+if TARGET_NAD_OTA
+libapplypatch_la_CPPFLAGS += -DTARGET_NAD_OTA
 endif
 
 bin_PROGRAMS := applypatch

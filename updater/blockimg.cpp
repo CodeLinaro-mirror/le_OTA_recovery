@@ -15,6 +15,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 
 #include <ctype.h>
 #include <errno.h>
@@ -60,19 +66,23 @@
 
 #define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #endif
 #ifdef TARGET_NAND_BOOT
 #include "mtdutils/mtdutils.h"
-#include <mtd/mtd-user.h>
-#define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
-#define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
-#define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
 #endif
 
 #define BLOCKSIZE 4096
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
 #define LEBSIZE 253952
+#define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
+#define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
+#define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
+#include <mtd/mtd-user.h>
 #endif
 
 // Set this to 0 to interpret 'erase' transfers to mean do a
@@ -1399,16 +1409,42 @@ static unsigned int HashString(const char *s) {
 }
 
 #ifdef TARGET_NAND_BOOT
+#ifdef TARGET_NAD_OTA
+static int isABVolumes() {
+    int result = -1;
+    int fd = open("/sys/class/ubi/ubi0_0/name", O_RDONLY);
+    if (fd == -1) {
+        printf(" error accessing ubi sysnode  \n");
+        return result;
+    }
+    char buf[PATH_MAX];
+    read(fd, buf, PATH_MAX);
+    close(fd);
+    if (strncmp(buf, "rootfs_a", strlen("rootfs_a")) == 0) {
+        printf(" AB Volumes \n");
+        result = 1;
+    } else {
+        printf("non-AB Volumes \n");
+        result = 0;
+    }
+    return result;
+}
+#endif
+
 static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     int len = strlen(SYSTEM_PATH);
     if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
         char rootfs_volume[PATH_MAX];
         mtd_scan_partitions();
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
         const MtdPartition* mtd = mtd_find_partition_by_name("misc");
         if (mtd == NULL) {
             printf("no mtd partition named misc, AB system \n");
+#if 0
             snprintf(rootfs_volume, PATH_MAX, "%s%s", "system", slot_suffix_arr[inactive_slot]);
+#else
+            snprintf(rootfs_volume, PATH_MAX, "%s%s", "rootfs", slot_suffix_arr[inactive_slot]);
+#endif
             printf("Inactive rootfs volume: %s\n", rootfs_volume);
         } else {
             printf(" found mtd partition named misc, non-AB system \n");
@@ -1429,7 +1465,7 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
     else if (strncmp(blockdev_filename->data, MODEM_PATH, len) == 0) {
         char modem_volume[PATH_MAX];
         mtd_scan_partitions();
@@ -1461,7 +1497,7 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char telaf_volume[PATH_MAX];
         mtd_scan_partitions();
 
-        if(isEightPlusEightConfig()) {
+        if(isABVolumes()) {
             snprintf(telaf_volume, PATH_MAX, "%s%s", "telaf", slot_suffix_arr[inactive_slot]);
             printf("Inactive telaf volume: %s\n", telaf_volume);
         } else {
@@ -1485,7 +1521,7 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char recoveryfs_volume[PATH_MAX];
         mtd_scan_partitions();
 
-        if(isEightPlusEightConfig()) {
+        if(isABVolumes()) {
             printf(" recoveryfs volume is not applicable for 8+8  \n");
             return strdup("");
         } else {
@@ -1564,13 +1600,13 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
 #ifdef TARGET_NAND_BOOT
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
     char part_name[PATH_MAX];
     snprintf(part_name, PATH_MAX, "%s", blockdev_filename->data);
     // check if  8+8 and recoveryfs
     if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
         printf(" reocveryfs update only performed on 4+4 \n");
-        if(isEightPlusEightConfig()) {
+        if(isABVolumes()) {
             return StringValue(strdup("t"));
         }
     }
@@ -1767,7 +1803,7 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
 
     rc = 0;
 #ifdef TARGET_NAND_BOOT
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
     if (strncmp(part_name, SYSTEM_PATH, strlen(SYSTEM_PATH)) == 0) {
       snprintf(part_name, sizeof(part_name), "%s", " system ");
     } else if(strncmp(part_name, MODEM_PATH, strlen(MODEM_PATH)) == 0) {
@@ -2096,7 +2132,7 @@ Value* BlockImageRecoverFn(const char* name, State* state, int argc, Expr* argv[
     return StringValue(strdup("t"));
 }
 #endif
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
 Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     Value* blockdev_filename = nullptr;
     Value* blockdev_num = nullptr;
@@ -2127,12 +2163,19 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     // check if  8+8 and recoveryfs
     if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
         printf(" recoveryfs update only performed on 4+4 \n");
-        if(isEightPlusEightConfig()) {
+        if(isABVolumes()) {
             return StringValue(strdup("t"));
         }
     }
 
+#ifdef TARGET_NAND_BOOT
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#else
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+            slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
+#endif
+
     printf(" blockdev_filename_data %s \n", blockdev_filename->data);
 
     int fd = open(blockdev_filename->data, O_RDWR);
@@ -2188,7 +2231,7 @@ void RegisterBlockImageFunctions() {
 #endif
     RegisterFunction("check_first_block", CheckFirstBlockFn);
     RegisterFunction("range_sha1", RangeSha1Fn);
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
     RegisterFunction("block_erase", BlockEraseFn);
 #endif
 }

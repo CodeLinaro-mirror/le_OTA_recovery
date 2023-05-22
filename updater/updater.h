@@ -13,6 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef _UPDATER_UPDATER_H_
 #define _UPDATER_UPDATER_H_
@@ -32,7 +37,7 @@ typedef struct {
     size_t package_zip_len;
 } UpdaterInfo;
 
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
 static const char *NAD_UPDATE_STATUS = "/cache/recovery/nad_ota_status";
 int set_nad_update_status( const char * value );
 #endif

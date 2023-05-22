@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /* Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -96,7 +96,11 @@
 #endif
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #endif
 
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
@@ -157,7 +161,7 @@ static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
 static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/cache/recovery/mirror_copy_status";
 static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
 #endif
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
 static const char *NAD_STATUS_COOKIE_FILE = "/cache/recovery/nad_ota_status";
 #endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
@@ -822,7 +826,7 @@ error:
     return -1;
 }
 
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
 static int set_nad_ota_cookie( const char * value ) {
     FILE* status_fp;
     if (strcmp(value, " OTA_PROG ") == 0){
@@ -2078,8 +2082,10 @@ int main(int argc, char **argv) {
                        update_package, modified_path);
                 update_package = modified_path;
             }
-            else
+            else{
                 printf("modified_path allocation failed\n");
+                LOGI("modified_path allocation failed\n");
+            }
         }
         if (!strncmp("/sdcard", update_package, 7)) {
             //If this is a UFS device lets mount the sdcard ourselves.Depending
@@ -2133,7 +2139,7 @@ int main(int argc, char **argv) {
         }
 #endif
 
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
        set_nad_ota_cookie(" OTA_PROG ");
 #endif
     }
@@ -2166,6 +2172,7 @@ int main(int argc, char **argv) {
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
             set_mirror_copy_cookie("STARTED");
 #endif
+            LOGI("install_package\n");
             status = install_package(update_package, &should_wipe_cache,
                                      TEMPORARY_INSTALL_FILE, mount_required, retry_count);
             if (status == INSTALL_SUCCESS && should_wipe_cache) {
@@ -2303,7 +2310,7 @@ error:
     int ota_status_val = get_ota_status();
     printf("OTA status %d\n", ota_status_val);
 
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
     printf("set nad ota cookie \n");
     if ( status == INSTALL_SUCCESS ){
         set_nad_ota_cookie(" OTA_DONE ");
