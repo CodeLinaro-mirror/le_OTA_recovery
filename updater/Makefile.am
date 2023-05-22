@@ -68,7 +68,11 @@ endif
 
 if TARGET_SUPPORTS_AB
 updater_CPPFLAGS += -DTARGET_SUPPORTS_AB
+if TARGET_NAD_OTA
+updater_LDADD += -lnad_ab_al
+else
 updater_LDADD += -labctl
+endif
 endif
 
 if TARGET_SUPPORTS_ABC
@@ -83,7 +87,7 @@ if TARGET_NAND_BOOT
 updater_CPPFLAGS += -DTARGET_NAND_BOOT
 endif
 
-if TARGET_NAD_PROD
-updater_CPPFLAGS += -DTARGET_NAD_PROD
+if TARGET_NAD_OTA
+updater_CPPFLAGS += -DTARGET_NAD_OTA
 endif
 

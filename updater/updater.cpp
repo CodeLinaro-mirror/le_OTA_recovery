@@ -64,7 +64,7 @@ extern bool have_eio_error;
 
 struct selabel_handle *sehandle;
 
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
 int set_nad_update_status( const char * value ) {
     FILE* status_fp = fopen(NAD_UPDATE_STATUS, "a+");
     if (status_fp != nullptr) {
@@ -116,7 +116,15 @@ int main(int argc, char** argv) {
     setlinebuf(cmd_pipe);
 
 #if defined(TARGET_SUPPORTS_AB) && !defined(TARGET_SUPPORTS_ABC)
+#ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
+    printf (" call libabctl \n");
     boot_slot = libabctl_getBootSlot();
+#else
+    printf (" call nadabctl \n");
+    boot_slot = libnadab_get_boot_slot();
+    boot_slot = 0;
+#endif
     if (boot_slot == -1) {
         printf("That's odd.. I was told that A/B boot support be present\n"
                "But libabctl_getBootSlot() returned -1, aborting!\n");
@@ -126,6 +134,7 @@ int main(int argc, char** argv) {
     inactive_slot = (boot_slot + 1) % 2;
     printf("boot_slot = %s, inactive_slot = %s\n", slot_suffix_arr[boot_slot],
             slot_suffix_arr[inactive_slot]);
+#endif
 #endif
 
 #if defined(TARGET_SUPPORTS_AB) && defined(TARGET_SUPPORTS_ABC)

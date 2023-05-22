@@ -93,7 +93,11 @@
 #endif
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #endif
 
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
@@ -153,7 +157,7 @@ static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
 #ifdef TARGET_SUPPORTS_ABC
 static const char *ABC_OTA_STATUS_COOKIE_FILE = "/cache/recovery/abc_ota_status";
 #endif
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
 static const char *NAD_STATUS_COOKIE_FILE = "/cache/recovery/nad_ota_status";
 #endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
@@ -748,7 +752,7 @@ error:
     return -1;
 }
 
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
 static int set_nad_ota_cookie( const char * value ) {
     FILE* status_fp;
     if (strcmp(value, " OTA_PROG ") == 0){
@@ -1993,8 +1997,10 @@ int main(int argc, char **argv) {
                        update_package, modified_path);
                 update_package = modified_path;
             }
-            else
+            else{
                 printf("modified_path allocation failed\n");
+                LOGI("modified_path allocation failed\n");
+            }
         }
         if (!strncmp("/sdcard", update_package, 7)) {
             //If this is a UFS device lets mount the sdcard ourselves.Depending
@@ -2017,7 +2023,7 @@ int main(int argc, char **argv) {
             }
         }
 
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
        set_nad_ota_cookie(" OTA_PROG ");
 #endif
     }
@@ -2050,6 +2056,7 @@ int main(int argc, char **argv) {
 #ifdef TARGET_SUPPORTS_ABC
             set_abc_ota_cookie("STARTED");
 #endif
+            LOGI("install_package\n");
             status = install_package(update_package, &should_wipe_cache,
                                      TEMPORARY_INSTALL_FILE, mount_required, retry_count);
             if (status == INSTALL_SUCCESS && should_wipe_cache) {
@@ -2157,7 +2164,7 @@ error:
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
 #endif
 
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
     printf("set nad ota cookie \n");
     if ( status == INSTALL_SUCCESS ){
         set_nad_ota_cookie(" OTA_DONE ");

@@ -19,6 +19,11 @@
  *Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *SPDX-License-Identifier: BSD-3-Clause-Clear
  */
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include <ctype.h>
 #include <errno.h>
@@ -66,9 +71,6 @@
 #include "minzip/DirUtil.h"
 #include "mtdutils/mounts.h"
 #include "mtdutils/mtdutils.h"
-#ifdef TARGET_NAD_PROD
-#include "mtdutils/copyrawpart.h"
-#endif
 #include "openssl/sha.h"
 #include "otafault/ota_io.h"
 #include "updater.h"
@@ -91,7 +93,11 @@ extern "C" {    // Use till system/core is updated
 }
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #include <errno.h>
 #include <dirent.h>
 #include "print_sha1.h"
@@ -107,7 +113,7 @@ extern "C" {    // Use till system/core is updated
 #define SYSTEM_ROOTFS  "/tmp/system.img"
 #define ROOTFS_VOLUME "/dev/ubi1_0"
 #endif
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
 #define RAW_PART_LENGTH 20
 #endif
 static int num_volumes = 0;
@@ -1551,7 +1557,7 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
     result = success ? partition : strdup("");
 
 #ifdef TARGET_NAND_BOOT
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
     if (success) {
       set_nad_update_status(partition);
     }
@@ -1683,7 +1689,7 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
                             patchcount, patch_sha_str.data(), patch_ptrs.data(), NULL);
 
 #ifdef TARGET_NAND_BOOT
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
     char* part_name;
     part_name = strtok_r(source_filename, ":", &source_filename);
     part_name = strtok_r(NULL, ":", &source_filename);
@@ -2440,7 +2446,11 @@ Value* SetInactiveAsUnbootableFn(const char* name, State* state,
     printf("%s: Setting inactive_slot(%s) as unbootable\n", name,
             slot_suffix_arr[inactive_slot]);
 
+#ifndef TARGET_NAD_OTA
     int ret = libabctl_setUnbootable(inactive_slot);
+#else
+    int ret = libnadab_set_unbootable(inactive_slot);
+#endif
 
     if (ret == 0) {
         printf("%s: %s set as unbootable successfully\n", name,
@@ -2479,6 +2489,7 @@ static char* getMtdBlock(const char* rootfs_volume) {
     snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
     return strdup(mtd_devname);
 }
+
 
 Value* copyActiveRootfsToInactiveRootfs(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
@@ -2684,6 +2695,7 @@ std::string read_last_line(std::fstream& fin) {
 }
 #endif
 
+#ifdef TARGET_SUPPORTS_AB
 Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
         int argc, Expr* argv[]) {
     if (argc != 0) {
@@ -2693,12 +2705,25 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
 
     printf("%s: Setting inactive_slot(%s) as active\n", name,
             slot_suffix_arr[inactive_slot]);
-
-    int ret = libabctl_setActive(inactive_slot);
+    int ret = -1;
+#ifndef TARGET_NAD_OTA
+    ret = libabctl_setActive(inactive_slot);
+#else
+    ret = libnadab_set_active(inactive_slot);
+    if (ret == NADAB_GPIO_ENABLED) {
+        printf("%s: Not switching inactive slot to active"
+                "as gpio slot switching is enabled!\n", name);
+        return StringValue(strdup("Success"));
+    }
+#endif
 
     if (ret == 0) {
         // Check again if it is actually set as active
+#ifndef TARGET_NAD_OTA
         ret = libabctl_getActiveStatus(inactive_slot);
+#else
+        ret = libnadab_get_active_status(inactive_slot);
+#endif
         if (ret == 1) { // slot is active
             printf("%s: Set %s as active slot successfully\n", name,
                     slot_suffix_arr[inactive_slot]);
@@ -2772,6 +2797,7 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
     printf("%s: Couldn't set inactive slot as active!\n", name);
     return StringValue(strdup("")); // abort, if you want
 }
+#endif
 #ifdef TARGET_SUPPORTS_NAND_DM_VERITY
 Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
@@ -2823,12 +2849,36 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
 }
 #endif //TARGET_SUPPORTS_NAND_DM_VERITY
 
-#ifdef TARGET_NAD_PROD
+
+#ifdef TARGET_NAND_BOOT
+#ifdef TARGET_NAD_OTA
+
+static int isABVolumes() {
+    int result = -1;
+    int fd = open("/sys/class/ubi/ubi0_0/name", O_RDONLY);
+    if (fd == -1) {
+        printf(" error accessing ubi sysnode  \n");
+        return result;
+    }
+    char buf[PATH_MAX];
+    read(fd, buf, PATH_MAX);
+    close(fd);
+    if (strncmp(buf, "rootfs_a", strlen("rootfs_a")) == 0) {
+        printf(" AB Volumes \n");
+        result = 1;
+    } else {
+        printf("non-AB Volumes \n");
+        result = 0;
+    }
+    return result;
+}
+
 Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv[]) {
     char* result = NULL;
     Value* partition_value;
     Value* contents;
     Value* filepath_value;
+    size_t size = 0;
     if (ReadValueArgs(state, argv, 3, &contents, &partition_value, &filepath_value) < 0) {
         return NULL;
     }
@@ -2861,7 +2911,7 @@ Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv
     }
 
     mtd_scan_partitions();
-    int err = isEightPlusEightConfig();
+    int err = isABVolumes();
     if(err == -1){
         printf(" error accessing ubi sysnode  \n");
         return StringValue(strdup(""));
@@ -2899,7 +2949,8 @@ Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv
     printf("Inactive volume mtd block: %s\n", out_file);
     char *args[] = {"dd", in_file, out_file, 0};
     UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
-    if (exec_command(ui->cmd_pipe, "/bin/dd", args) != 0) {
+    size = sizeof(argv)/sizeof(argv[0]);
+    if (exec_command(ui->cmd_pipe, "/bin/dd", args, size) != 0) {
         fprintf(stderr, "can not update ubifs volume %s", partition);
         unlink(modem_ubifs);
         return StringValue(strdup(""));
@@ -2909,6 +2960,7 @@ Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv
     unlink(modem_ubifs);
     return StringValue(strdup("success"));
 }
+#endif
 #endif
 
 void RegisterInstallFunctions() {
@@ -2989,9 +3041,8 @@ void RegisterInstallFunctions() {
     RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);
     RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
     RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
-#endif
-
-#ifdef TARGET_NAD_PROD
+#ifdef TARGET_NAD_OTA
     RegisterFunction("write_modem_ubifs_image", writeModemUbifsImage);
+#endif
 #endif
 }

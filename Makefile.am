@@ -113,7 +113,11 @@ EXTRA_DIST := $(pkgconfig_DATA)
 
 if TARGET_SUPPORTS_AB
 recovery_CPPFLAGS += -DTARGET_SUPPORTS_AB
+if TARGET_NAD_OTA
+recovery_LDADD += -lnad_ab_al
+else
 recovery_LDADD += -labctl
+endif
 endif
 
 if TARGET_SUPPORTS_ABC
@@ -132,6 +136,6 @@ if TARGET_SUPPORTS_NAND_DM_VERITY
 recovery_CPPFLAGS += -DTARGET_SUPPORTS_NAND_DM_VERITY
 endif
 
-if TARGET_NAD_PROD
-recovery_CPPFLAGS += -DTARGET_NAD_PROD
+if TARGET_NAD_OTA
+recovery_CPPFLAGS += -DTARGET_NAD_OTA
 endif
