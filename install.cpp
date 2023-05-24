@@ -438,23 +438,24 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
     char buffer[1024];
     FILE* from_child = fdopen(pipefd[0], "r");
     while (fgets(buffer, sizeof(buffer), from_child) != NULL) {
-        char* command = strtok(buffer, " \n");
+        char* saveptr = NULL;
+        char* command = strtok_r(buffer, " \n", &saveptr);
         if (command == NULL) {
             continue;
         } else if (strcmp(command, "progress") == 0) {
-            char* fraction_s = strtok(NULL, " \n");
-            char* seconds_s = strtok(NULL, " \n");
+            char* fraction_s = strtok_r(NULL, " \n", &saveptr);
+            char* seconds_s = strtok_r(NULL, " \n", &saveptr);
 
             float fraction = strtof(fraction_s, NULL);
             int seconds = strtol(seconds_s, NULL, 10);
 
             ui->ShowProgress(fraction * (1-VERIFICATION_PROGRESS_FRACTION), seconds);
         } else if (strcmp(command, "set_progress") == 0) {
-            char* fraction_s = strtok(NULL, " \n");
+            char* fraction_s = strtok_r(NULL, " \n", &saveptr);
             float fraction = strtof(fraction_s, NULL);
             ui->SetProgress(fraction);
         } else if (strcmp(command, "ui_print") == 0) {
-            char* str = strtok(NULL, "\n");
+            char* str = strtok_r(NULL, "\n", &saveptr);
             if (str) {
                 ui->PrintOnScreenOnly("%s", str);
             } else {
@@ -475,7 +476,7 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
         } else if (strcmp(command, "log") == 0) {
             // Save the logging request from updater and write to
             // last_install later.
-            log_buffer.push_back(std::string(strtok(NULL, "\n")));
+            log_buffer.push_back(std::string(strtok_r(NULL, "\n", &saveptr)));
         } else {
             LOGE("unknown command [%s]\n", command);
         }
@@ -586,7 +587,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
     }
 
     // Try to open the package.
-    ZipArchive zip;
+    ZipArchive zip = {0};
     int err = mzOpenZipArchive(map.addr, map.length, &zip);
     if (err != 0) {
         LOGE("Can't open %s\n(%s)\n", path, err != -1 ? strerror(err) : "bad");

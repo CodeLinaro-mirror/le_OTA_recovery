@@ -68,8 +68,10 @@ static std::string get_misc_blk_device(std::string* err) {
   fstab_rec* record = fs_mgr_get_entry_for_mount_point(fstab, "/misc");
   if (record == nullptr) {
     *err = "failed to find /misc partition";
+    fs_mgr_free_fstab(fstab);
     return "";
   }
+  fs_mgr_free_fstab(fstab);
   return record->blk_device;
 }
 
