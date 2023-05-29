@@ -1437,9 +1437,9 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char rootfs_volume[PATH_MAX];
         mtd_scan_partitions();
 #ifdef TARGET_NAD_OTA
-        const MtdPartition* mtd = mtd_find_partition_by_name("misc");
+        const MtdPartition* mtd = mtd_find_partition_by_name("recovery");
         if (mtd == NULL) {
-            printf("no mtd partition named misc, AB system \n");
+            printf("no mtd partition named recovery, AB system \n");
 #if 0
             snprintf(rootfs_volume, PATH_MAX, "%s%s", "system", slot_suffix_arr[inactive_slot]);
 #else
