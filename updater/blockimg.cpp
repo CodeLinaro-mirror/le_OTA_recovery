@@ -1747,10 +1747,6 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     }
 #endif
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
-       if (blockdev_path == nullptr) {
-          printf(" Failed to get partition \n ");
-          return StringValue(strdup(""));
-        }
 #else
     char buf[PATH_MAX];
     snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
