@@ -1,5 +1,5 @@
 /**********************************************************
-Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 SPDX-License-Identifier: BSD-3-Clause-Clear
 *********************************************************/
 
@@ -22,7 +22,11 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 #include "common.h"
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #endif
 static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/cache/recovery/mirror_copy_status";
 static const char *TEMPORARY_LOG_FILE = "/cache/recovery/mirror_copy.log";
