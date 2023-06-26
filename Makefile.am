@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS := -I m4
 
-SUBDIRS := minzip mtdutils edify otafault applypatch updater minadbd bootloader_message
+SUBDIRS := minzip mtdutils edify otafault applypatch updater minadbd bootloader_message mirror_copy
 
 AM_CFLAGS := -Wundef \
              -Wstrict-prototypes \
@@ -117,14 +117,22 @@ recovery_CPPFLAGS += -DTARGET_SUPPORTS_AB
 recovery_LDADD += -labctl
 endif
 
+if TARGET_SUPPORTS_MIRROR_AB_COPY
+recovery_CPPFLAGS += -DTARGET_SUPPORTS_MIRROR_AB_COPY
+endif
+
 if TARGET_SUPPORTS_OTA_VERIFICATION
 recovery_CPPFLAGS += -DTARGET_SUPPORTS_OTA_VERIFICATION
 endif
 
-if TARGET_NAND_AB_BOOT
-recovery_CPPFLAGS += -DTARGET_NAND_AB_BOOT
+if TARGET_NAND_BOOT
+recovery_CPPFLAGS += -DTARGET_NAND_BOOT
 endif
 
 if TARGET_SUPPORTS_NAND_DM_VERITY
 recovery_CPPFLAGS += -DTARGET_SUPPORTS_NAND_DM_VERITY
+endif
+
+if TARGET_NAD_PROD
+recovery_CPPFLAGS += -DTARGET_NAD_PROD
 endif

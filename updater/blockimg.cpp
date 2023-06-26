@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2021 The Linux Foundation. All rights reserved.
+ * Not a contribution.
  * Copyright (C) 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,12 +58,15 @@
 #include "unique_fd.h"
 #include "updater.h"
 
+#define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
 #ifdef TARGET_SUPPORTS_AB
 #include <libabctl.h>
-#ifdef TARGET_NAND_AB_BOOT
-#include "mtdutils/mtdutils.h"
 #endif
-#define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
+#ifdef TARGET_NAND_BOOT
+#include "mtdutils/mtdutils.h"
+#define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
+#define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
+#define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
 #endif
 
 #define BLOCKSIZE 4096
@@ -180,6 +185,9 @@ static int write_all(int fd, const uint8_t* data, size_t size) {
         if (w == -1) {
             failure_type = kFwriteFailure;
             fprintf(stderr, "write failed: %s\n", strerror(errno));
+            if(errno == ENOSPC) {
+                exit(1);
+            }
             return -1;
         }
         written += w;
@@ -1386,16 +1394,29 @@ static unsigned int HashString(const char *s) {
     return hash;
 }
 
-#ifdef TARGET_SUPPORTS_AB
-#ifdef TARGET_NAND_AB_BOOT
+#ifdef TARGET_NAND_BOOT
 static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     int len = strlen(SYSTEM_PATH);
     if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
         char rootfs_volume[PATH_MAX];
+        mtd_scan_partitions();
+#ifdef TARGET_NAD_PROD
+        const MtdPartition* mtd = mtd_find_partition_by_name("misc");
+        if (mtd == NULL) {
+            printf("no mtd partition named misc, AB system \n");
+            snprintf(rootfs_volume, PATH_MAX, "%s%s", "system", slot_suffix_arr[inactive_slot]);
+            printf("Inactive rootfs volume: %s\n", rootfs_volume);
+        } else {
+            printf(" found mtd partition named misc, non-AB system \n");
+            snprintf(rootfs_volume, PATH_MAX, "%s", "system");
+            printf("rootfs volume: %s\n", rootfs_volume);
+        }
+#else
+        const MtdPartition* mtd;
         snprintf(rootfs_volume, PATH_MAX, "%s%s", "rootfs", slot_suffix_arr[inactive_slot]);
         printf("Inactive rootfs volume: %s\n", rootfs_volume);
-        mtd_scan_partitions();
-        const MtdPartition* mtd = mtd_find_partition_by_name(rootfs_volume);
+#endif
+        mtd = mtd_find_partition_by_name(rootfs_volume);
         if (mtd == NULL) {
             printf("no mtd partition named \"%s\"\n", rootfs_volume);
             return strdup("");
@@ -1404,9 +1425,85 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
+#ifdef TARGET_NAD_PROD
+    else if (strncmp(blockdev_filename->data, MODEM_PATH, len) == 0) {
+        char modem_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        const MtdPartition* mtd = mtd_find_partition_by_name("misc");
+        if (mtd == NULL) {
+            printf("no mtd partition named misc, AB firmware \n");
+            snprintf(modem_volume, PATH_MAX, "%s%s", "firmware", slot_suffix_arr[inactive_slot]);
+            printf("Inactive firmware volume: %s\n", modem_volume);
+        } else {
+            printf(" found mtd partition named misc, non-AB firmware \n");
+            snprintf(modem_volume, PATH_MAX, "%s", "firmware");
+            printf("firmware volume: %s\n", modem_volume);
+        }
+
+        mtd = mtd_find_partition_by_name(modem_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", modem_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              modem_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+#ifdef TARGET_NAND_BOOT
+    else if (strncmp(blockdev_filename->data, TELAF_PATH, strlen(TELAF_PATH)) == 0) {
+        char telaf_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isEightPlusEightConfig()) {
+            snprintf(telaf_volume, PATH_MAX, "%s%s", "telaf", slot_suffix_arr[inactive_slot]);
+            printf("Inactive telaf volume: %s\n", telaf_volume);
+        } else {
+            snprintf(telaf_volume, PATH_MAX, "%s", "telaf");
+            printf("telaf volume: %s\n", telaf_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(telaf_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", telaf_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              telaf_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+    // for 4+4 recoveryfs is updated while performing ab sync operation after bootup
+    else if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
+        char recoveryfs_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isEightPlusEightConfig()) {
+            printf(" recoveryfs volume is not applicable for 8+8  \n");
+            return strdup("");
+        } else {
+            snprintf(recoveryfs_volume, PATH_MAX, "%s", "recoveryfs");
+            printf("recoveryfs_ volume: %s\n", recoveryfs_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(recoveryfs_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", recoveryfs_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              recoveryfs_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+#endif
+#endif
     return strdup("");
 }
-#endif
 #endif
 
 // args:
@@ -1460,10 +1557,9 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
         return StringValue(strdup(""));
     }
 
-#ifdef TARGET_SUPPORTS_AB
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
-#ifdef TARGET_NAND_AB_BOOT
+#ifdef TARGET_NAND_BOOT
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
 #else
     char buf[PATH_MAX];
@@ -1473,7 +1569,6 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
 #endif
     printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
             blockdev_filename->data);
-#endif
 
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
 
@@ -1788,10 +1883,9 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
         return StringValue(strdup(""));
     }
 
-#ifdef TARGET_SUPPORTS_AB
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
-#ifdef TARGET_NAND_AB_BOOT
+#ifdef TARGET_NAND_BOOT
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
 #else
     char buf[PATH_MAX];
@@ -1801,7 +1895,6 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
 #endif
     printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
             blockdev_filename->data);
-#endif
 
     int fd = open(blockdev_filename->data, O_RDWR);
     unique_fd fd_holder(fd);

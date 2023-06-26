@@ -42,6 +42,10 @@ if TARGET_SUPPORTS_AB
 libedify_la_CPPFLAGS += -DTARGET_SUPPORTS_AB
 endif
 
+if TARGET_SUPPORTS_MIRROR_AB_COPY
+libedify_la_CPPFLAGS += -DTARGET_SUPPORTS_MIRROR_AB_COPY
+endif
+
 edify_c_sources := parser.yy \
              lexer.ll \
              expr.cpp \
@@ -54,13 +58,13 @@ bin_PROGRAMS := edify
 if USE_GLIB
 edify_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 edify_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
-edify_LDADD := -lm -lpthread -lbase @GLIB_LIBS@
+edify_LDADD := -lm -lpthread -lbase -llog @GLIB_LIBS@
 else
 edify_CFLAGS := $(AM_CFLAGS)
 edify_CPPFLAGS := $(AM_CPPFLAGS)
 edify_LDADD := -lm -lpthread -lbase
 endif
 
-if TARGET_NAND_AB_BOOT
-libedify_la_CPPFLAGS += -DTARGET_NAND_AB_BOOT
+if TARGET_NAND_BOOT
+libedify_la_CPPFLAGS += -DTARGET_NAND_BOOT
 endif

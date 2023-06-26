@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2021 The Linux Foundation. All rights reserved.
+ * Not a contribution.
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +14,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <ctype.h>
@@ -299,12 +305,34 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
         return INSTALL_ERROR;
     }
 
-    *cmd = {
-        binary,
-        EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-        std::to_string(status_fd),
-        path,
-    };
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    if(!mirror_copy) {
+         LOGI("update flow \n");
+         *cmd = {
+             binary,
+             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+             std::to_string(status_fd),
+             path,
+         };
+    } else {
+        LOGI("ab sync mirror flow \n");
+        *cmd = {
+            binary,
+            EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+            std::to_string(status_fd),
+            path,
+            "copy_to_inactive",
+        };
+    }
+#else
+     *cmd = {
+         binary,
+         EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+         std::to_string(status_fd),
+         path,
+     };
+#endif
+
     if (retry_count > 0)
         cmd->push_back("retry");
     return 0;
@@ -412,23 +440,24 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
     char buffer[1024];
     FILE* from_child = fdopen(pipefd[0], "r");
     while (fgets(buffer, sizeof(buffer), from_child) != NULL) {
-        char* command = strtok(buffer, " \n");
+        char* saveptr = NULL;
+        char* command = strtok_r(buffer, " \n", &saveptr);
         if (command == NULL) {
             continue;
         } else if (strcmp(command, "progress") == 0) {
-            char* fraction_s = strtok(NULL, " \n");
-            char* seconds_s = strtok(NULL, " \n");
+            char* fraction_s = strtok_r(NULL, " \n", &saveptr);
+            char* seconds_s = strtok_r(NULL, " \n", &saveptr);
 
             float fraction = strtof(fraction_s, NULL);
             int seconds = strtol(seconds_s, NULL, 10);
 
             ui->ShowProgress(fraction * (1-VERIFICATION_PROGRESS_FRACTION), seconds);
         } else if (strcmp(command, "set_progress") == 0) {
-            char* fraction_s = strtok(NULL, " \n");
+            char* fraction_s = strtok_r(NULL, " \n", &saveptr);
             float fraction = strtof(fraction_s, NULL);
             ui->SetProgress(fraction);
         } else if (strcmp(command, "ui_print") == 0) {
-            char* str = strtok(NULL, "\n");
+            char* str = strtok_r(NULL, "\n", &saveptr);
             if (str) {
                 ui->PrintOnScreenOnly("%s", str);
             } else {
@@ -449,7 +478,7 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
         } else if (strcmp(command, "log") == 0) {
             // Save the logging request from updater and write to
             // last_install later.
-            log_buffer.push_back(std::string(strtok(NULL, "\n")));
+            log_buffer.push_back(std::string(strtok_r(NULL, "\n", &saveptr)));
         } else {
             LOGE("unknown command [%s]\n", command);
         }
@@ -560,7 +589,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
     }
 
     // Try to open the package.
-    ZipArchive zip;
+    ZipArchive zip = {0};
     int err = mzOpenZipArchive(map.addr, map.length, &zip);
     if (err != 0) {
         LOGE("Can't open %s\n(%s)\n", path, err != -1 ? strerror(err) : "bad");
@@ -586,6 +615,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
     }
     ui->SetEnableReboot(false);
     int result = try_update_binary(path, &zip, wipe_cache, log_buffer, retry_count);
+    LOGI(" enum INSTALL_SUCCESS: %d , and update result:  %d \n",INSTALL_SUCCESS,result);
     ui->SetEnableReboot(true);
     ui->Print("\n");
 
