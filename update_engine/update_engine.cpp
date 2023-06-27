@@ -6,7 +6,9 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 #include <android/log.h>
 #include <errno.h>
 #include <fcntl.h>
+#ifdef TARGET_SUPPORTS_AB
 #include <libabctl.h>
+#endif
 #include <log/logger.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -133,7 +135,9 @@ int main() {
         stage = last_line_split[0];
         ota_status = last_line_split[1];
         slot_from_ota_status = last_line_split[2];
+#ifdef TARGET_SUPPORTS_AB
         boot_slot = libabctl_getBootSlot();
+#endif
         boot_slot_from_ota_status = slot_from_ota_status[0] - '0';
         ota_started_slot_str = first_line_split[2];
         ota_started_slot = ota_started_slot_str[0] - '0';

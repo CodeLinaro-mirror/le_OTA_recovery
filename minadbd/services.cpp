@@ -23,9 +23,7 @@
 
 #include "sysdeps.h"
 
-#ifdef USE_LE_MODE
-#define  TRACE_TAG  TRACE_SERVICES
-#endif
+#define TRACE_TAG SERVICES
 
 #include "adb.h"
 #include "fdevent.h"
@@ -77,12 +75,7 @@ static int create_service_thread(void (*func)(int, void *), void *cookie) {
     sti->cookie = cookie;
     sti->fd = s[1];
 
-#ifdef USE_LE_MODE
-    adb_thread_t t;
-    if (!adb_thread_create(&t, service_bootstrap_func, sti)) {
-#else
     if (!adb_thread_create(service_bootstrap_func, sti)) {
-#endif
         free(sti);
         adb_close(s[0]);
         adb_close(s[1]);
@@ -99,11 +92,7 @@ static int create_service_thread(void (*func)(int, void *), void *cookie) {
     return s[0];
 }
 
-#ifdef USE_LE_MODE
-int service_to_fd(const char* name) {
-#else
 int service_to_fd(const char* name, const atransport* transport) {
-#endif
     int ret = -1;
 
     if (!strncmp(name, "sideload:", 9)) {
