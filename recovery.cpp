@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /* Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -96,10 +96,15 @@
 #endif
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #endif
 
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
+#define OTA_STATUS_LEN 15
 
 struct selabel_handle *sehandle;
 
@@ -129,6 +134,13 @@ static const std::vector<std::string> bootreason_blacklist {
   "Panic",
 };
 
+enum ota_status_value {
+  OTA_STATUS_UNKNOWN = 0,
+  OTA_STATUS_INPROGRESS = 1,
+  OTA_STATUS_SUCCESS = 2,
+  OTA_STATUS_FAILED  = 3,
+};
+
 static const char *CACHE_LOG_DIR = "/cache/recovery";
 static const char *COMMAND_FILE = "/cache/recovery/command";
 static const char *INTENT_FILE = "/cache/recovery/intent";
@@ -148,6 +160,9 @@ static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
 static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/cache/recovery/mirror_copy_status";
 static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
+#endif
+#ifdef TARGET_NAD_OTA
+static const char *NAD_STATUS_COOKIE_FILE = "/cache/recovery/nad_ota_status";
 #endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
@@ -170,6 +185,7 @@ static bool has_cache = false;
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
 bool mirror_copy = false;
 #endif
+static char* ota_status = NULL;
 /*
  * The recovery tool communicates with the main system through /cache files.
  *   /cache/recovery/command - INPUT - command line for tool, one arg per line
@@ -439,6 +455,7 @@ get_args(int *argc, char ***argv) {
         FILE *fp = fopen_path(COMMAND_FILE, "r");
         if (fp != NULL) {
             char *token;
+            char *saveptr = NULL;
             char *argv0 = (*argv)[0];
             *argv = (char **) malloc(sizeof(char *) * MAX_ARGS);
             (*argv)[0] = argv0;  // use the same program name
@@ -446,7 +463,7 @@ get_args(int *argc, char ***argv) {
             char buf[MAX_ARG_LENGTH];
             for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
                 if (!fgets(buf, sizeof(buf), fp)) break;
-                token = strtok(buf, "\r\n");
+                token = strtok_r(buf, "\r\n", &saveptr);
                 if (token != NULL) {
                     (*argv)[*argc] = strdup(token);  // Strip newline.
                 } else {
@@ -728,6 +745,63 @@ static int set_mirror_copy_cookie(std::string ota_status) {
 }
 #endif
 
+int get_ota_status() {
+    int fd = -1;
+    int status = OTA_STATUS_UNKNOWN;
+    char buf[OTA_STATUS_LEN] = { 0 };
+    fd = open(STATUS_COOKIE_FILE, O_RDONLY, S_IRUSR | S_IRGRP | S_IROTH);
+    if (fd < 0) {
+        printf("Failed to open %s : %s\n",
+             STATUS_COOKIE_FILE,
+             strerror(errno));
+        return status;
+    }
+    int len = read(fd, buf, OTA_STATUS_LEN - 1);
+    if (len < 0) {
+        printf("Failed to read to %s : %s\n", STATUS_COOKIE_FILE,
+             strerror(errno));
+        close(fd);
+        return status;
+    }
+    printf("ota status %s\n", buf);
+    if (!strncmp(buf, "OTA_INPROGRESS", strlen("OTA_INPROGRESS"))) {
+        status = OTA_STATUS_INPROGRESS;
+    } else if (!strncmp(buf, "OTA_SUCCESS", strlen("OTA_SUCCESS"))) {
+        status = OTA_STATUS_SUCCESS;
+    } else if (!strncmp(buf, "OTA_FAILED", strlen("OTA_FAILED"))) {
+        status = OTA_STATUS_FAILED;
+    } else {
+        status = OTA_STATUS_UNKNOWN;
+    }
+    printf("ota status value %d\n", status);
+    close(fd);
+    return status;
+}
+
+static int set_ota_cookie(const char* ota_status) {
+    int fd = -1;
+    int rcode = 0;
+    fd = open(STATUS_COOKIE_FILE, O_CREAT | O_WRONLY , S_IRUSR | S_IWUSR);
+    if (fd < 0) {
+        LOGE("Failed to open %s : %s\n",
+             STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    rcode = write(fd, ota_status, strlen(ota_status)+1);
+    if (rcode < 0) {
+        LOGE("Failed to write to %s : %s\n", STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    LOGI("ota_status cookie set");
+    close(fd);
+    return 0;
+error:
+    if (fd >= 0) close(fd);
+    return -1;
+}
+
 static int set_ota_cookie() {
     int fd = -1;
     int rcode = 0;
@@ -751,6 +825,25 @@ error:
     if (fd >= 0) close(fd);
     return -1;
 }
+
+#ifdef TARGET_NAD_OTA
+static int set_nad_ota_cookie( const char * value ) {
+    FILE* status_fp;
+    if (strcmp(value, " OTA_PROG ") == 0){
+        status_fp = fopen(NAD_STATUS_COOKIE_FILE, "w+");
+    } else {
+        status_fp = fopen(NAD_STATUS_COOKIE_FILE, "a+");
+    }
+    if (status_fp != nullptr) {
+        fwrite(value, 1, 10, status_fp);
+        check_and_fclose(status_fp, NAD_STATUS_COOKIE_FILE);
+        return 0;
+    } else {
+        printf(" set nad ota cookie error \n");
+    }
+    return -1;
+}
+#endif
 
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
@@ -849,13 +942,13 @@ static bool erase_volume(const char* volume) {
         d = opendir(CACHE_LOG_DIR);
         if (d) {
             char path[PATH_MAX];
-            strcpy(path, CACHE_LOG_DIR);
+            strlcpy(path, CACHE_LOG_DIR, PATH_MAX);
             strcat(path, "/");
             int path_len = strlen(path);
             while ((de = readdir(d)) != NULL) {
                 if (strncmp(de->d_name, "last_", 5) == 0 || strcmp(de->d_name, "log") == 0) {
                     saved_log_file* p = (saved_log_file*) malloc(sizeof(saved_log_file));
-                    strcpy(path+path_len, de->d_name);
+                    strlcpy(path+path_len, de->d_name, PATH_MAX-path_len);
                     p->name = strdup(path);
                     if (stat(path, &(p->st)) == 0) {
                         // truncate files to 512kb
@@ -864,10 +957,12 @@ static bool erase_volume(const char* volume) {
                         }
                         p->data = (unsigned char*) malloc(p->st.st_size);
                         FILE* f = fopen(path, "rb");
-                        fread(p->data, 1, p->st.st_size, f);
-                        fclose(f);
-                        p->next = head;
-                        head = p;
+                        if(f != nullptr && p->data != nullptr) {
+                            fread(p->data, 1, p->st.st_size, f);
+                            fclose(f);
+                            p->next = head;
+                            head = p;
+                        }
                     } else {
                         free(p);
                     }
@@ -1020,7 +1115,7 @@ static char* browse_directory(const char* path, Device* device) {
                 dirs = (char**)realloc(dirs, d_alloc * sizeof(char*));
             }
             dirs[d_size] = (char*)malloc(name_len + 2);
-            strcpy(dirs[d_size], de->d_name);
+            strlcpy(dirs[d_size], de->d_name, sizeof(dirs[d_size]));
             dirs[d_size][name_len] = '/';
             dirs[d_size][name_len+1] = '\0';
             ++d_size;
@@ -1626,7 +1721,8 @@ load_locale_from_cache() {
                 buffer[j++] = buffer[i];
             }
         }
-        buffer[j] = 0;
+        if(j < 80)
+            buffer[j] = 0;
         locale = strdup(buffer);
         check_and_fclose(fp, LOCALE_FILE);
     }
@@ -1880,7 +1976,7 @@ int main(int argc, char **argv) {
     bool shutdown_after = false;
     int retry_count = 0;
     bool security_update = false;
-    int status = INSTALL_SUCCESS;
+    int status = INSTALL_NONE;
     bool mount_required = true;
 
     int arg;
@@ -1966,7 +2062,12 @@ int main(int argc, char **argv) {
         printf(" \"%s\"", argv[arg]);
     }
     printf("\n");
-
+    if (IS_LE_MODE()) {
+        LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
+        ota_status = strdup("OTA_INPROGRESS");
+        if(ota_status != nullptr)
+            set_ota_cookie(ota_status);
+    }
     if (update_package) {
         // For backwards compatibility on the cache partition only, if
         // we're given an old 'root' path "CACHE:foo", change it to
@@ -1981,8 +2082,10 @@ int main(int argc, char **argv) {
                        update_package, modified_path);
                 update_package = modified_path;
             }
-            else
+            else{
                 printf("modified_path allocation failed\n");
+                LOGI("modified_path allocation failed\n");
+            }
         }
         if (!strncmp("/sdcard", update_package, 7)) {
             //If this is a UFS device lets mount the sdcard ourselves.Depending
@@ -2019,7 +2122,8 @@ int main(int argc, char **argv) {
             strlcpy(mirror_str, update_package, strlen(update_package));
             char* save = mirror_str;
             update_package = strtok_r(mirror_str, "\;", &save);
-            printf("mirror flow update_package: %s \n",update_package);
+            if(update_package !=NULL)
+                printf("mirror flow update_package: %s \n",update_package);
         } else {
             char zip_path[MAX_ARG_LENGTH];
             snprintf(zip_path, MAX_ARG_LENGTH, "--update_package=%s;--mirror", update_package);
@@ -2027,12 +2131,17 @@ int main(int argc, char **argv) {
                   << std::endl;
             FILE *fp;
             fp = fopen(ZIP_FILE_PATH, "w");
-            fprintf(fp, "%s\n", zip_path);
-            fclose(fp);
+            if(fp != NULL) {
+                fprintf(fp, "%s\n", zip_path);
+                fclose(fp);
+            }
             printf("not --mirror copy flow \n");
         }
 #endif
 
+#ifdef TARGET_NAD_OTA
+       set_nad_ota_cookie(" OTA_PROG ");
+#endif
     }
     printf("\n");
 #ifndef USE_LE_MODE
@@ -2063,6 +2172,7 @@ int main(int argc, char **argv) {
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
             set_mirror_copy_cookie("STARTED");
 #endif
+            LOGI("install_package\n");
             status = install_package(update_package, &should_wipe_cache,
                                      TEMPORARY_INSTALL_FILE, mount_required, retry_count);
             if (status == INSTALL_SUCCESS && should_wipe_cache) {
@@ -2192,7 +2302,22 @@ error:
     printf("Recovery exiting, upgrade %s\n",
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
 #endif
+    ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
+    if (IS_LE_MODE() && ota_status != nullptr) {
+        printf("Write OTA status to OTA cookie %s\n", ota_status);
+        set_ota_cookie(ota_status);
+    }
+    int ota_status_val = get_ota_status();
+    printf("OTA status %d\n", ota_status_val);
 
+#ifdef TARGET_NAD_OTA
+    printf("set nad ota cookie \n");
+    if ( status == INSTALL_SUCCESS ){
+        set_nad_ota_cookie(" OTA_DONE ");
+    } else {
+        set_nad_ota_cookie(" OTA_FAIL ");
+    }
+#endif
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
     bool reboot = false;

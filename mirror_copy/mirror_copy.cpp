@@ -1,5 +1,5 @@
 /**********************************************************
-Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 SPDX-License-Identifier: BSD-3-Clause-Clear
 *********************************************************/
 
@@ -22,7 +22,11 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 #include "common.h"
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #endif
 static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/cache/recovery/mirror_copy_status";
 static const char *TEMPORARY_LOG_FILE = "/cache/recovery/mirror_copy.log";
@@ -51,6 +55,7 @@ std::string read_first_line(std::fstream &newfile) {
             return tp;
         }
     }
+    return "";
 }
 
 std::string read_last_line(std::fstream &fin) {
@@ -89,6 +94,11 @@ std::string read_last_line(std::fstream &fin) {
 
 int main() {
     FILE *stream = freopen(TEMPORARY_LOG_FILE, "a", stdout);
+    if(stream == NULL){
+        std::cout << "Temp Log file re-open failed\n";
+        return 0;
+    }
+
     std::cout << "Mirror Copy Started\n";
     std::fstream file;
     file.open(MIRROR_COPY_STATUS_COOKIE_FILE,
@@ -110,9 +120,16 @@ int main() {
         char zip_path[MAX_ARG_LENGTH];
         FILE *fp;
         fp = fopen(ZIP_FILE_PATH, "r");
-        fscanf(fp, "%s\n", zip_path);
-        fclose(fp);
-        int boot_slot, ota_started_slot, boot_slot_from_ota_status;
+        if (fp == NULL) {
+            std::cout << "Zip file open failed\n";
+            return 0;
+        }
+        else
+        {
+            fscanf(fp, "%s\n", zip_path);
+            fclose(fp);
+        }
+        int boot_slot = -1, ota_started_slot = -1, boot_slot_from_ota_status = -1;
         std::vector<std::string> first_line_split;
         std::vector<std::string> last_line_split;
         std::vector<std::string> last_line_split_new;
@@ -185,4 +202,6 @@ int main() {
     }
     file.close();
     fclose(stream);
+
+    return 0;
 }
