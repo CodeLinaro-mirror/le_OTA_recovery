@@ -100,6 +100,22 @@ int main() {
     }
 
     std::cout << "Mirror Copy Started\n";
+    int boot_slot = -1, ota_started_slot = -1, boot_slot_from_ota_status = -1,
+        boot_success_status = -1, retry_count = 0, MAX_RETRY_COUNT = 5;
+    while(boot_success_status != 1 && retry_count < MAX_RETRY_COUNT) {
+#ifdef TARGET_SUPPORTS_AB
+        boot_slot = libabctl_getBootSlot();
+        boot_success_status = libabctl_getSuccessStatus(boot_slot);
+        if(boot_success_status == 1)
+            break;
+#endif
+        sleep(60);
+        retry_count++;
+    }
+    if(boot_success_status != 1) {
+        std::cout << "Success bit is not set so exiting\n";
+        return 0;
+    }
     std::fstream file;
     file.open(MIRROR_COPY_STATUS_COOKIE_FILE,
               std::ios::in | std::ios::out | std::ios::app);
@@ -129,7 +145,6 @@ int main() {
             fscanf(fp, "%s\n", zip_path);
             fclose(fp);
         }
-        int boot_slot = -1, ota_started_slot = -1, boot_slot_from_ota_status = -1, boot_success_status = -1;
         std::vector<std::string> first_line_split;
         std::vector<std::string> last_line_split;
         std::vector<std::string> last_line_split_new;
@@ -144,10 +159,6 @@ int main() {
         stage = last_line_split[0];
         ota_status = last_line_split[1];
         slot_from_ota_status = last_line_split[2];
-#ifdef TARGET_SUPPORTS_AB
-        boot_slot = libabctl_getBootSlot();
-        boot_success_status = libabctl_getSuccessStatus(boot_slot);
-#endif
         boot_slot_from_ota_status = slot_from_ota_status[0] - '0';
         ota_started_slot_str = first_line_split[2];
         ota_started_slot = ota_started_slot_str[0] - '0';
@@ -158,7 +169,7 @@ int main() {
 
 
         // triggering the mirror copy
-        if (boot_success_status == 1 && stage == "STAGE1" && ota_status == "OTA_COMPLETED" &&
+        if (stage == "STAGE1" && ota_status == "OTA_COMPLETED" &&
                  boot_slot == boot_slot_from_ota_status &&
                  (ota_started_slot + 1) % 2 == boot_slot) {
             std::cout << "triggering the mirror copy\n";
@@ -168,7 +179,7 @@ int main() {
         }
 
         // triggering the mirror copy again in recovery
-        else if (boot_success_status == 1 && stage == "STAGE2" && ota_status == "COPY_STARTED" &&
+        else if (stage == "STAGE2" && ota_status == "COPY_STARTED" &&
                  (ota_started_slot + 1) % 2 == boot_slot) {
             std::cout << "triggering the mirror copy again\n";
             fclose(stream);
