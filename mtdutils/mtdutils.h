@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef MTDUTILS_H_
 #define MTDUTILS_H_
@@ -22,6 +26,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include "musl_macro_defs.h"
 
 struct MtdPartition {
     int device_index;

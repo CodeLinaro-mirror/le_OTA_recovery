@@ -1,3 +1,5 @@
+WORKSPACE := $(TOPDIR)/src
+
 AM_CFLAGS = -Wundef \
             -Wstrict-prototypes \
             -Wno-trigraphs \
@@ -15,6 +17,7 @@ AM_CFLAGS = -Wundef \
 
 AM_CPPFLAGS = \
               -DUSE_LE_MODE \
+              -DUSE_MUSL \
               -I.\
               -I../otafault \
               -I.. \
@@ -41,6 +44,8 @@ requiredlibs = -lm \
                -lselinux \
                -lext4_utils \
                -lcrypto \
+               -llog \
+               -lsparse \
                -lrecovery_updater_msm \
                ../mtdutils/libmtdutils.la \
                ../edify/libedify.la \
@@ -69,10 +74,4 @@ if TARGET_SUPPORTS_MIRROR_AB_COPY
 updater_CPPFLAGS += -DTARGET_SUPPORTS_MIRROR_AB_COPY
 endif
 
-if TARGET_NAND_AB_BOOT
-updater_CPPFLAGS += -DTARGET_NAND_AB_BOOT
-endif
-
-if TARGET_SUPPORTS_NAND_DM_VERITY
 updater_CPPFLAGS += -DTARGET_SUPPORTS_NAND_DM_VERITY
-endif

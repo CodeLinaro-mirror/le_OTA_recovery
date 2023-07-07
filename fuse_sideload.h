@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef __FUSE_SIDELOAD_H
 #define __FUSE_SIDELOAD_H
@@ -23,6 +27,7 @@
 #include <sys/cdefs.h>
 #endif
 
+#include "musl_macro_defs.h"
 
 // define the filenames created by the sideload FUSE filesystem
 #define FUSE_SIDELOAD_HOST_MOUNTPOINT "/sideload"

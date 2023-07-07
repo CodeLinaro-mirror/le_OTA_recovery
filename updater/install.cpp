@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include <ctype.h>
 #include <errno.h>
@@ -58,6 +62,7 @@
 #include "updater.h"
 #include "install.h"
 #include "cutils/memory.h"
+#include "musl_macro_defs.h"
 
 #ifndef USE_LE_MODE
 #include "tune2fs.h"
@@ -80,22 +85,19 @@ extern "C" {    // Use till system/core is updated
 #include <errno.h>
 #include <dirent.h>
 #include "print_sha1.h"
-
 #define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
 #define BLOCKSIZE 4096*1024
-#ifdef TARGET_NAND_AB_BOOT
 #define BOOT_NAME_LENGTH 7
 #define ROOTFS_NAME_LENGTH 10
 #endif
-#endif
-#ifdef TARGET_SUPPORTS_NAND_DM_VERITY
 #define SYSTEM_ROOTFS_NAME  "system.img"
 #define SYSTEM_ROOTFS  "/tmp/system.img"
 #define ROOTFS_VOLUME "/dev/ubi1_0"
-#endif
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
 #endif
+
+extern enum DeviceType device_type;
 
 // Send over the buffer to recovery though the command pipe.
 static void uiPrint(State* state, const std::string& buffer) {
@@ -117,7 +119,6 @@ static void uiPrint(State* state, const std::string& buffer) {
     fprintf(stderr, "%s", buffer.c_str());
 }
 
-__attribute__((__format__(printf, 2, 3))) __nonnull((2))
 void uiPrintf(State* state, const char* format, ...) {
     std::string error_msg;
 
@@ -170,6 +171,7 @@ int parse_fstab(FILE *logfd, char *name, int *alloc) {
                 device_volumes = (Volume*) realloc(device_volumes, (*alloc)*sizeof(Volume));
                 if (!device_volumes) {
                     printf("parse_fstab: realloc() failed, line: %d", __LINE__);
+                    free(original);
                     return -1;
                 }
             }
@@ -191,7 +193,6 @@ int parse_fstab(FILE *logfd, char *name, int *alloc) {
 
 void load_volume_table(FILE *logfd) {
     int alloc = 2;
-    int i;
 
     if (device_volumes)
         return;
@@ -1331,6 +1332,7 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* buffer = NULL;
     char* filename;
     char* key;
+    char* saveptr = NULL; // to be passed to strtok_r()
     if (ReadArgs(state, argv, 2, &filename, &key) < 0) {
         return NULL;
     }
@@ -1376,7 +1378,7 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
     fclose(f);
 
     char* line;
-    line = strtok(buffer, "\n");
+    line = strtok_r(buffer, "\n", &saveptr);
     do {
         // skip whitespace at start of line
         while (*line && isspace(*line)) ++line;
@@ -1409,7 +1411,7 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
         result = strdup(val_start);
         break;
 
-    } while ((line = strtok(NULL, "\n")));
+    } while ((line = strtok_r(NULL, "\n", &saveptr)));
 
     if (result == NULL) result = strdup("");
 
@@ -1455,7 +1457,7 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         ErrorAbort(state, kArgsParsingFailure, "%s: strdup() failure at line %d: %s\n", name, __LINE__, strerror(errno));
         goto done;
     }
-#ifdef TARGET_NAND_AB_BOOT
+if (device_type == NAND) {
     if(NULL == mtd_find_partition_by_name(partition))
     {
         // this condition is to make sure we try partition without _a/_b suffix
@@ -1463,7 +1465,7 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         // then try to update the partition with name "sbl"
         partition = partition_value->data;
     }
-#endif
+}
 #endif
     const MtdPartition* mtd;
     mtd = mtd_find_partition_by_name(partition);
@@ -1497,9 +1499,11 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         success = true;
         char* buffer = reinterpret_cast<char*>(malloc(BUFSIZ));
         int read;
-        while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
-            int wrote = mtd_write_data(ctx, buffer, read);
-            success = success && (wrote == read);
+        if(buffer != nullptr) {
+            while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
+                int wrote = mtd_write_data(ctx, buffer, read);
+                success = success && (wrote == read);
+            }
         }
         free(buffer);
         ota_fclose(f);
@@ -1617,10 +1621,19 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
     for (int i = 0; i < patchcount; ++i) {
         if (patch_shas[i]->type != VAL_STRING) {
             ErrorAbort(state, kArgsParsingFailure, "%s(): sha-1 #%d is not string", name, i);
+            free(source_filename);
+            free(target_filename);
+            free(target_sha1);
+            free(target_size_str);
             return nullptr;
+
         }
         if (patches[i]->type != VAL_BLOB) {
             ErrorAbort(state, kArgsParsingFailure, "%s(): patch #%d is not blob", name, i);
+            free(source_filename);
+            free(target_filename);
+            free(target_sha1);
+            free(target_size_str);
             return nullptr;
         }
     }
@@ -1896,7 +1909,7 @@ Value* RebootNowFn(const char* name, State* state, int argc, Expr* argv[]) {
     fclose(f);
     free(filename);
 
-    strcpy(buffer, "reboot,");
+    strlcpy(buffer, "reboot,", sizeof(buffer));
     if (property != NULL) {
         strncat(buffer, property, sizeof(buffer)-10);
     }
@@ -2196,7 +2209,6 @@ Value* CopyABPartitionsFn(const char* name, State* state,
         char *p = strtok_r(exclude_arg, ",", &saveptr);
         while (p != NULL) {
             // append the boot/active slot to the name and then save it
-            char buffer[PATH_MAX];
             snprintf(partitions_to_exclude[exclude_length], PATH_MAX, "%s%s",
                     p, slot_suffix_arr[boot_slot]);
             printf("%s: Excluding partition \"%s\" from being copied\n", name, p);
@@ -2247,7 +2259,6 @@ Value* CopyABPartitionsFn(const char* name, State* state,
                 // check if the current entry is one of them
                 bool match_found = false;
                 for (int i = 0; i < exclude_length; i++) {
-                    int maxlen = strlen(partitions_to_exclude[i]);
                     // printf("Matching %s against %s\n", de->d_name, partitions_to_exclude[i]);
                     if (strcmp(de->d_name, partitions_to_exclude[i]) == 0) {
                         match_found = true;
@@ -2371,7 +2382,6 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     printf("%s: The block device SHA1 doesn't match the reference SHA1\n", name);
     return StringValue(strdup(""));
 }
-#ifdef TARGET_NAND_AB_BOOT
 Value* scanMtdPartitions(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
         return ErrorAbort(state, kArgsParsingFailure,
@@ -2526,7 +2536,6 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
     printf("copying of active NonHlos to inactive NonHlos done\n");
     return StringValue(strdup("success"));
 }
-#endif
 Value* SetInactiveAsUnbootableFn(const char* name, State* state,
         int argc, Expr* argv[]) {
     if (argc != 0) {
@@ -2538,7 +2547,6 @@ Value* SetInactiveAsUnbootableFn(const char* name, State* state,
             slot_suffix_arr[inactive_slot]);
 
     int ret = libabctl_setUnbootable(inactive_slot);
-
     if (ret == 0) {
         printf("%s: %s set as unbootable successfully\n", name,
                 slot_suffix_arr[inactive_slot]);
@@ -2560,7 +2568,6 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
             slot_suffix_arr[inactive_slot]);
 
     int ret = libabctl_setActive(inactive_slot);
-
     if (ret == 0) {
         // Check again if it is actually set as active
         ret = libabctl_getActiveStatus(inactive_slot);
@@ -2578,7 +2585,6 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
     return StringValue(strdup("")); // abort, if you want
 }
 #endif
-#ifdef TARGET_SUPPORTS_NAND_DM_VERITY
 Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
         return ErrorAbort(state, kArgsParsingFailure,
@@ -2624,7 +2630,6 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
 
     return StringValue(strdup("success"));
 }
-#endif //TARGET_SUPPORTS_NAND_DM_VERITY
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
     RegisterFunction("is_mounted", IsMountedFn);
@@ -2693,14 +2698,12 @@ void RegisterInstallFunctions() {
     RegisterFunction("block_device_check", BlockDeviceCheckFn);
     RegisterFunction("set_inactive_slot_as_unbootable", SetInactiveAsUnbootableFn);
     RegisterFunction("set_inactive_slot_as_active", SetInactiveSlotAsActiveFn);
-#ifdef TARGET_NAND_AB_BOOT
-    RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
-    RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);
-    RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
-    RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
+    if (device_type == NAND) {
+        RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
+        RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);
+        RegisterFunction("copy_active_nonhlos_to_inactive_nonhlos", copyActiveNonHlosToInactiveNonHlos);
+        RegisterFunction("copy_boot_to_inactive_slot", copyBootPartitionToInActiveSlot);
+    }
 #endif
-#endif
-#ifdef TARGET_SUPPORTS_NAND_DM_VERITY
     RegisterFunction("update_rootfs_ubi_volume", updateRootfsUbiVolume);
-#endif
 }

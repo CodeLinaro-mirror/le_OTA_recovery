@@ -13,12 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 // See imgdiff.c in this directory for a description of the patch file
 // format.
 
 #include <stdio.h>
+#ifndef USE_MUSL
 #include <sys/cdefs.h>
+#endif
 #include <sys/stat.h>
 #include <errno.h>
 #include <unistd.h>

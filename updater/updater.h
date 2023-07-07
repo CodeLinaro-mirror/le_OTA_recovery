@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef _UPDATER_UPDATER_H_
 #define _UPDATER_UPDATER_H_
@@ -22,6 +26,11 @@
 
 #include <selinux/selinux.h>
 #include <selinux/label.h>
+
+enum DeviceType {
+EMMC = 0,
+NAND = 1
+};
 
 typedef struct {
     FILE* cmd_pipe;
