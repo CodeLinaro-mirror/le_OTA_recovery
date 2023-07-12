@@ -89,6 +89,7 @@ int get_boot_dev_type();
 #define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
 #define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
 #define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
+#define VMBOOTSYS_PATH "/dev/block/bootdevice/by-name/vm-bootsys"
 #include <mtd/mtd-user.h>
 #endif
 
@@ -1477,18 +1478,15 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char modem_volume[PATH_MAX];
         mtd_scan_partitions();
 
-        const MtdPartition* mtd = mtd_find_partition_by_name("misc");
-        if (mtd == NULL) {
-            printf("no mtd partition named misc, AB firmware \n");
+        if(isABVolumes()) {
             snprintf(modem_volume, PATH_MAX, "%s%s", "firmware", slot_suffix_arr[inactive_slot]);
             printf("Inactive firmware volume: %s\n", modem_volume);
         } else {
-            printf(" found mtd partition named misc, non-AB firmware \n");
             snprintf(modem_volume, PATH_MAX, "%s", "firmware");
             printf("firmware volume: %s\n", modem_volume);
         }
 
-        mtd = mtd_find_partition_by_name(modem_volume);
+        const MtdPartition* mtd = mtd_find_partition_by_name(modem_volume);
         if (mtd == NULL) {
             printf("no mtd partition named \"%s\"\n", modem_volume);
             return strdup("");
@@ -1496,6 +1494,29 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char mtd_devname[PATH_MAX];
         printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
               modem_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+    else if (strncmp(blockdev_filename->data, VMBOOTSYS_PATH, len) == 0) {
+        char vmbootsys_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isABVolumes()) {
+            snprintf(vmbootsys_volume, PATH_MAX, "%s%s", "vm-bootsys", slot_suffix_arr[inactive_slot]);
+            printf("Inactive vm-bootsys volume: %s\n", vmbootsys_volume);
+        } else {
+            snprintf(vmbootsys_volume, PATH_MAX, "%s", "vm-bootsys");
+            printf("vmbootsys_volume: %s\n", vmbootsys_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(vmbootsys_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", vmbootsys_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              vmbootsys_volume, mtd->device_index);
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
@@ -1825,6 +1846,8 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
       snprintf(part_name, sizeof(part_name), "%s", " modem ");
     } else if(strncmp(part_name, TELAF_PATH, strlen(TELAF_PATH)) == 0) {
       snprintf(part_name, sizeof(part_name), "%s", " telaf ");
+    } else if(strncmp(part_name, VMBOOTSYS_PATH, strlen(VMBOOTSYS_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " vm-bootsys ");
     } else {
       snprintf(part_name, sizeof(part_name), "%s", " ");
     }
