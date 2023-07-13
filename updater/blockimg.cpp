@@ -1623,7 +1623,10 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     int boot_device_type = get_boot_dev_type();
     printf("boot device type: %d\n", boot_device_type);
     if ( TYPE_MTD == boot_device_type ) {
+        printf("Calling getInactiveRootfsMtdBlock\n");
+#ifdef TARGET_NAND_BOOT
         blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#endif
     } else {
         char buf[PATH_MAX];
         snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
@@ -1967,7 +1970,10 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
     int boot_device_type = get_boot_dev_type();
     printf("boot device type: %d\n", boot_device_type);
     if ( TYPE_MTD == boot_device_type ) {
+        printf("Calling getInactiveRootfsMtdBlock\n");
+#ifdef TARGET_NAND_BOOT
         blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#endif
     } else {
         char buf[PATH_MAX];
         snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
