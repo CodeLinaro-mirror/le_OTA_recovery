@@ -60,8 +60,16 @@
 
 #define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
 #ifdef TARGET_SUPPORTS_AB
+
+#include "mtdutils/mtdutils.h"
+#define TYPE_ERROR   -1
+#define TYPE_EMMC    0
+#define TYPE_UFS     1
+#define TYPE_MTD     2
+#define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
 #ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+int get_boot_dev_type();
 #else
 #include <nad-ab-al.h>
 #endif
