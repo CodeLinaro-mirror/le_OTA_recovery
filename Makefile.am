@@ -2,6 +2,8 @@ ACLOCAL_AMFLAGS := -I m4
 
 SUBDIRS := minzip mtdutils edify otafault applypatch updater minadbd bootloader_message mirror_copy
 
+WORKSPACE := $(TOPDIR)/src
+
 AM_CFLAGS := -Wundef \
              -Wstrict-prototypes \
              -Wno-trigraphs \
@@ -13,8 +15,9 @@ AM_CFLAGS := -Wundef \
              $(LIBSELINUX_CFLAGS) \
              -D_GNU_SOURCE \
              -D_LARGEFILE64_SOURCE \
-             -Dstrlcpy=g_strlcpy \
-             -Dstrlcat=g_strlcat
+             -Dstrlcpy=strlcpy \
+             -Dstrlcat=strlcat \
+             -DUSE_MUSL
 
 AM_CPPFLAGS := \
               -DUSE_LE_MODE \
@@ -29,8 +32,9 @@ AM_CPPFLAGS := \
               -I$(WORKSPACE)/OTA/system/core/base/include \
               -std=c++11 \
               -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
-              -Dstrlcpy=g_strlcpy \
-              -Dstrlcat=g_strlcat
+              -Dstrlcpy=strlcpy \
+              -Dstrlcat=strlcat \
+              -DUSE_MUSL
 
 #AM_LDFLAGS := -shared -version-info 1:0:0
 
@@ -52,7 +56,6 @@ libfusesideload_la_CPPFLAGS := $(AM_CPPFLAGS)
 libfusesideload_la_LIBADD := -lm -lpthread
 libfusesideload_la_LDFLAGS := -all-static
 endif
-
 
 cpp_sources := adb_install.cpp \
     asn1_decoder.cpp \
@@ -125,10 +128,4 @@ if TARGET_SUPPORTS_OTA_VERIFICATION
 recovery_CPPFLAGS += -DTARGET_SUPPORTS_OTA_VERIFICATION
 endif
 
-if TARGET_NAND_AB_BOOT
-recovery_CPPFLAGS += -DTARGET_NAND_AB_BOOT
-endif
-
-if TARGET_SUPPORTS_NAND_DM_VERITY
 recovery_CPPFLAGS += -DTARGET_SUPPORTS_NAND_DM_VERITY
-endif

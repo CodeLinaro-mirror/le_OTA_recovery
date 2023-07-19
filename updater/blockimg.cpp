@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include <ctype.h>
 #include <errno.h>
@@ -41,10 +45,8 @@
 #include <memory>
 #include <string>
 #include <vector>
-
 #include <android-base/parseint.h>
 #include <base/strings.h>
-
 #include "applypatch/applypatch.h"
 #include "edify/expr.h"
 #include "error_code.h"
@@ -58,9 +60,7 @@
 
 #ifdef TARGET_SUPPORTS_AB
 #include <libabctl.h>
-#ifdef TARGET_NAND_AB_BOOT
 #include "mtdutils/mtdutils.h"
-#endif
 #define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
 #endif
 
@@ -81,6 +81,7 @@ struct RangeSet {
     std::vector<size_t> pos;  // Actual limit is INT_MAX.
 };
 
+extern enum DeviceType device_type;
 static CauseCode failure_type = kNoCause;
 static bool is_retry = false;
 static std::map<std::string, RangeSet> stash_map;
@@ -180,6 +181,9 @@ static int write_all(int fd, const uint8_t* data, size_t size) {
         if (w == -1) {
             failure_type = kFwriteFailure;
             fprintf(stderr, "write failed: %s\n", strerror(errno));
+            if(errno == ENOSPC) {
+                exit(1);
+            }
             return -1;
         }
         written += w;
@@ -1387,7 +1391,6 @@ static unsigned int HashString(const char *s) {
 }
 
 #ifdef TARGET_SUPPORTS_AB
-#ifdef TARGET_NAND_AB_BOOT
 static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     int len = strlen(SYSTEM_PATH);
     if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
@@ -1406,7 +1409,6 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     }
     return strdup("");
 }
-#endif
 #endif
 
 // args:
@@ -1463,16 +1465,16 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
 #ifdef TARGET_SUPPORTS_AB
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
-#ifdef TARGET_NAND_AB_BOOT
-    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
-#else
-    char buf[PATH_MAX];
-    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-            slot_suffix_arr[inactive_slot]);
-    blockdev_filename->data = strdup(buf);
-#endif
-    printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
-            blockdev_filename->data);
+     if (device_type == NAND) {
+         blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+     } else {
+         char buf[PATH_MAX];
+         snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+                 slot_suffix_arr[inactive_slot]);
+         blockdev_filename->data = strdup(buf);
+     }
+     printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
+             blockdev_filename->data);
 #endif
 
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
@@ -1791,14 +1793,14 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
 #ifdef TARGET_SUPPORTS_AB
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
-#ifdef TARGET_NAND_AB_BOOT
-    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
-#else
-    char buf[PATH_MAX];
-    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-            slot_suffix_arr[inactive_slot]);
-    blockdev_filename->data = strdup(buf);
-#endif
+    if(device_type == NAND) {
+        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+    } else {
+        char buf[PATH_MAX];
+        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+             slot_suffix_arr[inactive_slot]);
+        blockdev_filename->data = strdup(buf);
+    }
     printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
             blockdev_filename->data);
 #endif

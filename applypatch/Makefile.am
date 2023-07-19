@@ -1,3 +1,5 @@
+WORKSPACE := $(TOPDIR)/src
+
 if BUILD_DEVICE
 AM_CFLAGS := -Wundef \
              -Wstrict-prototypes \
@@ -13,6 +15,7 @@ AM_CPPFLAGS := \
               -I. \
               -I.. \
               -I../otafault \
+              -DUSE_MUSL \
               -I$(WORKSPACE)/system/core/include \
               -I$(WORKSPACE)/system/core/base/include \
               -I$(WORKSPACE)/OTA/system/core/base/include \
@@ -75,7 +78,7 @@ bin_PROGRAMS := applypatch
 if USE_GLIB
 applypatch_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 applypatch_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
-applypatch_LDADD := $(requiredlibs) -lcrypto @GLIB_LIBS@
+applypatch_LDADD := $(requiredlibs) -lcrypto -llog @GLIB_LIBS@
 else
 applypatch_CFLAGS := $(AM_CFLAGS)
 applypatch_CPPFLAGS := $(AM_CPPFLAGS)

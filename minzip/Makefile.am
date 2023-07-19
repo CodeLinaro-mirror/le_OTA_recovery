@@ -1,3 +1,5 @@
+WORKSPACE = $(TOPDIR)/src
+
 AM_CFLAGS := -Wundef \
         -Wstrict-prototypes \
         -Wno-trigraphs \
@@ -8,10 +10,12 @@ AM_CFLAGS := -Wundef \
         $(LIBSELINUX_CFLAGS) \
         -D_GNU_SOURCE \
         -D_LARGEFILE64_SOURCE \
-        -DUSE_LE_MODE
+        -DUSE_LE_MODE \
+        -DUSE_MUSL
 
 AM_CPPFLAGS := \
               -DUSE_LE_MODE \
+              -DUSE_MUSL \
               -I. \
               -I$(WORKSPACE)/external/safe-iop/include \
               -I$(WORKSPACE)/system/core/include

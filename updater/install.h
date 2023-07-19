@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef _UPDATER_INSTALL_H_
 #define _UPDATER_INSTALL_H_
@@ -20,7 +24,7 @@
 void RegisterInstallFunctions();
 
 // uiPrintf function prints msg to screen as well as logs
-void uiPrintf(State* state, const char* format, ...);
+void uiPrintf(State* state, const char* format, ...) __attribute__((__format__(printf, 2, 3))) __attribute__((nonnull((2))));
 
 static int make_parents(char* name);
 void load_volume_table(FILE *);

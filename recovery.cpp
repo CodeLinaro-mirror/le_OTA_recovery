@@ -100,6 +100,7 @@
 #endif
 
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
+#define OTA_STATUS_LEN 15
 
 struct selabel_handle *sehandle;
 
@@ -127,6 +128,13 @@ static const struct option OPTIONS[] = {
 static const std::vector<std::string> bootreason_blacklist {
   "kernel_panic",
   "Panic",
+};
+
+enum ota_status_value {
+  OTA_STATUS_UNKNOWN = 0,
+  OTA_STATUS_INPROGRESS = 1,
+  OTA_STATUS_SUCCESS = 2,
+  OTA_STATUS_FAILED  = 3,
 };
 
 static const char *CACHE_LOG_DIR = "/cache/recovery";
@@ -170,6 +178,7 @@ static bool has_cache = false;
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
 bool mirror_copy = false;
 #endif
+static char* ota_status = NULL;
 /*
  * The recovery tool communicates with the main system through /cache files.
  *   /cache/recovery/command - INPUT - command line for tool, one arg per line
@@ -439,6 +448,7 @@ get_args(int *argc, char ***argv) {
         FILE *fp = fopen_path(COMMAND_FILE, "r");
         if (fp != NULL) {
             char *token;
+            char *saveptr = NULL;
             char *argv0 = (*argv)[0];
             *argv = (char **) malloc(sizeof(char *) * MAX_ARGS);
             (*argv)[0] = argv0;  // use the same program name
@@ -446,7 +456,7 @@ get_args(int *argc, char ***argv) {
             char buf[MAX_ARG_LENGTH];
             for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
                 if (!fgets(buf, sizeof(buf), fp)) break;
-                token = strtok(buf, "\r\n");
+                token = strtok_r(buf, "\r\n", &saveptr);
                 if (token != NULL) {
                     (*argv)[*argc] = strdup(token);  // Strip newline.
                 } else {
@@ -728,6 +738,63 @@ static int set_mirror_copy_cookie(std::string ota_status) {
 }
 #endif
 
+int get_ota_status() {
+    int fd = -1;
+    int status = OTA_STATUS_UNKNOWN;
+    char buf[OTA_STATUS_LEN] = { 0 };
+    fd = open(STATUS_COOKIE_FILE, O_RDONLY, S_IRUSR | S_IRGRP | S_IROTH);
+    if (fd < 0) {
+        printf("Failed to open %s : %s\n",
+             STATUS_COOKIE_FILE,
+             strerror(errno));
+        return status;
+    }
+    int len = read(fd, buf, OTA_STATUS_LEN - 1);
+    if (len < 0) {
+        printf("Failed to read to %s : %s\n", STATUS_COOKIE_FILE,
+             strerror(errno));
+        close(fd);
+        return status;
+    }
+    printf("ota status %s\n", buf);
+    if (!strncmp(buf, "OTA_INPROGRESS", strlen("OTA_INPROGRESS"))) {
+        status = OTA_STATUS_INPROGRESS;
+    } else if (!strncmp(buf, "OTA_SUCCESS", strlen("OTA_SUCCESS"))) {
+        status = OTA_STATUS_SUCCESS;
+    } else if (!strncmp(buf, "OTA_FAILED", strlen("OTA_FAILED"))) {
+        status = OTA_STATUS_FAILED;
+    } else {
+        status = OTA_STATUS_UNKNOWN;
+    }
+    printf("ota status value %d\n", status);
+    close(fd);
+    return status;
+}
+
+static int set_ota_cookie(const char* ota_status) {
+    int fd = -1;
+    int rcode = 0;
+    fd = open(STATUS_COOKIE_FILE, O_CREAT | O_WRONLY , S_IRUSR | S_IWUSR);
+    if (fd < 0) {
+        LOGE("Failed to open %s : %s\n",
+             STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    rcode = write(fd, ota_status, strlen(ota_status)+1);
+    if (rcode < 0) {
+        LOGE("Failed to write to %s : %s\n", STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    LOGI("ota_status cookie set");
+    close(fd);
+    return 0;
+error:
+    if (fd >= 0) close(fd);
+    return -1;
+}
+
 static int set_ota_cookie() {
     int fd = -1;
     int rcode = 0;
@@ -849,13 +916,13 @@ static bool erase_volume(const char* volume) {
         d = opendir(CACHE_LOG_DIR);
         if (d) {
             char path[PATH_MAX];
-            strcpy(path, CACHE_LOG_DIR);
+            strlcpy(path, CACHE_LOG_DIR, PATH_MAX);
             strcat(path, "/");
             int path_len = strlen(path);
             while ((de = readdir(d)) != NULL) {
                 if (strncmp(de->d_name, "last_", 5) == 0 || strcmp(de->d_name, "log") == 0) {
                     saved_log_file* p = (saved_log_file*) malloc(sizeof(saved_log_file));
-                    strcpy(path+path_len, de->d_name);
+                    strlcpy(path+path_len, de->d_name, PATH_MAX-path_len);
                     p->name = strdup(path);
                     if (stat(path, &(p->st)) == 0) {
                         // truncate files to 512kb
@@ -864,10 +931,12 @@ static bool erase_volume(const char* volume) {
                         }
                         p->data = (unsigned char*) malloc(p->st.st_size);
                         FILE* f = fopen(path, "rb");
-                        fread(p->data, 1, p->st.st_size, f);
-                        fclose(f);
-                        p->next = head;
-                        head = p;
+                        if(f != nullptr && p->data != nullptr) {
+                            fread(p->data, 1, p->st.st_size, f);
+                            fclose(f);
+                            p->next = head;
+                            head = p;
+                        }
                     } else {
                         free(p);
                     }
@@ -1020,7 +1089,7 @@ static char* browse_directory(const char* path, Device* device) {
                 dirs = (char**)realloc(dirs, d_alloc * sizeof(char*));
             }
             dirs[d_size] = (char*)malloc(name_len + 2);
-            strcpy(dirs[d_size], de->d_name);
+            strlcpy(dirs[d_size], de->d_name, sizeof(dirs[d_size]));
             dirs[d_size][name_len] = '/';
             dirs[d_size][name_len+1] = '\0';
             ++d_size;
@@ -1626,7 +1695,8 @@ load_locale_from_cache() {
                 buffer[j++] = buffer[i];
             }
         }
-        buffer[j] = 0;
+        if(j < 80)
+            buffer[j] = 0;
         locale = strdup(buffer);
         check_and_fclose(fp, LOCALE_FILE);
     }
@@ -1880,7 +1950,7 @@ int main(int argc, char **argv) {
     bool shutdown_after = false;
     int retry_count = 0;
     bool security_update = false;
-    int status = INSTALL_SUCCESS;
+    int status = INSTALL_NONE;
     bool mount_required = true;
 
     int arg;
@@ -1966,7 +2036,12 @@ int main(int argc, char **argv) {
         printf(" \"%s\"", argv[arg]);
     }
     printf("\n");
-
+    if (IS_LE_MODE()) {
+        LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
+        ota_status = strdup("OTA_INPROGRESS");
+        if(ota_status != nullptr)
+            set_ota_cookie(ota_status);
+    }
     if (update_package) {
         // For backwards compatibility on the cache partition only, if
         // we're given an old 'root' path "CACHE:foo", change it to
@@ -2019,7 +2094,8 @@ int main(int argc, char **argv) {
             strlcpy(mirror_str, update_package, strlen(update_package));
             char* save = mirror_str;
             update_package = strtok_r(mirror_str, "\;", &save);
-            printf("mirror flow update_package: %s \n",update_package);
+            if(update_package !=NULL)
+                printf("mirror flow update_package: %s \n",update_package);
         } else {
             char zip_path[MAX_ARG_LENGTH];
             snprintf(zip_path, MAX_ARG_LENGTH, "--update_package=%s;--mirror", update_package);
@@ -2027,8 +2103,10 @@ int main(int argc, char **argv) {
                   << std::endl;
             FILE *fp;
             fp = fopen(ZIP_FILE_PATH, "w");
-            fprintf(fp, "%s\n", zip_path);
-            fclose(fp);
+            if(fp != NULL) {
+                fprintf(fp, "%s\n", zip_path);
+                fclose(fp);
+            }
             printf("not --mirror copy flow \n");
         }
 #endif
@@ -2192,7 +2270,13 @@ error:
     printf("Recovery exiting, upgrade %s\n",
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
 #endif
-
+    ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
+    if (IS_LE_MODE() && ota_status != nullptr) {
+        printf("Write OTA status to OTA cookie %s\n", ota_status);
+        set_ota_cookie(ota_status);
+    }
+    int ota_status_val = get_ota_status();
+    printf("OTA status %d\n", ota_status_val);
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
     bool reboot = false;

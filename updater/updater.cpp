@@ -55,6 +55,7 @@ extern void Register_librecovery_updater_msm();
 #define MIRROR_SCRIPT_NAME "META-INF/com/google/android/updater-mirror-script"
 #endif
 
+enum DeviceType device_type;
 
 extern bool have_eio_error;
 
@@ -67,6 +68,14 @@ int main(int argc, char** argv) {
     // appear in the right order.
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
+
+    //set device type nand/emmc
+    const char* comm = "if [ /proc/mtd ] && [ `cat /proc/mtd | wc -l` -ge '2' ]";
+    int ret = system(comm);
+    if(ret == 0) {
+        printf("NAND Device");
+        device_type = NAND;
+    }
 
     if (argc != 4 && argc != 5) {
         printf("unexpected number of arguments (%d)\n", argc);
@@ -241,7 +250,8 @@ int main(int argc, char** argv) {
             fprintf(cmd_pipe, "ui_print script aborted (no error message)\n");
         } else {
             printf("script aborted: %s\n", state.errmsg);
-            char* line = strtok(state.errmsg, "\n");
+            char* saveptr =NULL;
+            char* line = strtok_r(state.errmsg, "\n", &saveptr);
             while (line) {
                 // Parse the error code in abort message.
                 // Example: "E30: This package is for bullhead devices."
@@ -251,7 +261,7 @@ int main(int argc, char** argv) {
                     }
                 }
                 fprintf(cmd_pipe, "ui_print %s\n", line);
-                line = strtok(NULL, "\n");
+                line = strtok_r(NULL, "\n", &saveptr);
             }
             fprintf(cmd_pipe, "ui_print\n");
         }
