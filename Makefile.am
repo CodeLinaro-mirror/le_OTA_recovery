@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS := -I m4
 
-SUBDIRS := minzip mtdutils edify otafault applypatch updater minadbd bootloader_message update_engine recovery_wrapper
+SUBDIRS := minzip mtdutils edify otafault applypatch updater  bootloader_message update_engine recovery_wrapper
 
 AM_CFLAGS := -Wundef \
              -Wstrict-prototypes \
@@ -74,7 +74,6 @@ requiredlibs := -lm \
                -lfs_mgr \
                -lext4_utils \
                ./mtdutils/libmtdutils.la \
-               ./minadbd/libminadbd.la \
                ./libfusesideload.la \
                ./edify/libedify.la \
                ./minzip/libminzip.la \
