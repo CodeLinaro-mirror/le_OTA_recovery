@@ -795,13 +795,13 @@ static bool erase_volume(const char* volume) {
         d = opendir(CACHE_LOG_DIR);
         if (d) {
             char path[PATH_MAX];
-            strcpy(path, CACHE_LOG_DIR);
+            strlcpy(path, CACHE_LOG_DIR, PATH_MAX);
             strcat(path, "/");
             int path_len = strlen(path);
             while ((de = readdir(d)) != NULL) {
                 if (strncmp(de->d_name, "last_", 5) == 0 || strcmp(de->d_name, "log") == 0) {
                     saved_log_file* p = (saved_log_file*) malloc(sizeof(saved_log_file));
-                    strcpy(path+path_len, de->d_name);
+                    strlcpy(path+path_len, de->d_name, PATH_MAX-path_len);
                     p->name = strdup(path);
                     if (stat(path, &(p->st)) == 0) {
                         // truncate files to 512kb
@@ -1787,18 +1787,6 @@ int main(int argc, char **argv) {
         LOG_ID_SYSTEM, ANDROID_LOG_INFO, filter,
         logrotate, &doRotate);
 #endif
-
-    // If this binary is started with the single argument "--adbd",
-    // instead of being the normal recovery binary, it turns into kind
-    // of a stripped-down version of adbd that only supports the
-    // 'sideload' command.  Note this must be a real argument, not
-    // anything in the command file or bootloader control block; the
-    // only way recovery should be run with this argument is when it
-    // starts a copy of itself from the apply_from_adb() function.
-    if (argc == 2 && strcmp(argv[1], "--adbd") == 0) {
-        adb_server_main(0, DEFAULT_ADB_PORT, -1);
-        return 0;
-    }
 
     time_t start = time(NULL);
 

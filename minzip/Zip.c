@@ -370,10 +370,10 @@ static bool parseZipArchive(ZipArchive* pArchive)
             LOGW("Integer overflow adding in parseZipArchive\n");
             goto bail;
         }
-        if ((size_t)pEntry->offset + pEntry->compLen > pArchive->length) {
-            LOGW("Data ran off the end (at %d)\n", i);
-            goto bail;
-        }
+        /*if ((size_t)pEntry->offset + pEntry->compLen > pArchive->length) {
+         *   LOGW("Data ran off the end (at %d)\n", i);
+         *  goto bail;
+        }*/
 
 #if !SORT_ENTRIES
         /* Add to hash table; no need to lock here.
