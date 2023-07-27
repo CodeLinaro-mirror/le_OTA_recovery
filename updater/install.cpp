@@ -482,7 +482,7 @@ done:
 }
 
 static int exec_cmd(const char* path, char* const argv[]) {
-    int status;
+    int status = 0;
     pid_t child;
     if ((child = vfork()) == 0) {
         execv(path, argv);
@@ -1748,7 +1748,7 @@ Value* RunProgramFn(const char* name, State* state, int argc, Expr* argv[]) {
         printf("run_program: execv failed: %s\n", strerror(errno));
         _exit(1);
     }
-    int status;
+    int status = 0;
     waitpid(child, &status, 0);
     if (WIFEXITED(status)) {
         if (WEXITSTATUS(status) != 0) {

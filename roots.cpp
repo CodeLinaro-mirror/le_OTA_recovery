@@ -176,7 +176,7 @@ int ensure_path_unmounted(const char* path) {
 }
 
 static int exec_cmd(const char* path, char* const argv[]) {
-    int status;
+    int status = 0;
     pid_t child;
     if ((child = vfork()) == 0) {
         execv(path, argv);

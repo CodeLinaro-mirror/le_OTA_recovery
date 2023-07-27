@@ -344,7 +344,7 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
 {
     read_source_target_build(zip, log_buffer);
 
-    int pipefd[2];
+    int pipefd[2]={0};
     pipe(pipefd);
 
     std::vector<std::string> args;
@@ -483,7 +483,7 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
     }
     fclose(from_child);
 
-    int status;
+    int status = 0;
     waitpid(pid, &status, 0);
     if (retry_update) {
         return INSTALL_RETRY;
