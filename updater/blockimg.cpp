@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2021 The Linux Foundation. All rights reserved.
+ * Not a contribution.
  * Copyright (C) 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +15,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 
 #include <ctype.h>
 #include <errno.h>
@@ -56,15 +64,34 @@
 #include "unique_fd.h"
 #include "updater.h"
 
-#ifdef TARGET_SUPPORTS_AB
-#include <libabctl.h>
-#ifdef TARGET_NAND_AB_BOOT
-#include "mtdutils/mtdutils.h"
-#endif
 #define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
+#ifdef TARGET_SUPPORTS_AB
+#include "mtdutils/mtdutils.h"
+#define TYPE_ERROR   -1
+#define TYPE_EMMC    0
+#define TYPE_UFS     1
+#define TYPE_MTD     2
+#define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
+#ifndef TARGET_NAD_OTA
+#include <libabctl.h>
+int get_boot_dev_type();
+#else
+#include <nad-ab-al.h>
+#endif
+#endif
+#ifdef TARGET_NAND_BOOT
+#include "mtdutils/mtdutils.h"
 #endif
 
 #define BLOCKSIZE 4096
+#ifdef TARGET_NAD_OTA
+#define LEBSIZE 253952
+#define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
+#define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
+#define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
+#define VMBOOTSYS_PATH "/dev/block/bootdevice/by-name/vm-bootsys"
+#include <mtd/mtd-user.h>
+#endif
 
 // Set this to 0 to interpret 'erase' transfers to mean do a
 // BLKDISCARD ioctl (the normal behavior).  Set to 1 to interpret
@@ -1389,16 +1416,55 @@ static unsigned int HashString(const char *s) {
     return hash;
 }
 
-#ifdef TARGET_SUPPORTS_AB
-#ifdef TARGET_NAND_AB_BOOT
+#ifdef TARGET_NAND_BOOT
+#ifdef TARGET_NAD_OTA
+static int isABVolumes() {
+    int result = -1;
+    int fd = open("/sys/class/ubi/ubi0_0/name", O_RDONLY);
+    if (fd == -1) {
+        printf(" error accessing ubi sysnode  \n");
+        return result;
+    }
+    char buf[PATH_MAX];
+    read(fd, buf, PATH_MAX);
+    close(fd);
+    if (strncmp(buf, "rootfs_a", strlen("rootfs_a")) == 0) {
+        printf(" AB Volumes \n");
+        result = 1;
+    } else {
+        printf("non-AB Volumes \n");
+        result = 0;
+    }
+    return result;
+}
+#endif
+
 static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     int len = strlen(SYSTEM_PATH);
     if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
         char rootfs_volume[PATH_MAX];
+        mtd_scan_partitions();
+#ifdef TARGET_NAD_OTA
+        const MtdPartition* mtd = mtd_find_partition_by_name("recovery");
+        if (mtd == NULL) {
+            printf("no mtd partition named recovery, AB system \n");
+#if 0
+            snprintf(rootfs_volume, PATH_MAX, "%s%s", "system", slot_suffix_arr[inactive_slot]);
+#else
+            snprintf(rootfs_volume, PATH_MAX, "%s%s", "rootfs", slot_suffix_arr[inactive_slot]);
+#endif
+            printf("Inactive rootfs volume: %s\n", rootfs_volume);
+        } else {
+            printf(" found mtd partition named misc, non-AB system \n");
+            snprintf(rootfs_volume, PATH_MAX, "%s", "system");
+            printf("rootfs volume: %s\n", rootfs_volume);
+        }
+#else
+        const MtdPartition* mtd;
         snprintf(rootfs_volume, PATH_MAX, "%s%s", "rootfs", slot_suffix_arr[inactive_slot]);
         printf("Inactive rootfs volume: %s\n", rootfs_volume);
-        mtd_scan_partitions();
-        const MtdPartition* mtd = mtd_find_partition_by_name(rootfs_volume);
+#endif
+        mtd = mtd_find_partition_by_name(rootfs_volume);
         if (mtd == NULL) {
             printf("no mtd partition named \"%s\"\n", rootfs_volume);
             return strdup("");
@@ -1407,9 +1473,105 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
+#ifdef TARGET_NAD_OTA
+    else if (strncmp(blockdev_filename->data, MODEM_PATH, len) == 0) {
+        char modem_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isABVolumes()) {
+            snprintf(modem_volume, PATH_MAX, "%s%s", "firmware", slot_suffix_arr[inactive_slot]);
+            printf("Inactive firmware volume: %s\n", modem_volume);
+        } else {
+            snprintf(modem_volume, PATH_MAX, "%s", "firmware");
+            printf("firmware volume: %s\n", modem_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(modem_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", modem_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              modem_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+    else if (strncmp(blockdev_filename->data, VMBOOTSYS_PATH, len) == 0) {
+        char vmbootsys_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isABVolumes()) {
+            snprintf(vmbootsys_volume, PATH_MAX, "%s%s", "vm-bootsys", slot_suffix_arr[inactive_slot]);
+            printf("Inactive vm-bootsys volume: %s\n", vmbootsys_volume);
+        } else {
+            snprintf(vmbootsys_volume, PATH_MAX, "%s", "vm-bootsys");
+            printf("vmbootsys_volume: %s\n", vmbootsys_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(vmbootsys_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", vmbootsys_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              vmbootsys_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+#ifdef TARGET_NAND_BOOT
+    else if (strncmp(blockdev_filename->data, TELAF_PATH, strlen(TELAF_PATH)) == 0) {
+        char telaf_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isABVolumes()) {
+            snprintf(telaf_volume, PATH_MAX, "%s%s", "telaf", slot_suffix_arr[inactive_slot]);
+            printf("Inactive telaf volume: %s\n", telaf_volume);
+        } else {
+            snprintf(telaf_volume, PATH_MAX, "%s", "telaf");
+            printf("telaf volume: %s\n", telaf_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(telaf_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", telaf_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              telaf_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+    // for 4+4 recoveryfs is updated while performing ab sync operation after bootup
+    else if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
+        char recoveryfs_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isABVolumes()) {
+            printf(" recoveryfs volume is not applicable for 8+8  \n");
+            return strdup("");
+        } else {
+            snprintf(recoveryfs_volume, PATH_MAX, "%s", "recoveryfs");
+            printf("recoveryfs_ volume: %s\n", recoveryfs_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(recoveryfs_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", recoveryfs_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              recoveryfs_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+#endif
+#endif
     return strdup("");
 }
-#endif
 #endif
 
 // args:
@@ -1463,21 +1625,38 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
         return StringValue(strdup(""));
     }
 
-#ifdef TARGET_SUPPORTS_AB
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
-#ifdef TARGET_NAND_AB_BOOT
-    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
-#else
-    char buf[PATH_MAX];
-    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-            slot_suffix_arr[inactive_slot]);
-    blockdev_filename->data = strdup(buf);
+#ifdef TARGET_NAND_BOOT
+#ifdef TARGET_NAD_OTA
+    char part_name[PATH_MAX];
+    snprintf(part_name, PATH_MAX, "%s", blockdev_filename->data);
+    // check if  8+8 and recoveryfs
+    if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
+        printf(" reocveryfs update only performed on 4+4 \n");
+        if(isABVolumes()) {
+            return StringValue(strdup("t"));
+        }
+    }
+#endif
+#endif
+#ifdef TARGET_SUPPORTS_AB
+    int boot_device_type = get_boot_dev_type();
+    printf("boot device type: %d\n", boot_device_type);
+    if ( TYPE_MTD == boot_device_type ) {
+        printf("Calling getInactiveRootfsMtdBlock\n");
+#ifdef TARGET_NAND_BOOT
+        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#endif
+    } else {
+        char buf[PATH_MAX];
+        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+                slot_suffix_arr[inactive_slot]);
+        blockdev_filename->data = strdup(buf);
+    }
 #endif
     printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
             blockdev_filename->data);
-#endif
-
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
 
     if (ui == nullptr) {
@@ -1659,6 +1838,23 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     }
 
     rc = 0;
+#ifdef TARGET_NAND_BOOT
+#ifdef TARGET_NAD_OTA
+    if (strncmp(part_name, SYSTEM_PATH, strlen(SYSTEM_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " system ");
+    } else if(strncmp(part_name, MODEM_PATH, strlen(MODEM_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " modem ");
+    } else if(strncmp(part_name, TELAF_PATH, strlen(TELAF_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " telaf ");
+    } else if(strncmp(part_name, VMBOOTSYS_PATH, strlen(VMBOOTSYS_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " vm-bootsys ");
+    } else {
+      snprintf(part_name, sizeof(part_name), "%s", " ");
+    }
+    set_nad_update_status(part_name);
+    printf ("%s volume is updated \n", part_name);
+#endif
+#endif
 
 pbiudone:
     if (ota_fsync(params.fd) == -1) {
@@ -1791,20 +1987,25 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
         return StringValue(strdup(""));
     }
 
-#ifdef TARGET_SUPPORTS_AB
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
-#ifdef TARGET_NAND_AB_BOOT
-    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
-#else
-    char buf[PATH_MAX];
-    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-            slot_suffix_arr[inactive_slot]);
-    blockdev_filename->data = strdup(buf);
+#ifdef TARGET_SUPPORTS_AB
+    int boot_device_type = get_boot_dev_type();
+    printf("boot device type: %d\n", boot_device_type);
+    if ( TYPE_MTD == boot_device_type ) {
+        printf("Calling getInactiveRootfsMtdBlock\n");
+#ifdef TARGET_NAND_BOOT
+        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#endif
+    } else {
+        char buf[PATH_MAX];
+        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+                slot_suffix_arr[inactive_slot]);
+        blockdev_filename->data = strdup(buf);
+    }
 #endif
     printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
             blockdev_filename->data);
-#endif
 
     int fd = open(blockdev_filename->data, O_RDWR);
     unique_fd fd_holder(fd);
@@ -1976,7 +2177,97 @@ Value* BlockImageRecoverFn(const char* name, State* state, int argc, Expr* argv[
     return StringValue(strdup("t"));
 }
 #endif
+#ifdef TARGET_NAD_OTA
+Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
+    Value* blockdev_filename = nullptr;
+    Value* blockdev_num = nullptr;
+    char buf[PATH_MAX];
+    int ret;
+    int leb_size = 0;
+    size_t vol_size, image_size;
+    if (ReadValueArgs(state, argv, 2, &blockdev_filename, &blockdev_num) < 0) {
+        return StringValue(strdup(""));
+    }
+    printf ("BlockEraseFn \n");
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_filename_holder(blockdev_filename,
+            FreeValue);
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_num_holder(blockdev_num,
+            FreeValue);
 
+    if (blockdev_filename->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_filename argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+    if (blockdev_num->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_num argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+    image_size = atoi(blockdev_num->data);
+    // check if  8+8 and recoveryfs
+    if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
+        printf(" recoveryfs update only performed on 4+4 \n");
+        if(isABVolumes()) {
+            return StringValue(strdup("t"));
+        }
+    }
+
+#ifdef TARGET_NAND_BOOT
+    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#else
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+            slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
+#endif
+
+    printf(" blockdev_filename_data %s \n", blockdev_filename->data);
+
+    int fd = open(blockdev_filename->data, O_RDWR);
+    if (fd == -1) {
+       printf(" file open error for %s \n", blockdev_filename->data);
+    }
+
+    if (ioctl(fd, BLKGETSIZE64, &vol_size) < 0) {
+        printf("BlockEraseFn: ioctl operation to get vol size failed \n");
+        return StringValue(strdup(""));
+    }
+
+    leb_size = LEBSIZE;
+    close(fd);
+
+    char mtd_erase_dev[PATH_MAX];
+    char* save = blockdev_filename->data;
+
+    char *mtd_num = strtok_r(blockdev_filename->data, "block", &save);
+    mtd_num = strtok_r(NULL, "block", &save);
+
+    snprintf(mtd_erase_dev, 12, "%s%s", "/dev/mtd", mtd_num);
+
+    fd = open(mtd_erase_dev, O_RDWR);
+    if (fd == -1) {
+       printf(" file open error for %s \n", mtd_erase_dev);
+    }
+
+    size_t total_eb_count = vol_size/leb_size;
+    size_t image_eb_count = (image_size * 4096) / leb_size;
+    struct erase_info_user ei;
+    struct erase_info_user64 ei64;
+    image_eb_count++;
+    for (int eb_cnt = image_eb_count ; eb_cnt < total_eb_count; eb_cnt++) {
+      ei64.start = (uint64_t)eb_cnt*leb_size;
+      ei64.length = (uint64_t)leb_size;
+      ret = ioctl(fd, MEMERASE64, &ei64);
+      if (ret == -1){
+        fprintf(stderr, "MEMERASE64 ioctl for eb:%zu, failed: %s\n", eb_cnt, strerror(errno));
+        continue;// should update be failed if erase operation is not success ?
+      }
+    }
+    close(fd);
+    printf ("erase operation complete \n");
+    return StringValue(strdup("t"));
+}
+#endif
 void RegisterBlockImageFunctions() {
     RegisterFunction("block_image_verify", BlockImageVerifyFn);
     RegisterFunction("block_image_update", BlockImageUpdateFn);
@@ -1985,4 +2276,7 @@ void RegisterBlockImageFunctions() {
 #endif
     RegisterFunction("check_first_block", CheckFirstBlockFn);
     RegisterFunction("range_sha1", RangeSha1Fn);
+#ifdef TARGET_NAD_OTA
+    RegisterFunction("block_erase", BlockEraseFn);
+#endif
 }
