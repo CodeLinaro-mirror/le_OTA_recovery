@@ -2464,6 +2464,11 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
     ret = libabctl_setActive(inactive_slot);
 #else
     ret = libnadab_set_active(inactive_slot);
+    if (ret == NADAB_GPIO_ENABLED) {
+        printf("%s: Not switching inactive slot to active"
+                "as gpio slot switching is enabled!\n", name);
+        return StringValue(strdup("Success"));
+    }
 #endif
 
     if (ret == 0) {
