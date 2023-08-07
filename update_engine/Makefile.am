@@ -48,3 +48,7 @@ update_engine_CPPFLAGS += -DTARGET_SUPPORTS_AB
 update_engine_LDADD = -labctl
 endif
 
+if TARGET_SUPPORTS_ABC
+update_engine_CPPFLAGS += -DTARGET_SUPPORTS_ABC
+update_engine_LDADD = -labctl
+endif
