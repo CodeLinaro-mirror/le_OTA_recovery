@@ -49,7 +49,7 @@ void load_volume_table()
     int i;
     int ret;
 #ifdef TARGET_SUPPORTS_AB
-    const char * FSTAB_ENTRY = "/res/recovery_volume_config";
+    const char * FSTAB_ENTRY = "/etc/recovery_volume_config";
 #else
     const char * FSTAB_ENTRY = IS_LE_MODE() ? "/tmp/recovery_volume_detected" : "/etc/recovery.fstab";
 #endif
