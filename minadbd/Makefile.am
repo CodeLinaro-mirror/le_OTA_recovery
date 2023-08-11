@@ -32,7 +32,7 @@ requiredlibs := -ladbd -lbase
 
 if USE_GLIB
 libminadbd_la_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
-libminadbd_la_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
+libminadbd_la_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB -include glib.h -Dstrlcat=g_strlcat -Dstrlcpy=g_strlcpy @GLIB_CFLAGS@
 libminadbd_la_LIBADD := $(requiredlibs) -lm -lpthread @GLIB_LIBS@
 #libminadbd_la_LDFLAGS := -all-static
 else
