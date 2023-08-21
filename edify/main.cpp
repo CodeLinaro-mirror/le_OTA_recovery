@@ -61,7 +61,7 @@ int expect(const char* expr_str, const char* expected, int* errors) {
         return 1;
     }
 
-    if (strcmp(result, expected) != 0) {
+    if (expected != NULL && strcmp(result, expected) != 0) {
         printf("evaluating \"%s\": expected \"%s\", got \"%s\"\n",
                expr_str, expected, result);
         ++*errors;

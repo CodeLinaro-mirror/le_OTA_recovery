@@ -65,7 +65,7 @@ static void sideload_host_service(int sfd, void* data) {
 }
 
 static int create_service_thread(void (*func)(int, void *), void *cookie) {
-    int s[2];
+    int s[2]={0};
     if(adb_socketpair(s)) {
         printf("cannot create service socket pair\n");
         return -1;

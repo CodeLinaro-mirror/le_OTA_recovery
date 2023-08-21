@@ -214,8 +214,8 @@ void load_volume_table(FILE *logfd) {
     device_volumes[0].length = 0;
     num_volumes = 1;
 
-    if (parse_fstab(logfd, "/res/recovery_volume_config", &alloc) < 0) {
-        fprintf(logfd, "ui_print /res/recovery_volume_config not found\n");
+    if (parse_fstab(logfd, "/etc/recovery_volume_config", &alloc) < 0) {
+        fprintf(logfd, "ui_print /etc/recovery_volume_config not found\n");
     }
     if (parse_fstab(logfd, "/tmp/recovery_volume_detected", &alloc) < 0) {
         fprintf(logfd, "ui_print /tmp/recovery_volume_detected not found\n");
@@ -482,7 +482,7 @@ done:
 }
 
 static int exec_cmd(const char* path, char* const argv[]) {
-    int status;
+    int status = 0;
     pid_t child;
     if ((child = vfork()) == 0) {
         execv(path, argv);
@@ -1748,7 +1748,7 @@ Value* RunProgramFn(const char* name, State* state, int argc, Expr* argv[]) {
         printf("run_program: execv failed: %s\n", strerror(errno));
         _exit(1);
     }
-    int status;
+    int status = 0;
     waitpid(child, &status, 0);
     if (WIFEXITED(status)) {
         if (WEXITSTATUS(status) != 0) {
