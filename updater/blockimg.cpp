@@ -1644,7 +1644,10 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     int boot_device_type = get_boot_dev_type();
     printf("boot device type: %d\n", boot_device_type);
     if ( TYPE_MTD == boot_device_type ) {
+        printf("Calling getInactiveRootfsMtdBlock\n");
+#ifdef TARGET_NAND_BOOT
         blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#endif
     } else {
         char buf[PATH_MAX];
         snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
@@ -1990,7 +1993,10 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
     int boot_device_type = get_boot_dev_type();
     printf("boot device type: %d\n", boot_device_type);
     if ( TYPE_MTD == boot_device_type ) {
+        printf("Calling getInactiveRootfsMtdBlock\n");
+#ifdef TARGET_NAND_BOOT
         blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#endif
     } else {
         char buf[PATH_MAX];
         snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
@@ -2220,6 +2226,7 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     int fd = open(blockdev_filename->data, O_RDWR);
     if (fd == -1) {
        printf(" file open error for %s \n", blockdev_filename->data);
+       return StringValue(strdup(""));
     }
 
     if (ioctl(fd, BLKGETSIZE64, &vol_size) < 0) {
@@ -2228,6 +2235,27 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     leb_size = LEBSIZE;
+
+    if (((image_size * BLOCKSIZE) % leb_size) != 0) {
+       printf(" writing done, image size is not multiple of leb \n");
+       unsigned char discard_buffer[LEBSIZE];
+       memset(discard_buffer, 0xFF , sizeof(discard_buffer));
+
+       if(!lseek(fd, image_size * BLOCKSIZE, SEEK_SET)) {
+          printf(" lseek returned error \n");
+       }
+
+       if (write_all(fd, discard_buffer, sizeof(discard_buffer)) == -1) {
+          return StringValue(strdup(""));
+       }
+
+       if (ota_fsync(fd) == -1) {
+          failure_type = kFsyncFailure;
+          fprintf(stderr, "fsync \"%s\" failed: %s\n", blockdev_filename->data, strerror(errno));
+          return StringValue(strdup(""));
+       }
+    }
+
     close(fd);
 
     char mtd_erase_dev[PATH_MAX];
