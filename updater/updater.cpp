@@ -23,6 +23,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <sys/stat.h>
+#include <fstream>
+#include <string>
+#include <iostream>
 
 #include "edify/expr.h"
 #include "updater.h"
@@ -70,13 +74,21 @@ int main(int argc, char** argv) {
     setbuf(stderr, NULL);
 
     //set device type nand/emmc
-    const char* comm = "if [ /proc/mtd ] && [ `cat /proc/mtd | wc -l` -ge '2' ]";
-    int ret = system(comm);
-    if(ret == 0) {
-        printf("NAND Device");
+    FILE *fp = NULL;
+    char *line = NULL;
+    size_t len = 0;
+    int lines = 0;
+    fp = fopen("/proc/mtd","r");
+    if(fp == NULL){
+        printf("File does not exist\n");
+        return -1;
+    }
+    while(getline(&line,&len,fp) != -1){
+        lines++;
+    }
+    if(lines >= 2) {
         device_type = NAND;
     }
-
     if (argc != 4 && argc != 5) {
         printf("unexpected number of arguments (%d)\n", argc);
         return 1;
