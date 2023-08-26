@@ -72,9 +72,9 @@
 #define TYPE_UFS     1
 #define TYPE_MTD     2
 #define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
+int get_boot_dev_type();
 #ifndef TARGET_NAD_OTA
 #include <libabctl.h>
-int get_boot_dev_type();
 #else
 #include <nad-ab-al.h>
 #endif
