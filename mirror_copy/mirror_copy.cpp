@@ -169,7 +169,6 @@ int main() {
 
         // triggering the mirror copy again in recovery
         else if (boot_success_status == 1 && stage == "STAGE2" && ota_status == "COPY_STARTED" &&
-                 boot_slot == boot_slot_from_ota_status &&
                  (ota_started_slot + 1) % 2 == boot_slot) {
             std::cout << "triggering the mirror copy again\n";
             fclose(stream);
