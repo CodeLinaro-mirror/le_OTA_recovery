@@ -1870,7 +1870,14 @@ int main(int argc, char **argv) {
     printf("Starting recovery (pid %d) on %s\n", getpid(), ctime(&start));
 
     load_volume_table();
+#ifdef TARGET_NAD_OTA
+    struct stat st;
+    stat("/cache", &st);
+    has_cache = (S_ISDIR(st.st_mode)) ? true : false;
+    LOGI("has_cache value %d \n", has_cache);
+#else
     has_cache = volume_for_path(CACHE_ROOT) != nullptr;
+#endif
 
     get_args(&argc, &argv);
 
