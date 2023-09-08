@@ -309,16 +309,17 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
         return INSTALL_ERROR;
     }
 
-#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
-    if(!mirror_copy) {
-         LOGI("update flow \n");
-         *cmd = {
-             binary,
-             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-             std::to_string(status_fd),
-             path,
+#if defined(TARGET_SUPPORTS_MIRROR_AB_COPY) || defined(TARGET_SUPPORTS_MPLANE_SPEC)
+    if(install_only) {
+        LOGI("install only flow \n");
+        *cmd = {
+            binary,
+            EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+            std::to_string(status_fd),
+            path,
+            "only_installation",
          };
-    } else {
+    } else if(mirror_copy){
         LOGI("ab sync mirror flow \n");
         *cmd = {
             binary,
@@ -326,6 +327,15 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
             std::to_string(status_fd),
             path,
             "copy_to_inactive",
+        };
+    }
+    else {
+        LOGI("update flow \n");
+        *cmd = {
+            binary,
+            EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+            std::to_string(status_fd),
+            path,
         };
     }
 #else

@@ -59,10 +59,10 @@ extern void Register_librecovery_updater_msm();
 // Where in the package we expect to find the edify script to execute.
 // (Note it's "updateR-script", not the older "update-script".)
 #define SCRIPT_NAME "META-INF/com/google/android/updater-script"
-#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+#if defined(TARGET_SUPPORTS_MIRROR_AB_COPY) || defined(TARGET_SUPPORTS_MPLANE_SPEC)
 #define MIRROR_SCRIPT_NAME "META-INF/com/google/android/updater-mirror-script"
+#define INSTALL_SCRIPT_NAME "META-INF/com/google/android/updater-install-script"
 #endif
-
 
 extern bool have_eio_error;
 
@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
     ota_io_init(&za);
 #endif
 
-#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+#if defined(TARGET_SUPPORTS_MIRROR_AB_COPY) || defined(TARGET_SUPPORTS_MPLANE_SPEC)
     char* copy_mirror = argv[4];
     char* script_name = NULL;
     if(copy_mirror != NULL)
@@ -180,8 +180,8 @@ int main(int argc, char** argv) {
         if (strcmp(argv[4], "copy_to_inactive") == 0){
         //if (strcmp(copy_mirror, "copy_to_inactive")){
             script_name = MIRROR_SCRIPT_NAME;
-        } else {
-            script_name = SCRIPT_NAME;
+        } else if(strcmp(argv[4], "only_installation") == 0){
+            script_name = INSTALL_SCRIPT_NAME;
         }
     } else {
         script_name = SCRIPT_NAME;

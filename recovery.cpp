@@ -157,9 +157,12 @@ static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
 static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
-#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+#if defined(TARGET_SUPPORTS_MIRROR_AB_COPY) || defined(TARGET_SUPPORTS_MPLANE_SPEC)
 static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/cache/recovery/mirror_copy_status";
 static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
+static const char *MPLANE_STATUS_COOKIE_FILE = "/cache/recovery/mplane_ota_status";
+bool mirror_copy = false;
+bool install_only = false;
 #endif
 #ifdef TARGET_NAD_OTA
 static const char *NAD_STATUS_COOKIE_FILE = "/cache/recovery/nad_ota_status";
@@ -182,9 +185,6 @@ char* stage = NULL;
 char* reason = NULL;
 bool modified_flash = false;
 static bool has_cache = false;
-#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
-bool mirror_copy = false;
-#endif
 static char* ota_status = NULL;
 /*
  * The recovery tool communicates with the main system through /cache files.
@@ -841,6 +841,33 @@ static int set_nad_ota_cookie( const char * value ) {
     } else {
         printf(" set nad ota cookie error \n");
     }
+    return -1;
+}
+#endif
+
+
+#ifdef TARGET_SUPPORTS_MPLANE_SPEC
+static int set_mplane_ota_cookie(const char* ota_status) {
+    int fd = -1;
+    int rcode = 0;
+    fd = open(MPLANE_STATUS_COOKIE_FILE, O_CREAT | O_WRONLY , S_IRUSR | S_IWUSR);
+    if (fd < 0) {
+        LOGE("Failed to open %s : %s\n",
+             MPLANE_STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    rcode = write(fd, ota_status, strlen(ota_status)+1);
+    if (rcode < 0) {
+        LOGE("Failed to write to %s : %s\n", MPLANE_STATUS_COOKIE_FILE,
+             strerror(errno));
+        goto error;
+    }
+    LOGI("mplane_ota_status cookie set");
+    close(fd);
+    return 0;
+error:
+    if (fd >= 0) close(fd);
     return -1;
 }
 #endif
@@ -2072,8 +2099,12 @@ int main(int argc, char **argv) {
     if (IS_LE_MODE()) {
         LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
         ota_status = strdup("OTA_INPROGRESS");
-        if(ota_status != nullptr)
+        if(ota_status != nullptr) {
             set_ota_cookie(ota_status);
+#ifdef TARGET_SUPPORTS_MPLANE_SPEC
+            set_mplane_ota_cookie(ota_status);
+#endif
+        }
     }
     if (update_package) {
         // For backwards compatibility on the cache partition only, if
@@ -2115,15 +2146,17 @@ int main(int argc, char **argv) {
             }
         }
 
-#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+#if defined(TARGET_SUPPORTS_MIRROR_AB_COPY) || defined(TARGET_SUPPORTS_MPLANE_SPEC)
         //  after AB update and success reboot to updated slots,
         //  copy image to inactive partitions needs to be performed.
         //  --mirror is set to enable this
         //  "--update_package=/data/update.zip;--mirror"
         //  check in update package path if '--mirror' is present is yes, set mirror_copy true
         //  to call copy only flow
+        //"if --install option is given then we only do installation"
+        //"--update_package=/data/update.zip;--install"
         const char *get_mirr = (char*) strchr(update_package, ';');
-        if((get_mirr !=NULL) && (strncmp("--mirror", get_mirr , 8))){
+        if((get_mirr !=NULL) && ((strncmp(";--mirror", get_mirr , 9)) == 0)){
             mirror_copy = true;
             char *mirror_str = (char*)malloc(strlen(update_package));
             strlcpy(mirror_str, update_package, strlen(update_package));
@@ -2131,7 +2164,13 @@ int main(int argc, char **argv) {
             update_package = strtok_r(mirror_str, "\;", &save);
             if(update_package !=NULL)
                 printf("mirror flow update_package: %s \n",update_package);
-        } else {
+        } else if ((get_mirr !=NULL) && ((strncmp(";--install", get_mirr , 10)) == 0)){
+            install_only = true;
+            char *install_str = (char*)malloc(strlen(update_package));
+            strlcpy(install_str, update_package, strlen(update_package));
+            char* save = install_str;
+            update_package = strtok_r(install_str, "\;", &save);
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
             char zip_path[MAX_ARG_LENGTH];
             snprintf(zip_path, MAX_ARG_LENGTH, "--update_package=%s;--mirror", update_package);
             std::cout << "Received ota_update and update_package path: " << zip_path
@@ -2142,6 +2181,22 @@ int main(int argc, char **argv) {
                 fprintf(fp, "%s\n", zip_path);
                 fclose(fp);
             }
+#endif
+            if(update_package !=NULL)
+                printf("install only flow update_package: %s \n",update_package);
+        } else {
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+            char zip_path[MAX_ARG_LENGTH];
+            snprintf(zip_path, MAX_ARG_LENGTH, "--update_package=%s;--mirror", update_package);
+            std::cout << "Received ota_update and update_package path: " << zip_path
+                  << std::endl;
+            FILE *fp;
+            fp = fopen(ZIP_FILE_PATH, "w");
+            if(fp != NULL) {
+                fprintf(fp, "%s\n", zip_path);
+                fclose(fp);
+            }
+#endif
             printf("not --mirror copy flow \n");
         }
 #endif
@@ -2313,6 +2368,9 @@ error:
     if (IS_LE_MODE() && ota_status != nullptr) {
         printf("Write OTA status to OTA cookie %s\n", ota_status);
         set_ota_cookie(ota_status);
+#ifdef TARGET_SUPPORTS_MPLANE_SPEC
+        set_mplane_ota_cookie(ota_status);
+#endif
     }
     int ota_status_val = get_ota_status();
     printf("OTA status %d\n", ota_status_val);
