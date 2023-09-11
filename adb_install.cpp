@@ -114,7 +114,7 @@ apply_from_adb(RecoveryUI* ui_, bool* wipe_cache, const char* install_file) {
     // connects and starts serving a package.  Poll for its
     // appearance.  (Note that inotify doesn't work with FUSE.)
     int result = INSTALL_ERROR;
-    int status;
+    int status = 0;
     bool waited = false;
     struct stat st;
     for (int i = 0; i < ADB_INSTALL_TIMEOUT; ++i) {

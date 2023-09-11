@@ -49,7 +49,7 @@ void load_volume_table()
     int i;
     int ret;
 #ifdef TARGET_SUPPORTS_AB
-    const char * FSTAB_ENTRY = "/res/recovery_volume_config";
+    const char * FSTAB_ENTRY = "/etc/recovery_volume_config";
 #else
     const char * FSTAB_ENTRY = IS_LE_MODE() ? "/tmp/recovery_volume_detected" : "/etc/recovery.fstab";
 #endif
@@ -176,7 +176,7 @@ int ensure_path_unmounted(const char* path) {
 }
 
 static int exec_cmd(const char* path, char* const argv[]) {
-    int status;
+    int status = 0;
     pid_t child;
     if ((child = vfork()) == 0) {
         execv(path, argv);

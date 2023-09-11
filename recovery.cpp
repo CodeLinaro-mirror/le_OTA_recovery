@@ -311,7 +311,7 @@ bool is_ro_debuggable() {
 }
 
 static void redirect_stdio(const char* filename) {
-    int pipefd[2];
+    int pipefd[2] = {0};
     if (pipe(pipefd) == -1) {
         LOGE("pipe failed: %s\n", strerror(errno));
 
@@ -1069,6 +1069,9 @@ static char* browse_directory(const char* path, Device* device) {
     int d_size = 0;
     int d_alloc = 10;
     char** dirs = (char**)malloc(d_alloc * sizeof(char*));
+    for(int i = 0; i < d_alloc; i++) {
+        dirs[i] = NULL;
+    }
     int z_size = 1;
     int z_alloc = 10;
     char** zips = (char**)malloc(z_alloc * sizeof(char*));
@@ -1519,7 +1522,7 @@ static int apply_from_sdcard(Device* device, bool* wipe_cache) {
     // FUSE_SIDELOAD_HOST_PATHNAME will start to exist once the fuse in child
     // process is ready.
     int result = INSTALL_ERROR;
-    int status;
+    int status = 0;
     bool waited = false;
     for (int i = 0; i < SDCARD_INSTALL_TIMEOUT; ++i) {
         if (waitpid(child, &status, WNOHANG) == -1) {
@@ -1654,7 +1657,7 @@ prompt_and_wait(Device* device, int status) {
                 else
 #endif
                 {
-                    char system_root_image[PROPERTY_VALUE_MAX];
+                    char system_root_image[PROPERTY_VALUE_MAX] = "";
                     property_get("ro.build.system_root_image", system_root_image, "");
 
                     // For a system image built with the root directory (i.e.

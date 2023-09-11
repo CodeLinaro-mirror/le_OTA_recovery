@@ -89,6 +89,8 @@ extern "C" {    // Use till system/core is updated
 #define BLOCKSIZE 4096*1024
 #define BOOT_NAME_LENGTH 7
 #define ROOTFS_NAME_LENGTH 10
+#define ROOTFS_VOLUME_A "/dev/ubi0_0"
+#define ROOTFS_VOLUME_B "/dev/ubi0_1"
 #endif
 #define SYSTEM_ROOTFS_NAME  "system.img"
 #define SYSTEM_ROOTFS  "/tmp/system.img"
@@ -214,8 +216,8 @@ void load_volume_table(FILE *logfd) {
     device_volumes[0].length = 0;
     num_volumes = 1;
 
-    if (parse_fstab(logfd, "/res/recovery_volume_config", &alloc) < 0) {
-        fprintf(logfd, "ui_print /res/recovery_volume_config not found\n");
+    if (parse_fstab(logfd, "/etc/recovery_volume_config", &alloc) < 0) {
+        fprintf(logfd, "ui_print /etc/recovery_volume_config not found\n");
     }
     if (parse_fstab(logfd, "/tmp/recovery_volume_detected", &alloc) < 0) {
         fprintf(logfd, "ui_print /tmp/recovery_volume_detected not found\n");
@@ -482,7 +484,7 @@ done:
 }
 
 static int exec_cmd(const char* path, char* const argv[]) {
-    int status;
+    int status = 0;
     pid_t child;
     if ((child = vfork()) == 0) {
         execv(path, argv);
@@ -1748,7 +1750,7 @@ Value* RunProgramFn(const char* name, State* state, int argc, Expr* argv[]) {
         printf("run_program: execv failed: %s\n", strerror(errno));
         _exit(1);
     }
-    int status;
+    int status = 0;
     waitpid(child, &status, 0);
     if (WIFEXITED(status)) {
         if (WEXITSTATUS(status) != 0) {
@@ -2584,7 +2586,59 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
     printf("%s: Couldn't set inactive slot as active!\n", name);
     return StringValue(strdup("")); // abort, if you want
 }
+Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+    ZipArchive* zip = ui->package_zip;
+    //Extract system image
+    const ZipEntry* system_entry =
+            mzFindZipEntry(zip, SYSTEM_ROOTFS_NAME);
+    if (system_entry == NULL) {
+        printf("%s: can't find %s\n", name, SYSTEM_ROOTFS_NAME);
+        return StringValue(strdup(""));
+    }
+    const char* rootfs_volume = SYSTEM_ROOTFS;
+    unlink(rootfs_volume);
+    int fd = creat(rootfs_volume, 0644);
+    if (fd < 0) {
+        printf("%s: Can't make %s\n", name, rootfs_volume);
+        return StringValue(strdup(""));
+    }
+    bool ok = mzExtractZipEntryToFile(zip, system_entry, fd);
+    close(fd);
+    if (!ok) {
+        printf("%s: Can't extract %s from zip\n", name, SYSTEM_ROOTFS_NAME);
+        return StringValue(strdup(""));
+    }
+    printf("Extracting Rootfs volume is successful\n");
+    char* rootfs_volume_ab = "";
+    if(inactive_slot == 0) {
+        rootfs_volume_ab = ROOTFS_VOLUME_A;
+    }
+    else if(inactive_slot == 1) {
+        rootfs_volume_ab = ROOTFS_VOLUME_B;
+    }
+    char *args_erase[] = {"ubiupdatevol", rootfs_volume_ab, "-t", 0};
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_erase) != 0) {
+        printf("%s: Couldn't erase Rootfs volume\n", name);
+        return StringValue(strdup(""));
+    }
+    printf("Erasing of Rootfs volume %d is successful\n", inactive_slot);
+    char *args_update[] = {"ubiupdatevol", rootfs_volume_ab, SYSTEM_ROOTFS, 0};
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_update) != 0) {
+        printf("%s: Couldn't update Rootfs volume\n", name);
+        return StringValue(strdup(""));
+    }
+    printf("Updating of Rootfs volume %d is successful\n",inactive_slot);
+
+    return StringValue(strdup("success"));
+}
 #endif
+
+#ifndef TARGET_SUPPORTS_AB
 Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* argv[]) {
     if (argc != 0) {
         return ErrorAbort(state, kArgsParsingFailure,
@@ -2630,6 +2684,7 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
 
     return StringValue(strdup("success"));
 }
+#endif
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
     RegisterFunction("is_mounted", IsMountedFn);
