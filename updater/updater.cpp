@@ -34,7 +34,12 @@
 #include "common.h"
 
 #if defined(TARGET_SUPPORTS_AB)
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#include <limits.h>
+#endif
 #if defined(TARGET_SUPPORTS_ABC)
 const char* slot_suffix_arr[] = {"_a", "_b","_c", NULL};
 #else
@@ -68,9 +73,10 @@ struct selabel_handle *sehandle;
 int set_nad_update_status( const char * value ) {
     FILE* status_fp = fopen(NAD_UPDATE_STATUS, "a+");
     if (status_fp != nullptr) {
-        char buf[4096];
+        char buf[PATH_MAX];
+        snprintf(buf, PATH_MAX, "%s", value);
         size_t bytes;
-        fwrite(value, 1, 8, status_fp);
+        fwrite(buf, 1, 8, status_fp);
         fflush(status_fp);
         if (ferror(status_fp)) printf("Error in %s\n(%s)\n", NAD_UPDATE_STATUS, strerror(errno));
         fclose(status_fp);
