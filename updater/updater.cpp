@@ -129,7 +129,7 @@ int main(int argc, char** argv) {
 #else
     printf (" call nadabctl \n");
     boot_slot = libnadab_get_boot_slot();
-    boot_slot = 0;
+    
 #endif
     if (boot_slot == -1) {
         printf("That's odd.. I was told that A/B boot support be present\n"
