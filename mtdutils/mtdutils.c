@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2021 The Linux Foundation. All rights reserved.
+ * Not a contribution.
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +14,11 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ */
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <stdio.h>
@@ -28,13 +35,6 @@
 
 #include "mtdutils.h"
 #include "common.h"
-
-struct MtdPartition {
-    int device_index;
-    unsigned int size;
-    unsigned int erase_size;
-    char *name;
-};
 
 struct MtdReadContext {
     const MtdPartition *partition;
@@ -67,18 +67,20 @@ static MtdState g_mtd_state = {
 };
 
 #define MTD_PROC_FILENAME   "/proc/mtd"
+#define NUM_MAX_PARTITIONS   70
+#define MAX_BUFFER_SIZE 4096
 
 int
 mtd_scan_partitions()
 {
-    char buf[2048];
+    char buf[MAX_BUFFER_SIZE];
     const char *bufp;
     int fd;
     int i;
     ssize_t nbytes;
 
     if (g_mtd_state.partitions == NULL) {
-        const int nump = 64;
+        const int nump = NUM_MAX_PARTITIONS;
         MtdPartition *partitions = malloc(nump * sizeof(*partitions));
         if (partitions == NULL) {
             errno = ENOMEM;

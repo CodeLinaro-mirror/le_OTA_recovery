@@ -2,6 +2,10 @@ ACLOCAL_AMFLAGS := -I m4
 
 SUBDIRS := minzip mtdutils edify otafault applypatch updater minadbd bootloader_message
 
+if !TARGET_NAD_OTA
+SUBDIRS += mirror_copy
+endif
+
 AM_CFLAGS := -Wundef \
              -Wstrict-prototypes \
              -Wno-trigraphs \
@@ -114,5 +118,29 @@ EXTRA_DIST := $(pkgconfig_DATA)
 
 if TARGET_SUPPORTS_AB
 recovery_CPPFLAGS += -DTARGET_SUPPORTS_AB
+if TARGET_NAD_OTA
+recovery_LDADD += -lnad_ab_al
+else
 recovery_LDADD += -labctl
+endif
+endif
+
+if TARGET_SUPPORTS_MIRROR_AB_COPY
+recovery_CPPFLAGS += -DTARGET_SUPPORTS_MIRROR_AB_COPY
+endif
+
+if TARGET_SUPPORTS_OTA_VERIFICATION
+recovery_CPPFLAGS += -DTARGET_SUPPORTS_OTA_VERIFICATION
+endif
+
+if TARGET_NAND_BOOT
+recovery_CPPFLAGS += -DTARGET_NAND_BOOT
+endif
+
+if TARGET_SUPPORTS_NAND_DM_VERITY
+recovery_CPPFLAGS += -DTARGET_SUPPORTS_NAND_DM_VERITY
+endif
+
+if TARGET_NAD_OTA
+recovery_CPPFLAGS += -DTARGET_NAD_OTA
 endif

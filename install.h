@@ -38,4 +38,10 @@ bool verify_package(const unsigned char* package_data, size_t package_size);
 // Return true if succeed, otherwise return false.
 bool read_metadata_from_package(ZipArchive* zip, std::string* meta_data);
 
+#ifdef TARGET_SUPPORTS_OTA_VERIFICATION
+// Verify the OTA package. Return true if the package is verified successfully,
+// otherwise return false.
+bool verify_ota_package(const char* package_path, ZipArchive* zip);
+#endif
+
 #endif  // RECOVERY_INSTALL_H_
