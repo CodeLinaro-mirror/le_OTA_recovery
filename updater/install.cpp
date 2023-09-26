@@ -2423,6 +2423,10 @@ Value* copyActiveRootfsToInactiveRootfs(const char* name, State* state, int argc
             slot_suffix_arr[boot_slot]);
     printf("copying %s to %s\n", active_rootfs_volume, inactive_rootfs_volume);
     char *active_mtd_block = getMtdBlock(active_rootfs_volume);
+    if(inactive_mtd_block == NULL || active_mtd_block == NULL) {
+        printf("copyActiveRootfsToInactiveRootfs: inactive_mtd_block or active_mtd_block is NULL \n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     snprintf(in_file, PATH_MAX, "%s%s", "if=", active_mtd_block);
     printf("Active rootfs mtd block: %s\n", in_file);
@@ -2453,6 +2457,10 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
             slot_suffix_arr[boot_slot]);
     printf("copying %s to %s\n", active_boot_partition, inactive_boot_partition);
     char *active_boot_mtd_block = getMtdBlock(active_boot_partition);
+    if(inactive_boot_mtd_block == NULL || active_boot_mtd_block == NULL) {
+        printf("copyBootPartitionToInActiveSlot: inactive_boot_mtd_block or active_boot_mtd_block is NULL \n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     snprintf(in_file, PATH_MAX, "%s%s", "active boot=", active_boot_mtd_block);
     printf("Active boot mtd block: %s\n", in_file);
@@ -2484,6 +2492,10 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
 
     success = true;
     char* buffer = reinterpret_cast<char*>(malloc(BUFSIZ));
+    if(buffer == NULL) {
+        printf(" can't allocate bytes to buffer\n");
+        return StringValue(strdup(""));
+    }
     int read;
     while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
         int wrote = mtd_write_data(ctx, buffer, read);
@@ -2523,6 +2535,10 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
             slot_suffix_arr[boot_slot]);
     printf("copying %s to %s\n", active_nonhlos_volume, inactive_nonhlos_volume);
     char *active_mtd_block = getMtdBlock(active_nonhlos_volume);
+    if(active_mtd_block == NULL || inactive_mtd_block == NULL) {
+        printf("copyActiveNonHlosToInactiveNonHlos: inactive_boot_mtd_block or active_boot_mtd_block is NULL \n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     snprintf(in_file, PATH_MAX, "%s%s", "if=", active_mtd_block);
     printf("Active nonhlos mtd block: %s\n", in_file);
