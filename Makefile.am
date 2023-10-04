@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS := -I m4
 
-SUBDIRS := minzip mtdutils edify otafault applypatch updater minadbd bootloader_message mirror_copy
+SUBDIRS := minzip mtdutils edify otafault applypatch updater bootloader_message mirror_copy
 
 WORKSPACE := $(TOPDIR)/src
 
@@ -77,7 +77,6 @@ requiredlibs := -lm \
                -lfs_mgr \
                -lext4_utils \
                ./mtdutils/libmtdutils.la \
-               ./minadbd/libminadbd.la \
                ./libfusesideload.la \
                ./edify/libedify.la \
                ./minzip/libminzip.la \
