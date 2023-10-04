@@ -1041,6 +1041,9 @@ static char* browse_directory(const char* path, Device* device) {
     int d_size = 0;
     int d_alloc = 10;
     char** dirs = (char**)malloc(d_alloc * sizeof(char*));
+    if (dirs == NULL) {
+        return NULL;
+    }
     for(int i = 0; i < d_alloc; i++) {
         dirs[i] = NULL;
     }
