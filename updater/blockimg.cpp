@@ -66,8 +66,15 @@
 
 #define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
 #ifdef TARGET_SUPPORTS_AB
+#include "mtdutils/mtdutils.h"
+#define TYPE_ERROR   -1
+#define TYPE_EMMC    0
+#define TYPE_UFS     1
+#define TYPE_MTD     2
+#define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
 #ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+int get_boot_dev_type();
 #else
 #include <nad-ab-al.h>
 #endif
@@ -82,6 +89,7 @@
 #define MODEM_PATH "/dev/block/bootdevice/by-name/modem"
 #define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
 #define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
+#define VMBOOTSYS_PATH "/dev/block/bootdevice/by-name/vm-bootsys"
 #include <mtd/mtd-user.h>
 #endif
 
@@ -1470,18 +1478,15 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char modem_volume[PATH_MAX];
         mtd_scan_partitions();
 
-        const MtdPartition* mtd = mtd_find_partition_by_name("misc");
-        if (mtd == NULL) {
-            printf("no mtd partition named misc, AB firmware \n");
+        if(isABVolumes()) {
             snprintf(modem_volume, PATH_MAX, "%s%s", "firmware", slot_suffix_arr[inactive_slot]);
             printf("Inactive firmware volume: %s\n", modem_volume);
         } else {
-            printf(" found mtd partition named misc, non-AB firmware \n");
             snprintf(modem_volume, PATH_MAX, "%s", "firmware");
             printf("firmware volume: %s\n", modem_volume);
         }
 
-        mtd = mtd_find_partition_by_name(modem_volume);
+        const MtdPartition* mtd = mtd_find_partition_by_name(modem_volume);
         if (mtd == NULL) {
             printf("no mtd partition named \"%s\"\n", modem_volume);
             return strdup("");
@@ -1489,6 +1494,29 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         char mtd_devname[PATH_MAX];
         printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
               modem_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
+    else if (strncmp(blockdev_filename->data, VMBOOTSYS_PATH, len) == 0) {
+        char vmbootsys_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isABVolumes()) {
+            snprintf(vmbootsys_volume, PATH_MAX, "%s%s", "vm-bootsys", slot_suffix_arr[inactive_slot]);
+            printf("Inactive vm-bootsys volume: %s\n", vmbootsys_volume);
+        } else {
+            snprintf(vmbootsys_volume, PATH_MAX, "%s", "vm-bootsys");
+            printf("vmbootsys_volume: %s\n", vmbootsys_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(vmbootsys_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", vmbootsys_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              vmbootsys_volume, mtd->device_index);
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
@@ -1611,16 +1639,24 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
         }
     }
 #endif
-    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
-#else
-    char buf[PATH_MAX];
-    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-            slot_suffix_arr[inactive_slot]);
-    blockdev_filename->data = strdup(buf);
+#endif
+#ifdef TARGET_SUPPORTS_AB
+    int boot_device_type = get_boot_dev_type();
+    printf("boot device type: %d\n", boot_device_type);
+    if ( TYPE_MTD == boot_device_type ) {
+        printf("Calling getInactiveRootfsMtdBlock\n");
+#ifdef TARGET_NAND_BOOT
+        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#endif
+    } else {
+        char buf[PATH_MAX];
+        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+                slot_suffix_arr[inactive_slot]);
+        blockdev_filename->data = strdup(buf);
+    }
 #endif
     printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
             blockdev_filename->data);
-
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
 
     if (ui == nullptr) {
@@ -1810,6 +1846,8 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
       snprintf(part_name, sizeof(part_name), "%s", " modem ");
     } else if(strncmp(part_name, TELAF_PATH, strlen(TELAF_PATH)) == 0) {
       snprintf(part_name, sizeof(part_name), "%s", " telaf ");
+    } else if(strncmp(part_name, VMBOOTSYS_PATH, strlen(VMBOOTSYS_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " vm-bootsys ");
     } else {
       snprintf(part_name, sizeof(part_name), "%s", " ");
     }
@@ -1951,13 +1989,20 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
 
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
+#ifdef TARGET_SUPPORTS_AB
+    int boot_device_type = get_boot_dev_type();
+    printf("boot device type: %d\n", boot_device_type);
+    if ( TYPE_MTD == boot_device_type ) {
+        printf("Calling getInactiveRootfsMtdBlock\n");
 #ifdef TARGET_NAND_BOOT
-    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
-#else
-    char buf[PATH_MAX];
-    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-            slot_suffix_arr[inactive_slot]);
-    blockdev_filename->data = strdup(buf);
+        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#endif
+    } else {
+        char buf[PATH_MAX];
+        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+                slot_suffix_arr[inactive_slot]);
+        blockdev_filename->data = strdup(buf);
+    }
 #endif
     printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
             blockdev_filename->data);
@@ -2175,12 +2220,16 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
             slot_suffix_arr[inactive_slot]);
     blockdev_filename->data = strdup(buf);
 #endif
-
+    if(blockdev_filename->data == NULL) {
+        printf("BlockEraseFn: blockdev_filename_data is NULL\n");
+        return StringValue(strdup(""));
+    }
     printf(" blockdev_filename_data %s \n", blockdev_filename->data);
 
     int fd = open(blockdev_filename->data, O_RDWR);
     if (fd == -1) {
        printf(" file open error for %s \n", blockdev_filename->data);
+       return StringValue(strdup(""));
     }
 
     if (ioctl(fd, BLKGETSIZE64, &vol_size) < 0) {
@@ -2189,6 +2238,27 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     leb_size = LEBSIZE;
+
+    if (((image_size * BLOCKSIZE) % leb_size) != 0) {
+       printf(" writing done, image size is not multiple of leb \n");
+       unsigned char discard_buffer[LEBSIZE];
+       memset(discard_buffer, 0xFF , sizeof(discard_buffer));
+
+       if(!lseek(fd, image_size * BLOCKSIZE, SEEK_SET)) {
+          printf(" lseek returned error \n");
+       }
+
+       if (write_all(fd, discard_buffer, sizeof(discard_buffer)) == -1) {
+          return StringValue(strdup(""));
+       }
+
+       if (ota_fsync(fd) == -1) {
+          failure_type = kFsyncFailure;
+          fprintf(stderr, "fsync \"%s\" failed: %s\n", blockdev_filename->data, strerror(errno));
+          return StringValue(strdup(""));
+       }
+    }
+
     close(fd);
 
     char mtd_erase_dev[PATH_MAX];
@@ -2196,7 +2266,10 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     char *mtd_num = strtok_r(blockdev_filename->data, "block", &save);
     mtd_num = strtok_r(NULL, "block", &save);
-
+    if(mtd_num ==NULL) {
+       printf("BlockEraseFn: mtd_num is NULL \n");
+       return StringValue(strdup(""));
+    }
     snprintf(mtd_erase_dev, 12, "%s%s", "/dev/mtd", mtd_num);
 
     fd = open(mtd_erase_dev, O_RDWR);
