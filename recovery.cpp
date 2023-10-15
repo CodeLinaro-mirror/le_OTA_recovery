@@ -795,30 +795,6 @@ error:
     return -1;
 }
 
-static int set_ota_cookie() {
-    int fd = -1;
-    int rcode = 0;
-    fd = open(STATUS_COOKIE_FILE, O_CREAT, S_IRUSR | S_IWUSR);
-    if (fd < 0) {
-        LOGE("Failed to open %s : %s\n",
-             STATUS_COOKIE_FILE,
-             strerror(errno));
-        goto error;
-    }
-    rcode = write(fd, "OTA_DONE", 8);
-    if (rcode < 0) {
-        LOGE("Failed to write to %s : %s\n", STATUS_COOKIE_FILE,
-             strerror(errno));
-        goto error;
-    }
-    LOGI("ota_status cookie set");
-    close(fd);
-    return 0;
-error:
-    if (fd >= 0) close(fd);
-    return -1;
-}
-
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
 // record any intent we were asked to communicate back to the system.
@@ -869,10 +845,6 @@ finish_recovery(const char *send_intent) {
     }
 #endif
 #endif
-
-    if (IS_LE_MODE()) {
-        set_ota_cookie();
-    }
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (has_cache) {
@@ -2039,6 +2011,10 @@ int main(int argc, char **argv) {
         printf(" \"%s\"", argv[arg]);
     }
     printf("\n");
+    FILE* dest_fp = fopen_path(STATUS_COOKIE_FILE, "w");
+    if (dest_fp == nullptr) {
+        LOGE("Can't open %s\n", STATUS_COOKIE_FILE);
+    }
     if (IS_LE_MODE()) {
         LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
         ota_status = strdup("OTA_INPROGRESS");
