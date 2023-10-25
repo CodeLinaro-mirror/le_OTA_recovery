@@ -795,30 +795,6 @@ error:
     return -1;
 }
 
-static int set_ota_cookie() {
-    int fd = -1;
-    int rcode = 0;
-    fd = open(STATUS_COOKIE_FILE, O_CREAT, S_IRUSR | S_IWUSR);
-    if (fd < 0) {
-        LOGE("Failed to open %s : %s\n",
-             STATUS_COOKIE_FILE,
-             strerror(errno));
-        goto error;
-    }
-    rcode = write(fd, "OTA_DONE", 8);
-    if (rcode < 0) {
-        LOGE("Failed to write to %s : %s\n", STATUS_COOKIE_FILE,
-             strerror(errno));
-        goto error;
-    }
-    LOGI("ota_status cookie set");
-    close(fd);
-    return 0;
-error:
-    if (fd >= 0) close(fd);
-    return -1;
-}
-
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
 // record any intent we were asked to communicate back to the system.
@@ -869,10 +845,6 @@ finish_recovery(const char *send_intent) {
     }
 #endif
 #endif
-
-    if (IS_LE_MODE()) {
-        set_ota_cookie();
-    }
 
     // Remove the command file, so recovery won't repeat indefinitely.
     if (has_cache) {
@@ -1069,6 +1041,9 @@ static char* browse_directory(const char* path, Device* device) {
     int d_size = 0;
     int d_alloc = 10;
     char** dirs = (char**)malloc(d_alloc * sizeof(char*));
+    if (dirs == NULL) {
+        return NULL;
+    }
     for(int i = 0; i < d_alloc; i++) {
         dirs[i] = NULL;
     }
@@ -1915,18 +1890,6 @@ int main(int argc, char **argv) {
         logrotate, &doRotate);
 #endif
 
-    // If this binary is started with the single argument "--adbd",
-    // instead of being the normal recovery binary, it turns into kind
-    // of a stripped-down version of adbd that only supports the
-    // 'sideload' command.  Note this must be a real argument, not
-    // anything in the command file or bootloader control block; the
-    // only way recovery should be run with this argument is when it
-    // starts a copy of itself from the apply_from_adb() function.
-    if (argc == 2 && strcmp(argv[1], "--adbd") == 0) {
-        adb_server_main(0, DEFAULT_ADB_PORT, -1);
-        return 0;
-    }
-
     time_t start = time(NULL);
 
     // redirect_stdio should be called only in non-sideload mode. Otherwise
@@ -2039,6 +2002,10 @@ int main(int argc, char **argv) {
         printf(" \"%s\"", argv[arg]);
     }
     printf("\n");
+    FILE* dest_fp = fopen_path(STATUS_COOKIE_FILE, "w");
+    if (dest_fp == nullptr) {
+        LOGE("Can't open %s\n", STATUS_COOKIE_FILE);
+    }
     if (IS_LE_MODE()) {
         LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
         ota_status = strdup("OTA_INPROGRESS");
