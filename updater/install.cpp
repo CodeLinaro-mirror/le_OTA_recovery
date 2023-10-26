@@ -2649,7 +2649,9 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
         return StringValue(strdup(""));
     }
     printf("Updating of Rootfs volume %d is successful\n",inactive_slot);
-
+    int ret = remove(SYSTEM_ROOTFS);
+    if(ret == -1) 
+        printf("Failed to remove %s and may cause no space left\n", SYSTEM_ROOTFS);
     return StringValue(strdup("success"));
 }
 #endif
