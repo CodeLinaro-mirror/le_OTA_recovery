@@ -38,6 +38,7 @@
 #include <libabctl.h>
 #else
 #include <nad-ab-al.h>
+#include <limits.h>
 #endif
 const char* slot_suffix_arr[] = {"_a", "_b", NULL};
 #else
@@ -71,9 +72,10 @@ struct selabel_handle *sehandle;
 int set_nad_update_status( const char * value ) {
     FILE* status_fp = fopen(NAD_UPDATE_STATUS, "a+");
     if (status_fp != nullptr) {
-        char buf[4096];
+        char buf[PATH_MAX];
+        snprintf(buf, PATH_MAX, "%s", value);
         size_t bytes;
-        fwrite(value, 1, 8, status_fp);
+        fwrite(buf, 1, 8, status_fp);
         fflush(status_fp);
         if (ferror(status_fp)) printf("Error in %s\n(%s)\n", NAD_UPDATE_STATUS, strerror(errno));
         fclose(status_fp);
@@ -120,6 +122,10 @@ int main(int argc, char** argv) {
 
     int fd = atoi(argv[2]);
     FILE* cmd_pipe = fdopen(fd, "wb");
+    if(cmd_pipe == NULL) {
+       printf("cmd_pipe is NULL so aborting!\n");
+       return 2;
+    }
     setlinebuf(cmd_pipe);
 
 #ifdef TARGET_SUPPORTS_AB
@@ -129,7 +135,6 @@ int main(int argc, char** argv) {
 #else
     printf (" call nadabctl \n");
     boot_slot = libnadab_get_boot_slot();
-    
 #endif
     if (boot_slot == -1) {
         printf("That's odd.. I was told that A/B boot support be present\n"
