@@ -34,6 +34,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <sys/mount.h>
+#include <sys/types.h>
 
 #include <chrono>
 #include <limits>
@@ -72,6 +73,7 @@ extern RecoveryUI* ui;
 #define OTA_VERIFICATION_SUCCESS "Verified OK"
 #define PUBLIC_KEY "/res/public.pem"
 #endif //TARGET_SUPPORTS_OTA_VERIFICATION
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 static constexpr const char* AB_OTA_PAYLOAD_PROPERTIES = "payload_properties.txt";
 static constexpr const char* AB_OTA_PAYLOAD = "payload.bin";
 #define PUBLIC_KEYS_FILE "/res/keys"
@@ -650,6 +652,16 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
     return result;
 }
 
+static bool startswith(const char *string, const char *prefix)
+{
+       if(string != NULL && prefix != NULL){
+           size_t l1 = strlen(string);
+           size_t l2 = strlen(prefix);
+           return strncmp(string, prefix, MIN(l1, l2)) == 0;
+       }
+       return false;
+}
+
 int
 install_package(const char* path, bool* wipe_cache, const char* install_file,
                 bool needs_mount, int retry_count)
@@ -705,7 +717,32 @@ install_package(const char* path, bool* wipe_cache, const char* install_file,
     if (!android::base::WriteStringToFile(log_content, install_file)) {
         LOGE("failed to write %s: %s\n", install_file, strerror(errno));
     }
+#ifdef TARGET_SUPPORTS_MPLANE_SPEC
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    FILE *fp;
+    int cause_code=-1,error_code=-1;
+    fp = fopen(install_file, "r");
+    if (!fp)
+        printf("Couldn't open install file\n");
 
+    while ((read = getline(&line, &len, fp)) != -1) {
+        if (startswith(line, "cause:")) {
+            sscanf(line, "cause: %d\n", &cause_code);
+            continue;
+        }
+        if (startswith(line, "error:")) {
+            sscanf(line, "error: %d\n", &error_code);
+            continue;
+        }
+    }
+    
+    printf("cause code: %d error_code %d\n",cause_code, error_code);
+    //these error codes are from causecode enum in error_code.h
+    if((cause_code =! -1 && cause_code>=100 && cause_code<=113))
+        result = INSTALL_ERROR;
+#endif
     // Write a copy into last_log.
     LOGI("%s\n", log_content.c_str());
 

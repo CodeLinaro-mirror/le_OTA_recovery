@@ -850,14 +850,14 @@ static int set_nad_ota_cookie( const char * value ) {
 static int set_mplane_ota_cookie(const char* ota_status) {
     int fd = -1;
     int rcode = 0;
-    fd = open(MPLANE_STATUS_COOKIE_FILE, O_CREAT | O_WRONLY , S_IRUSR | S_IWUSR);
+    fd = open(MPLANE_STATUS_COOKIE_FILE, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd < 0) {
         LOGE("Failed to open %s : %s\n",
              MPLANE_STATUS_COOKIE_FILE,
              strerror(errno));
         goto error;
     }
-    rcode = write(fd, ota_status, strlen(ota_status)+1);
+    rcode = write(fd, ota_status, strlen(ota_status));
     if (rcode < 0) {
         LOGE("Failed to write to %s : %s\n", MPLANE_STATUS_COOKIE_FILE,
              strerror(errno));
@@ -2102,7 +2102,7 @@ int main(int argc, char **argv) {
         if(ota_status != nullptr) {
             set_ota_cookie(ota_status);
 #ifdef TARGET_SUPPORTS_MPLANE_SPEC
-            set_mplane_ota_cookie(ota_status);
+            set_mplane_ota_cookie(strdup("STARTED"));
 #endif
         }
     }
@@ -2368,12 +2368,29 @@ error:
     if (IS_LE_MODE() && ota_status != nullptr) {
         printf("Write OTA status to OTA cookie %s\n", ota_status);
         set_ota_cookie(ota_status);
-#ifdef TARGET_SUPPORTS_MPLANE_SPEC
-        set_mplane_ota_cookie(ota_status);
-#endif
     }
     int ota_status_val = get_ota_status();
     printf("OTA status %d\n", ota_status_val);
+
+#ifdef TARGET_SUPPORTS_MPLANE_SPEC
+    switch (status) {
+        case INSTALL_SUCCESS:
+            set_mplane_ota_cookie(strdup("COMPLETED"));
+            break;
+
+        case INSTALL_ERROR:
+            set_mplane_ota_cookie(strdup("FILE_ERROR"));
+            break;
+
+        case INSTALL_CORRUPT:
+            set_mplane_ota_cookie(strdup("INTEGRITY_ERROR"));
+            break;
+
+        default:
+            set_mplane_ota_cookie(strdup("APPLICATION_ERROR"));
+            break;
+    }
+#endif
 
 #ifdef TARGET_NAD_OTA
     printf("set nad ota cookie \n");
