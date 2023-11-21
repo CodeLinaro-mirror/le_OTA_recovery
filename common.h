@@ -49,9 +49,10 @@
 #endif
 
 extern bool modified_flash;
-
-#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+#if defined(TARGET_SUPPORTS_MIRROR_AB_COPY) || defined(TARGET_SUPPORTS_MPLANE_SPEC)
 extern bool mirror_copy;
+
+extern bool install_only;
 #endif
 
 typedef struct fstab_rec Volume;
