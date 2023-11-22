@@ -34,7 +34,8 @@ AM_CPPFLAGS := \
               -std=c++11 \
               -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
               -Dstrlcpy=g_strlcpy \
-              -Dstrlcat=g_strlcat
+              -Dstrlcat=g_strlcat \
+              @XML2_CFLAGS@
 
 #AM_LDFLAGS := -shared -version-info 1:0:0
 
@@ -84,7 +85,8 @@ requiredlibs := -lm \
                ./minzip/libminzip.la \
                ./applypatch/libapplypatch.la \
                ./otafault/libotafault.la \
-               ./bootloader_message/libbootloader_message.la
+               ./bootloader_message/libbootloader_message.la \
+               @XML2_LIBS@
 
 
 RECOVERY_API_VERSION := 3

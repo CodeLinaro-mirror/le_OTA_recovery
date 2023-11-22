@@ -35,6 +35,8 @@
 #include <unistd.h>
 #include <sys/mount.h>
 #include <sys/types.h>
+#include <libxml/parser.h>
+#include <libxml/tree.h>
 
 #include <chrono>
 #include <limits>
@@ -87,7 +89,9 @@ static const float DEFAULT_FILES_PROGRESS_FRACTION = 0.4;
 static const float DEFAULT_IMAGE_PROGRESS_FRACTION = 0.1;
 
 static const char *RECOVERYUPDATER_COOKIE = "/cache/recoveryupgrade/RECOVERY_UPGRADE_DONE";
-
+#define MANIFEST_FILE_NAME "manifest.xml"
+#define MANIFEST_FILE_PATH "/tmp/manifest.xml"
+#define PATH_MAX 50
 // This function parses and returns the build.version.incremental
 static int parse_build_number(std::string str) {
     size_t pos = str.find("=");
@@ -576,6 +580,168 @@ mdtp_update()
 }
 #endif /* USE_MDTP */
 
+#ifdef TARGET_SUPPORTS_MPLANE_SPEC
+int parse_file(xmlNode *objNode,ZipArchive* zip)
+{
+    int ret = 1;
+    xmlChar *name;
+    xmlChar *path;
+
+    name = xmlGetProp(objNode, BAD_CAST "fileName");
+    if(!name) {
+        printf("File name value is missing \n");
+        return 1;
+    }
+    else
+        printf("File name: %s \n", name);
+    if(!xmlStrncmp(name, BAD_CAST "system.img", xmlUTF8Size(name))){
+        printf("Skipping for system image\n");
+        return 0;
+    }
+    if(!xmlStrncmp(name, BAD_CAST "boot.img", xmlUTF8Size(name))){
+        const ZipEntry* find_entry_inside_zip = mzFindZipEntry(zip, (char *) name);
+        if (find_entry_inside_zip == NULL) {
+            printf("failed to find %s in ZipArchive\n", (char *) name);
+            return 1;
+        }
+        return 0;
+    }
+    char buffer[PATH_MAX];
+    snprintf(buffer, PATH_MAX, "%s%s", "firmware-update/", (char *) name);
+    const ZipEntry* find_entry_inside_zip = mzFindZipEntry(zip, buffer);
+    if (find_entry_inside_zip == NULL) {
+        printf("failed to find %s in ZipArchive\n", buffer);
+        return 1;
+    }
+
+    return 0;
+}
+
+
+xmlChar *get_build_id_from_build_node(xmlNode *objNode, ZipArchive* zip)
+{
+    xmlChar *id;
+    id = xmlGetProp(objNode, BAD_CAST "id");
+    if(!id)
+        printf("Build ID value is missing \n");
+    else
+        printf("Build ID: %s \n", id);
+    return id;
+}
+
+xmlChar *get_build_id_from_product_node(xmlNode *objNode)
+{
+    xmlChar *build_Id;
+    build_Id = xmlGetProp(objNode, BAD_CAST "build-Id");
+    if(!build_Id)
+        printf("Product buildId value is missing \n");
+    else
+        printf("Product buildId: %s \n", build_Id);
+   return build_Id;
+}
+int compare_manifest_images_with_update_package_images(xmlNode *objNode,ZipArchive* zip){
+    int ret = 1;
+    xmlNode *filenode = NULL;
+    for(filenode = objNode->children; filenode; filenode = filenode->next)
+    {
+        if (filenode->type != XML_ELEMENT_NODE) {
+            continue;
+        }
+        if (strncmp((const char *)filenode->name, "file", strlen("file")) == 0) {
+            ret = parse_file(filenode, zip);
+            if(ret != 0)
+                return ret;
+        }
+    }
+    return ret;
+}
+
+int validate_manifest(ZipArchive* zip)
+{
+    int product_flag = 0, build_flag = 0, ret = 1;
+    xmlDocPtr doc;
+    xmlNodePtr rootNode = NULL;
+    xmlNodePtr objNode, childNode;
+    char *name = NULL;
+    char *value = NULL;
+    char *build_id_in_product_node = NULL;
+    char *build_id_in_build_node = NULL;
+
+    const ZipEntry* manifest_entry = mzFindZipEntry(zip, MANIFEST_FILE_NAME);
+    if (manifest_entry == NULL) {
+        printf("failed to find %s\n", MANIFEST_FILE_NAME);
+        return 1;
+    }
+    const char* manifest = MANIFEST_FILE_PATH;
+    unlink(manifest);
+    int manifest_fd = creat(manifest, 0644);
+    if (manifest_fd < 0) {
+        printf("%s: Can't make\n", manifest);
+        return 1;
+    }
+    bool ok = mzExtractZipEntryToFile(zip, manifest_entry, manifest_fd);
+    close(manifest_fd);
+    if (!ok) {
+        printf("%s: Can't extract from zip\n", MANIFEST_FILE_PATH);
+        return 1;
+    }
+    printf("start to load xml: %s", MANIFEST_FILE_PATH);
+
+    doc = xmlReadFile(MANIFEST_FILE_PATH, "UTF-8", XML_PARSE_RECOVER);
+    if(NULL == doc) {
+        printf("XML Document not parsed successfully.\n ");
+        return 1;
+    }
+
+    rootNode = xmlDocGetRootElement(doc);
+    if(NULL == rootNode) {
+        printf("Empty XML document \n");
+        xmlFreeDoc(doc);
+        return 1;
+    }
+
+    for(objNode = rootNode->children; objNode; objNode = objNode->next) {
+        if (objNode->type != XML_ELEMENT_NODE) {
+            continue;
+        }
+
+        printf("Parsing element , line %u: name=%s \n", objNode->line, (char*)objNode->name);
+
+        if (strncmp((const char *)objNode->name, "products", strlen("products")) == 0) {
+            for(childNode = objNode->children; childNode; childNode = childNode->next) {
+                if (childNode->type != XML_ELEMENT_NODE)
+                    continue;
+                printf("Parsing element , line %u: name=%s \n",childNode->line, (char*)childNode->name);
+                if (!product_flag && !strncmp((const char *)childNode->name, "product", strlen("product")))
+                {
+                    product_flag = 1;
+                    build_id_in_product_node = (char *) get_build_id_from_product_node(childNode);
+                }
+            }
+        } else if (strncmp((const char *)objNode->name, "builds", strlen("builds")) == 0) {
+            for(childNode = objNode->children; childNode; childNode = childNode->next) {
+                if (childNode->type != XML_ELEMENT_NODE)
+                        continue;
+                printf("Parsing element , line %u: name=%s \n",childNode->line, (char*)childNode->name);
+                if (!build_flag && !strncmp((const char *)childNode->name, "build", strlen("build"))) {
+                    build_flag = 1;
+                    build_id_in_build_node = (char *) get_build_id_from_build_node(childNode,zip);
+                    if(build_id_in_product_node != NULL && build_id_in_build_node != NULL \
+                           && strncmp(build_id_in_product_node, build_id_in_build_node, strlen(build_id_in_build_node)) == 0) {
+                        printf("build_id_in_product_node and build_id_in_build_node is same\n");
+                        ret = compare_manifest_images_with_update_package_images(childNode,zip);
+                        if(ret == 0){
+                            printf("All the images are present inside zip\n");
+                            return 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return ret;
+}
+#endif
 static int
 really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
                        std::vector<std::string>& log_buffer, int retry_count)
@@ -623,7 +789,13 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
         return INSTALL_CORRUPT;
     }
 #endif
-
+#ifdef TARGET_SUPPORTS_MPLANE_SPEC
+    if(validate_manifest(&zip)){
+        printf("Manifest entries or build-id is not correct\n");
+        sysReleaseMap(&map);
+        return INSTALL_CORRUPT;
+    }
+#endif
     // Verify and install the contents of the package.
     ui->Print("Installing update...\n");
     LOGI("Installing update...\n");

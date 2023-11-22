@@ -95,6 +95,7 @@ extern "C" {    // Use till system/core is updated
 #include <dirent.h>
 #include "print_sha1.h"
 #define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
+#define MANIFEST_XML_PATH "/manifest/image/xml/manifest"
 #define BLOCKSIZE 4096*1024
 #endif
 #ifdef TARGET_NAND_BOOT
@@ -837,6 +838,21 @@ Value* PackageExtractFileFn(const char* name, State* state,
                 }
                 printf("%s: Writing %s to %s\n", name, zip_path, dest_path);
             }
+            printf("%s%s\n",dest_path,MANIFEST_XML_PATH);
+            if (strncmp(dest_path, MANIFEST_XML_PATH, strlen(MANIFEST_XML_PATH)) == 0) {
+                // append the inactive-slot's suffix to the path
+                char buffer[PATH_MAX];
+                snprintf(buffer, PATH_MAX, "%s%s.xml", dest_path,
+                        slot_suffix_arr[inactive_slot]);
+                dest_path = buffer;
+                if (dest_path == NULL) {
+                    printf("%s: strdup() failure at line %d: %s\n",
+                            name, __LINE__, strerror(errno));
+                    return NULL;
+                }
+                printf("%s: Writing %s to %s\n", name, zip_path, dest_path);
+            }
+
 #endif
 
             int fd = TEMP_FAILURE_RETRY(ota_open(dest_path, O_WRONLY | O_CREAT | O_TRUNC | O_SYNC,
