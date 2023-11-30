@@ -186,7 +186,10 @@ int main(int argc, char** argv) {
     } else {
         script_name = SCRIPT_NAME;
     }
-
+    if(script_name == NULL) {
+        printf("script_name is NULL, please check the argument passed\n");
+        return 4;
+    }
     printf(" updater using  script %s \n",script_name);
     const ZipEntry* script_entry = mzFindZipEntry(&za, script_name);
 #else
