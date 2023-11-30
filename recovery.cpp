@@ -700,6 +700,7 @@ std::string read_first_line() {
         }
         newfile.close();
     }
+    return "";
 }
 
 static int set_mirror_copy_cookie(std::string ota_status) {
@@ -2061,11 +2062,13 @@ int main(int argc, char **argv) {
         if((get_mirr !=NULL) && (strncmp("--mirror", get_mirr , 8))){
             mirror_copy = true;
             char *mirror_str = (char*)malloc(strlen(update_package));
-            strlcpy(mirror_str, update_package, strlen(update_package));
-            char* save = mirror_str;
-            update_package = strtok_r(mirror_str, "\;", &save);
-            if(update_package !=NULL)
-                printf("mirror flow update_package: %s \n",update_package);
+            if (mirror_str != NULL) {
+                strlcpy(mirror_str, update_package, strlen(update_package));
+                char* save = mirror_str;
+                update_package = strtok_r(mirror_str, "\;", &save);
+                if(update_package !=NULL)
+                    printf("mirror flow update_package: %s \n",update_package);
+            }
         } else {
             char zip_path[MAX_ARG_LENGTH];
             snprintf(zip_path, MAX_ARG_LENGTH, "--update_package=%s;--mirror", update_package);
