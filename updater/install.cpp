@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ *Changes from Qualcomm Innovation Center are provided under the following license:
+ *Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ *SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <ctype.h>
@@ -261,11 +265,10 @@ Volume* volume_for_path(const char* path) {
 }
 
 // Execute command
-int exec_command(FILE *logfd, const char *name, char *const args[]) {
+int exec_command(FILE *logfd, const char *name, char *const args[], size_t size) {
     int status = -1;
     int i;
     pid_t pid;
-    size_t size = 0;
 
     pid = fork();
     if (pid == -1) {
@@ -273,7 +276,6 @@ int exec_command(FILE *logfd, const char *name, char *const args[]) {
         goto cleanup;
     } else if (pid == 0) {
         fprintf(logfd, "ui_print executing \'%s\'", name);
-        size = sizeof(args)/sizeof(args[0]);
         for (i = 0; i < size; i++) {
             if (args[i]) {
                 fprintf(logfd, "ui_print %s", args[i]);
@@ -519,6 +521,7 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* location;
     char* fs_size;
     char* mount_point;
+    size_t size = 0;
 
     if (ReadArgs(state, argv, 5, &fs_type, &partition_type, &location, &fs_size, &mount_point) < 0) {
         return NULL;
@@ -581,7 +584,8 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
             goto done;
         }
         char *argv[] = {"mkfs.ubifs", "-y", v->blk_device, 0};
-        if (exec_command(ui->cmd_pipe, "/usr/sbin/mkfs.ubifs", argv) != 0) {
+        size = sizeof(argv)/sizeof(argv[0]);
+        if (exec_command(ui->cmd_pipe, "/usr/sbin/mkfs.ubifs", argv, size) != 0) {
             fprintf(stderr, "%s: failed to create ubifs volume \"%s\"", name, location);
             fprintf(ui->cmd_pipe, "ui_print %s: failed to format ubifs volume \"%s\"\n", name, location);
             result = strdup("");
@@ -627,7 +631,8 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
             goto done;
         }
         char *argv[] = {"mkfs.ext4", "-b", "4096", "-O", "extent,uninit_bg,dir_index,has_journal,sparse_super", v->blk_device, 0};
-        if (exec_command(ui->cmd_pipe, "/sbin/mkfs.ext4", argv) != 0) {
+        size = sizeof(argv)/sizeof(argv[0]);
+        if (exec_command(ui->cmd_pipe, "/sbin/mkfs.ext4", argv, size) != 0) {
             fprintf(stderr, "%s: failed to create ext4 filesystem \"%s\"", name, location);
             fprintf(ui->cmd_pipe, "ui_print %s: failed to format ubifs volume \"%s\"\n", name, location);
             result = strdup("");
@@ -2423,6 +2428,7 @@ Value* copyActiveRootfsToInactiveRootfs(const char* name, State* state, int argc
         return ErrorAbort(state, kArgsParsingFailure,
                 "%s() expects no args, got %d", name, argc);
     }
+    size_t size = 0;
     char inactive_rootfs_volume[ROOTFS_NAME_LENGTH];
     snprintf(inactive_rootfs_volume, ROOTFS_NAME_LENGTH, "%s%s", "rootfs",
             slot_suffix_arr[inactive_slot]);
@@ -2432,6 +2438,10 @@ Value* copyActiveRootfsToInactiveRootfs(const char* name, State* state, int argc
             slot_suffix_arr[boot_slot]);
     printf("copying %s to %s\n", active_rootfs_volume, inactive_rootfs_volume);
     char *active_mtd_block = getMtdBlock(active_rootfs_volume);
+    if(inactive_mtd_block == NULL || active_mtd_block == NULL) {
+        printf("copyActiveRootfsToInactiveRootfs: inactive_mtd_block or active_mtd_block is NULL \n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     snprintf(in_file, PATH_MAX, "%s%s", "if=", active_mtd_block);
     printf("Active rootfs mtd block: %s\n", in_file);
@@ -2439,7 +2449,8 @@ Value* copyActiveRootfsToInactiveRootfs(const char* name, State* state, int argc
     printf("Inactive rootfs mtd block: %s\n", out_file);
     char *args[] = {"dd", in_file, out_file, 0};
     UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
-    if (exec_command(ui->cmd_pipe, "/bin/dd", args) != 0) {
+    size = sizeof(args)/sizeof(args[0]);
+    if (exec_command(ui->cmd_pipe, "/bin/dd", args, size) != 0) {
         fprintf(stderr, "can not copy rootfs");
         fprintf(ui->cmd_pipe, "can not copy rootfs");
         return StringValue(strdup(""));
@@ -2462,6 +2473,10 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
             slot_suffix_arr[boot_slot]);
     printf("copying %s to %s\n", active_boot_partition, inactive_boot_partition);
     char *active_boot_mtd_block = getMtdBlock(active_boot_partition);
+    if(inactive_boot_mtd_block == NULL || active_boot_mtd_block == NULL) {
+        printf("copyBootPartitionToInActiveSlot: inactive_boot_mtd_block or active_boot_mtd_block is NULL \n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     snprintf(in_file, PATH_MAX, "%s%s", "active boot=", active_boot_mtd_block);
     printf("Active boot mtd block: %s\n", in_file);
@@ -2493,6 +2508,10 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
 
     success = true;
     char* buffer = reinterpret_cast<char*>(malloc(BUFSIZ));
+    if(buffer == NULL) {
+        printf(" can't allocate bytes to buffer\n");
+        return StringValue(strdup(""));
+    }
     int read;
     while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
         int wrote = mtd_write_data(ctx, buffer, read);
@@ -2523,6 +2542,7 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
         return ErrorAbort(state, kArgsParsingFailure,
                 "%s() expects no args, got %d", name, argc);
     }
+    size_t size = 0;
     char inactive_nonhlos_volume[PATH_MAX];
     snprintf(inactive_nonhlos_volume, PATH_MAX, "%s%s", "nonhlos-fs",
             slot_suffix_arr[inactive_slot]);
@@ -2532,6 +2552,10 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
             slot_suffix_arr[boot_slot]);
     printf("copying %s to %s\n", active_nonhlos_volume, inactive_nonhlos_volume);
     char *active_mtd_block = getMtdBlock(active_nonhlos_volume);
+    if(active_mtd_block == NULL || inactive_mtd_block == NULL) {
+        printf("copyActiveNonHlosToInactiveNonHlos: inactive_boot_mtd_block or active_boot_mtd_block is NULL \n");
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     snprintf(in_file, PATH_MAX, "%s%s", "if=", active_mtd_block);
     printf("Active nonhlos mtd block: %s\n", in_file);
@@ -2539,7 +2563,8 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
     printf("Inactive nonhlos mtd block: %s\n", out_file);
     char *args[] = {"dd", in_file, out_file, 0};
     UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
-    if (exec_command(ui->cmd_pipe, "/bin/dd", args) != 0) {
+    size = sizeof(args)/sizeof(args[0]);
+    if (exec_command(ui->cmd_pipe, "/bin/dd", args, size) != 0) {
         fprintf(stderr, "can not copy NonHlos");
         fprintf(ui->cmd_pipe, "can not copy NonHlos");
         return StringValue(strdup(""));
@@ -2717,6 +2742,7 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
         return ErrorAbort(state, kArgsParsingFailure,
                 "%s() expects no args, got %d", name, argc);
     }
+    size_t size = 0;
     UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
     ZipArchive* zip = ui->package_zip;
     //Extract system image
@@ -2742,14 +2768,16 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
     printf("Extracting Rootfs volume is successful\n");
 
     char *args_erase[] = {"ubiupdatevol", ROOTFS_VOLUME, "-t", 0};
-    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_erase) != 0) {
+    size = sizeof(args_erase)/sizeof(args_erase[0]);
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_erase, size) != 0) {
         printf("%s: Couldn't erase Rootfs volume\n", name);
         return StringValue(strdup(""));
     }
     printf("Erasing of Rootfs volume is successful\n");
 
     char *args_update[] = {"ubiupdatevol", ROOTFS_VOLUME, SYSTEM_ROOTFS, 0};
-    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_update) != 0) {
+    size = sizeof(args_update)/sizeof(args_update[0]);
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_update, size) != 0) {
         printf("%s: Couldn't update Rootfs volume\n", name);
         return StringValue(strdup(""));
     }
