@@ -53,6 +53,10 @@ extern bool modified_flash;
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
 extern bool mirror_copy;
 #endif
+#ifdef TARGET_NAD_OTA
+extern bool post_install_verify;
+extern bool pre_install_verify;
+#endif
 
 typedef struct fstab_rec Volume;
 

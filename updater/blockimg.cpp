@@ -77,6 +77,10 @@
 int get_boot_dev_type();
 #else
 #include <nad-ab-al.h>
+#define FIRMWARE_VERSION_FILE "/firmware/image/Ver_Info.txt"
+#define MAX_VERSION_STR_BYTES 101
+#define BUILD_VERSION_FILE "/etc/version"
+#define LEGATO_VERSION_FILE "/legato/systems/current/version"
 #endif
 #endif
 #ifdef TARGET_NAND_BOOT
@@ -2295,7 +2299,155 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     printf ("erase operation complete \n");
     return StringValue(strdup("t"));
 }
+
+// read META build id from Ver_info.txt
+static int read_firmware_version() {
+    int version = -1;
+    FILE* firmware_fp = fopen(FIRMWARE_VERSION_FILE, "r");
+    if (firmware_fp != NULL) {
+      char *firmware_buf = (char*)malloc(4096);
+      std::vector<std::string> out;
+      while ((fgets(firmware_buf, 4096, firmware_fp)) != NULL) {
+        std::string firmware_str( firmware_buf);
+        if(firmware_str.find("Meta_Build_ID") !=  std::string::npos){
+          printf(" found META Build ID %s \n", firmware_buf);
+          size_t pos;
+          while ((pos = firmware_str.find("-")) != std::string::npos){
+            std::string token = firmware_str.substr(0, pos);
+            firmware_str.erase(0, pos + 1);
+            out.push_back(std::string(token));
+          }
+          const char *firmware_ver_str = (out.at(1)).c_str();
+          version = atoi(firmware_ver_str);
+          printf(" firmware version %d \n", version);
+          break;
+        }
+    }
+    free(firmware_buf);
+  }
+  fclose(firmware_fp);
+  return version;
+}
+
+// read build version from etc/version
+static int read_rootfs_version()
+{
+  int version = -1;
+  FILE* rootfs_fp = fopen(BUILD_VERSION_FILE, "r");
+  if (rootfs_fp != NULL) {
+    char *rootfs_buf = (char*)malloc(4096);
+    size_t bytes;
+    while ((fgets(rootfs_buf, 4096, rootfs_fp)) != NULL) {
+      std::string rootfs_str(rootfs_buf);
+      size_t pos = 0;
+      std::string token;
+
+      std::vector<std::string> out;
+      while ((pos = rootfs_str.find(".")) != std::string::npos){
+        token = rootfs_str.substr(0, pos);
+        rootfs_str.erase(0, pos + 1);
+        out.push_back(std::string(token));
+      }
+      out.push_back(std::string(rootfs_str));
+      std::string rootfs_version = out.at(out.size()-2) + out.at(out.size()-1);
+      const char *rootfs_ver_str = rootfs_version.c_str();
+      version = atoi(rootfs_ver_str);
+      printf(" rootfs version %d \n", version);
+      break;
+    }
+    free(rootfs_buf);
+  }
+  fclose(rootfs_fp);
+  return version;
+}
+
+// read telaf version from /legato/systems/current/version
+static int read_telaf_version()
+{
+    int version = -1;
+    char versionBuffer[MAX_VERSION_STR_BYTES];
+    char* telaf_ver = (char*) malloc(7*sizeof(char));
+    FILE* versionFile = NULL;
+
+    do
+    {
+      versionFile = fopen(LEGATO_VERSION_FILE, "r");
+    }while ((versionFile != NULL)&&(errno == EINTR));
+
+    if (versionFile == NULL){
+      printf("Could not open Telaf version file.");
+      if (fgets(versionBuffer, MAX_VERSION_STR_BYTES, versionFile) != NULL){
+        char* verStart = strchr(versionBuffer, '-');
+        memcpy(telaf_ver, verStart, 6);
+        const char* out = ++telaf_ver;
+        version = atoi(out);
+        printf(" Telaf version is, '%d'.", version);
+      } else {
+        printf("Could not read Telaf version.");
+      }
+    }
+    fclose(versionFile);
+    free(telaf_ver);
+    return version;
+}
+
+Value* BlockPreCheckVersion(const char* name, State* state, int argc, Expr* argv[]) {
+    Value* blockdev_filename = nullptr;
+    Value* blockdev_num = nullptr;
+    char buf[PATH_MAX];
+    int ret;
+    size_t version;
+    if (ReadValueArgs(state, argv, 2, &blockdev_filename, &blockdev_num) < 0) {
+        return StringValue(strdup(""));
+    }
+    printf ("BlockPreCheckVersion \n");
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_filename_holder(blockdev_filename,
+            FreeValue);
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_num_holder(blockdev_num,
+            FreeValue);
+
+    if (blockdev_filename->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_filename argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+    if (blockdev_num->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_num argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+    version = atoi(blockdev_num->data);
+
+    if(blockdev_filename->data == NULL) {
+        printf("BlockEraseFn: blockdev_filename_data is NULL\n");
+        return StringValue(strdup(""));
+    }
+
+    if (strncmp(blockdev_filename->data, SYSTEM_PATH, strlen(SYSTEM_PATH)) == 0){
+      if (version < read_rootfs_version()){
+        printf("BlockPreCheckVersion: rootfs version will be downgraded with this update \n");
+        return StringValue(strdup(""));
+      }
+    }
+
+    if (strncmp(blockdev_filename->data, TELAF_PATH, strlen(TELAF_PATH)) == 0){
+      if (version < read_telaf_version()){
+        printf("BlockPreCheckVersion: telaf version will be downgraded with this update \n");
+        return StringValue(strdup(""));
+      }
+    }
+
+    if (strncmp(blockdev_filename->data, MODEM_PATH, strlen(MODEM_PATH)) == 0){
+      if (version < read_firmware_version()){
+        printf("BlockPreCheckVersion: firmware version will be downgraded with this update \n");
+        return StringValue(strdup(""));
+      }
+    }
+
+    return StringValue(strdup("t"));
+}
 #endif
+
 void RegisterBlockImageFunctions() {
     RegisterFunction("block_image_verify", BlockImageVerifyFn);
     RegisterFunction("block_image_update", BlockImageUpdateFn);
@@ -2306,5 +2458,6 @@ void RegisterBlockImageFunctions() {
     RegisterFunction("range_sha1", RangeSha1Fn);
 #ifdef TARGET_NAD_OTA
     RegisterFunction("block_erase", BlockEraseFn);
+    RegisterFunction("pre_check_version", BlockPreCheckVersion);
 #endif
 }

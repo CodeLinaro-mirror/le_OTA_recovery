@@ -62,7 +62,10 @@ extern void Register_librecovery_updater_msm();
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
 #define MIRROR_SCRIPT_NAME "META-INF/com/google/android/updater-mirror-script"
 #endif
-
+#ifdef TARGET_NAD_OTA
+#define POST_INSTALL_SCRIPT_NAME "META-INF/com/google/android/updater-post-install-script"
+#define PRE_INSTALL_SCRIPT_NAME "META-INF/com/google/android/updater-pre-check-version-script"
+#endif
 
 extern bool have_eio_error;
 
@@ -190,7 +193,23 @@ int main(int argc, char** argv) {
     printf(" updater using  script %s \n",script_name);
     const ZipEntry* script_entry = mzFindZipEntry(&za, script_name);
 #else
+#ifdef TARGET_NAD_OTA
+    char* script_name = NULL;
+    if (argv[4] != NULL) {
+        if (strcmp(argv[4], "post_install_verify") == 0)
+        {
+            script_name = POST_INSTALL_SCRIPT_NAME;
+        } else if (strcmp(argv[4], "pre_install_verify") == 0) {
+            script_name = PRE_INSTALL_SCRIPT_NAME;
+        }
+    } else {
+        script_name = SCRIPT_NAME;
+    }
+    printf(" updater using  script %s \n",script_name);
+    const ZipEntry* script_entry = mzFindZipEntry(&za, script_name);
+#else
     const ZipEntry* script_entry = mzFindZipEntry(&za, SCRIPT_NAME);
+#endif
 #endif
     if (script_entry == NULL) {
         printf("failed to find %s in %s\n", SCRIPT_NAME, package_filename);
