@@ -1,0 +1,44 @@
+<?xml version="1.0" ?>
+<xml>
+
+
+<products>
+
+<product vendor="Qualcomm" code="08188201" name="RUXX.x11" build-Id="1"/>
+
+</products>
+
+<builds>
+
+<build id="1" bldName="Lassen_RU.LE.1.1-00042.01-STD.INT-1" bldVersion="1.0">
+
+
+<file fileName="aop.mbn" path="aop_proc/build/ms/bin/AAAAANAAO/lassen/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="aop_devcfg.mbn" path="aop_proc/build/ms/bin/AAAAANAAO/lassen/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="abl_userdebug.elf" path="apps_proc/build-qti-distro-base-debug/tmp-glibc/deploy/images/cinder/qti-csm-image/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="boot.img" path="apps_proc/build-qti-distro-base-debug/tmp-glibc/deploy/images/cinder/qti-csm-image/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="system.img" path="apps_proc/build-qti-distro-base-debug/tmp-glibc/deploy/images/cinder/qti-csm-image/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="shrm.elf" path="boot_images/boot/QcomPkg/SocPkg/Lassen/Bin/LE/DEBUG/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="uefi.elf" path="boot_images/boot/QcomPkg/SocPkg/Lassen/Bin/LE/DEBUG/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="xbl_config.elf" path="boot_images/boot/QcomPkg/SocPkg/Lassen/Bin/LE/DEBUG/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="xbl_ramdump.elf" path="boot_images/boot/QcomPkg/SocPkg/Lassen/Bin/LE/DEBUG/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="xbl_s.melf" path="boot_images/boot/QcomPkg/SocPkg/Lassen/Bin/LE/DEBUG/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="multi_image.mbn" path="common/build/bin/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="Core_NON-HLOS.bin" path="common/build/emmc/bin/asic/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="NON-HLOS.bin" path="common/build/emmc/bin/asic/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="multi_image_qti.mbn" path="common/config/qti_misc/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="qupv3fw.elf" path="common/core_qupv3fw/Lassen/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="fw_csm_gsi_3.0.elf" path="common/datacsm.gsifw/fw_1.0/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="cpucp.elf" path="cpucp_proc/lassen/cpucp/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="km41.mbn" path="qtee_tas/build/ms/bin/SAJAANAA/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="devcfg.mbn" path="trustzone_images/build/ms/bin/SAJAANAA/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="hypvm.mbn" path="trustzone_images/build/ms/bin/SAJAANAA/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="tz.mbn" path="trustzone_images/build/ms/bin/SAJAANAA/" checksum="AEE00C" fileVersion="1.0"/>
+</build>
+
+
+</builds>
+
+
+
+</xml>
