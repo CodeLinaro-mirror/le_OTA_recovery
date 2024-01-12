@@ -844,7 +844,7 @@ Value* PackageExtractFileFn(const char* name, State* state,
                 char buffer[PATH_MAX];
                 snprintf(buffer, PATH_MAX, "%s%s.xml", dest_path,
                         slot_suffix_arr[inactive_slot]);
-                dest_path = buffer;
+                dest_path = strdup(buffer);
                 if (dest_path == NULL) {
                     printf("%s: strdup() failure at line %d: %s\n",
                             name, __LINE__, strerror(errno));
