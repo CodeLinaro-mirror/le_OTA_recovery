@@ -37,6 +37,10 @@ PKG_CHECK_MODULES([LIBSELINUX], [libselinux])
 AC_SUBST([LIBSELINUX_CFLAGS])
 AC_SUBST([LIBSELINUX_LIBS])
 
+PKG_CHECK_MODULES([XML2], [libxml-2.0])
+AC_SUBST([XML2_CFLAGS])
+AC_SUBST([XML2_LIBS])
+
 # Checks for typedefs, structures, and compiler characteristics.
 AC_HEADER_STDBOOL
 AC_C_INLINE

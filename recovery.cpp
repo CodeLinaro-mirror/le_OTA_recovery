@@ -2102,7 +2102,7 @@ int main(int argc, char **argv) {
         if(ota_status != nullptr) {
             set_ota_cookie(ota_status);
 #ifdef TARGET_SUPPORTS_MPLANE_SPEC
-            set_mplane_ota_cookie(strdup("STARTED"));
+            set_mplane_ota_cookie("STARTED");
 #endif
         }
     }
@@ -2375,19 +2375,19 @@ error:
 #ifdef TARGET_SUPPORTS_MPLANE_SPEC
     switch (status) {
         case INSTALL_SUCCESS:
-            set_mplane_ota_cookie(strdup("COMPLETED"));
+            set_mplane_ota_cookie("COMPLETED");
             break;
 
         case INSTALL_ERROR:
-            set_mplane_ota_cookie(strdup("FILE_ERROR"));
+            set_mplane_ota_cookie("FILE_ERROR");
             break;
 
         case INSTALL_CORRUPT:
-            set_mplane_ota_cookie(strdup("INTEGRITY_ERROR"));
+            set_mplane_ota_cookie("INTEGRITY_ERROR");
             break;
 
         default:
-            set_mplane_ota_cookie(strdup("APPLICATION_ERROR"));
+            set_mplane_ota_cookie("APPLICATION_ERROR");
             break;
     }
 #endif
