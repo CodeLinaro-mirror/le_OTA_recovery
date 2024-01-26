@@ -122,6 +122,10 @@ int main(int argc, char** argv) {
 
     int fd = atoi(argv[2]);
     FILE* cmd_pipe = fdopen(fd, "wb");
+    if(cmd_pipe == NULL) {
+       printf("cmd_pipe is NULL so aborting!\n");
+       return 2;
+    }
     setlinebuf(cmd_pipe);
 
 #ifdef TARGET_SUPPORTS_AB
@@ -131,7 +135,6 @@ int main(int argc, char** argv) {
 #else
     printf (" call nadabctl \n");
     boot_slot = libnadab_get_boot_slot();
-    
 #endif
     if (boot_slot == -1) {
         printf("That's odd.. I was told that A/B boot support be present\n"
