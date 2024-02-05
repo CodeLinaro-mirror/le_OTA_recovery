@@ -1968,6 +1968,19 @@ int main(int argc, char **argv) {
     has_cache = volume_for_path(CACHE_ROOT) != nullptr;
 #endif
 
+#ifdef TARGET_NAD_OTA
+#ifdef TARGET_SUPPORTS_AB
+    struct stat stats;
+    stat(CACHE_LOG_DIR, &stats);
+    if (S_ISDIR(stats.st_mode)){
+      printf(" recovery folder exist \n");
+    }else{
+      printf(" recovery folder doesnt exist, create folder  \n");
+      mkdir(CACHE_LOG_DIR, 0664);
+    }
+#endif
+#endif
+
     get_args(&argc, &argv);
 
     const char *send_intent = NULL;
