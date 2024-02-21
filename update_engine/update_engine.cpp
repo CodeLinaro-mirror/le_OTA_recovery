@@ -1,14 +1,11 @@
 /**********************************************************
-Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
 SPDX-License-Identifier: BSD-3-Clause-Clear
 *********************************************************/
 
 #include <android/log.h>
 #include <errno.h>
 #include <fcntl.h>
-#ifdef TARGET_SUPPORTS_AB
-#include <libabctl.h>
-#endif
 #include <log/logger.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +24,14 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 static const char *ABC_OTA_STATUS_COOKIE_FILE =
     "/cache/recovery/abc_ota_status";
 static const char *TEMPORARY_LOG_FILE = "/cache/recovery/update_engine.log";
+#ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
+#include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
+#endif
+static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/cache/recovery/mirror_copy_status";
 static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
 static const int MAX_ARG_LENGTH = 4096;
 
@@ -136,7 +141,11 @@ int main() {
         ota_status = last_line_split[1];
         slot_from_ota_status = last_line_split[2];
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
         boot_slot = libabctl_getBootSlot();
+#else
+        boot_slot = libnadab_get_boot_slot();
+#endif
 #endif
         boot_slot_from_ota_status = slot_from_ota_status[0] - '0';
         ota_started_slot_str = first_line_split[2];
