@@ -2191,6 +2191,13 @@ error:
     } else {
         set_nad_ota_cookie(" OTA_FAIL ");
     }
+#else
+   ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
+    if (IS_LE_MODE() && ota_status != nullptr) {
+        printf("Write OTA status to OTA cookie %s\n", ota_status);
+        set_ota_cookie(ota_status);
+    }
+    printf("OTA status %d\n", get_ota_status());
 #endif
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
