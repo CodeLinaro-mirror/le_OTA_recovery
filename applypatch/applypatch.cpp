@@ -38,6 +38,19 @@
 #include "ota_io.h"
 #include "print_sha1.h"
 
+
+#ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
+#include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
+#include <limits.h>
+static int boot_slot;
+static int inactive_slot;
+static const char* slot_suffix_arr[] = {"_a", "_b", NULL};
+#endif
+
 static int LoadPartitionContents(const char* filename, FileContents* file);
 static ssize_t FileSink(const unsigned char* data, ssize_t len, void* token);
 static int GenerateTarget(FileContents* source_file,
@@ -156,7 +169,40 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
                 mtd_partitions_scanned = true;
             }
 
+#ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
+            boot_slot = libabctl_getBootSlot();
+#else
+            boot_slot = libnadab_get_boot_slot();
+#endif
+            if (boot_slot == -1) {
+              printf("That's odd.. I was told that A/B boot support be present\n"
+                "But libabctl_getBootSlot() returned -1, aborting!\n");
+              return 1;
+            }
+            // Set the inactive slot to the non-boot slot (1->0, 0->1)
+            inactive_slot = (boot_slot + 1)%2;
+            printf("boot_slot = %s, inactive_slot = %s\n", slot_suffix_arr[boot_slot],
+            slot_suffix_arr[inactive_slot]);
+
+            printf(" get inactive slot for partition and append it to this partition %s \n",partition);
+            char buff[PATH_MAX];
+            snprintf(buff, PATH_MAX, "%s%s", partition, slot_suffix_arr[inactive_slot]);
+
+            printf("Inactive partition: %s\n", buff);
+            const MtdPartition* mtd = mtd_find_partition_by_name(buff);
+#ifdef TARGET_NAD_OTA
+            // this condition is to make sure we try partition without _a/_b suffix
+            // for e.g. if a partition with name "sbl_a"/"sbl_b" does not exist
+            // then try to update the partition with name "sbl"
+            if(mtd == NULL) {
+                printf("partition %s not found, search without slot suffix\n", buff);
+                mtd = mtd_find_partition_by_name(partition);
+            }
+#endif
+#else
             const MtdPartition* mtd = mtd_find_partition_by_name(partition);
+#endif
             if (mtd == NULL) {
                 printf("mtd partition \"%s\" not found (loading %s)\n", partition, filename);
                 return -1;
@@ -333,7 +379,25 @@ int WriteToPartition(const unsigned char* data, size_t len, const char* target) 
                 mtd_partitions_scanned = true;
             }
 
+#ifdef TARGET_SUPPORTS_AB
+            printf(" get inactive slot for partition and append it to this partition %s \n",partition);
+            char buff[PATH_MAX];
+            snprintf(buff, PATH_MAX, "%s%s", partition, slot_suffix_arr[inactive_slot]);
+
+            printf("Inactive partition: %s\n", buff);
+            const MtdPartition* mtd = mtd_find_partition_by_name(buff);
+#ifdef TARGET_NAD_OTA
+            // this condition is to make sure we try partition without _a/_b suffix
+            // for e.g. if a partition with name "sbl_a"/"sbl_b" does not exist
+            // then try to update the partition with name "sbl"
+            if(mtd == NULL) {
+                printf("partition %s not found, search without slot suffix\n", buff);
+                mtd = mtd_find_partition_by_name(partition);
+            }
+#endif
+#else
             const MtdPartition* mtd = mtd_find_partition_by_name(partition);
+#endif
             if (mtd == NULL) {
                 printf("mtd partition \"%s\" not found for writing\n", partition);
                 return -1;

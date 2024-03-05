@@ -43,12 +43,24 @@ update_engine_CFLAGS = $(AM_CFLAGS)
 update_engine_CPPFLAGS = $(AM_CPPFLAGS)
 endif
 
+if TARGET_NAD_OTA
+update_engine_CPPFLAGS += -DTARGET_NAD_OTA
+endif
+
 if TARGET_SUPPORTS_AB
 update_engine_CPPFLAGS += -DTARGET_SUPPORTS_AB
+if TARGET_NAD_OTA
+update_engine_LDADD = -lnad_ab_al
+else
 update_engine_LDADD = -labctl
+endif
 endif
 
 if TARGET_SUPPORTS_ABC
 update_engine_CPPFLAGS += -DTARGET_SUPPORTS_ABC
+if TARGET_NAD_OTA
+update_engine_LDADD = -lnad_ab_al
+else
 update_engine_LDADD = -labctl
+endif
 endif
