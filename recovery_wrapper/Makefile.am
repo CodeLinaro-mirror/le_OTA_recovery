@@ -45,6 +45,14 @@ endif
 
 if TARGET_SUPPORTS_AB
 recovery_wrapper_CPPFLAGS += -DTARGET_SUPPORTS_AB
+if TARGET_NAD_OTA
+recovery_wrapper_LDADD = -lnad_ab_al
+else
 recovery_wrapper_LDADD = -labctl
+endif
+endif
+
+if TARGET_NAD_OTA
+recovery_wrapper_CPPFLAGS += -DTARGET_NAD_OTA
 endif
 

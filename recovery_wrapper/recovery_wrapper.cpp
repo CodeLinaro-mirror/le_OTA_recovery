@@ -1,5 +1,5 @@
 /**********************************************************
-Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
 SPDX-License-Identifier: BSD-3-Clause-Clear
 *********************************************************/
 
@@ -9,7 +9,11 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 
 #include <iostream>
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #endif
 using namespace std;
 
@@ -62,7 +66,9 @@ int main(int argc, char **argv) {
         cout << "Received boot_successful\n";
         int ret=-1;
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
         ret = libabctl_SetBootSuccess();
+#endif
 #endif
         if (ret == 0) {
             std::cout << "Marked bootsuccessful\n";
