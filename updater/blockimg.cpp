@@ -88,6 +88,7 @@ int get_boot_dev_type();
 #define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
 #define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
 #define VMBOOTSYS_PATH "/dev/block/bootdevice/by-name/vm-bootsys"
+#define LXCROOTFS_PATH "/dev/block/bootdevice/by-name/lxcrootfs"
 #include <mtd/mtd-user.h>
 #endif
 
@@ -1513,6 +1514,29 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
+    else if (strncmp(blockdev_filename->data, LXCROOTFS_PATH, len) == 0) {
+        char lxcrootfs_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isABVolumes()) {
+            snprintf(lxcrootfs_volume, PATH_MAX, "%s%s", "lxcrootfs", slot_suffix_arr[inactive_slot]);
+            printf("Inactive lxcrootfs volume: %s\n", lxcrootfs_volume);
+        } else {
+            snprintf(lxcrootfs_volume, PATH_MAX, "%s", "lxcrootfs");
+            printf("lxcrootfs_volume: %s\n", lxcrootfs_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(lxcrootfs_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", lxcrootfs_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              lxcrootfs_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
 #ifdef TARGET_NAND_BOOT
     else if (strncmp(blockdev_filename->data, TELAF_PATH, strlen(TELAF_PATH)) == 0) {
         char telaf_volume[PATH_MAX];
@@ -1844,6 +1868,8 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
       snprintf(part_name, sizeof(part_name), "%s", " telaf ");
     } else if(strncmp(part_name, VMBOOTSYS_PATH, strlen(VMBOOTSYS_PATH)) == 0) {
       snprintf(part_name, sizeof(part_name), "%s", " vm-bootsys ");
+    } else if(strncmp(part_name, LXCROOTFS_PATH, strlen(LXCROOTFS_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " lxcrootfs ");
     } else {
       snprintf(part_name, sizeof(part_name), "%s", " ");
     }
