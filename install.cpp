@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- *Changes from Qualcomm Innovation Center are provided under the following license:
- *Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
- *SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <ctype.h>
@@ -540,6 +540,7 @@ static int
 really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
                        std::vector<std::string>& log_buffer, int retry_count)
 {
+    LOGI("really_install_package\n");
     ui->SetBackground(RecoveryUI::INSTALLING_UPDATE);
     ui->Print("Finding update package...\n");
     // Give verification half the progress bar...
@@ -614,6 +615,8 @@ int
 install_package(const char* path, bool* wipe_cache, const char* install_file,
                 bool needs_mount, int retry_count)
 {
+
+    LOGI(" install_package\n");
     modified_flash = true;
     auto start = std::chrono::system_clock::now();
 
