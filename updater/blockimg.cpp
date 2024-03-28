@@ -2236,13 +2236,6 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
         return StringValue(strdup(""));
     }
     image_size = atoi(blockdev_num->data);
-    // check if  8+8 and recoveryfs
-    if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
-        printf(" recoveryfs update only performed on 4+4 \n");
-        if(isABVolumes()) {
-            return StringValue(strdup("t"));
-        }
-    }
 
 #ifdef TARGET_NAND_BOOT
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
