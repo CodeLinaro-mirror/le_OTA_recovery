@@ -15,6 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -42,7 +47,11 @@
 
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #include <limits.h>
 static int boot_slot;
 static int inactive_slot;
@@ -169,7 +178,11 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
             }
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
             boot_slot = libabctl_getBootSlot();
+#else
+            boot_slot = libnadab_get_boot_slot();
+#endif
             if (boot_slot == -1) {
               printf("That's odd.. I was told that A/B boot support be present\n"
                 "But libabctl_getBootSlot() returned -1, aborting!\n");
@@ -186,6 +199,15 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
 
             printf("Inactive partition: %s\n", buff);
             const MtdPartition* mtd = mtd_find_partition_by_name(buff);
+#ifdef TARGET_NAD_OTA
+            // this condition is to make sure we try partition without _a/_b suffix
+            // for e.g. if a partition with name "sbl_a"/"sbl_b" does not exist
+            // then try to update the partition with name "sbl"
+            if(mtd == NULL) {
+                printf("partition %s not found, search without slot suffix\n", buff);
+                mtd = mtd_find_partition_by_name(partition);
+            }
+#endif
 #else
             const MtdPartition* mtd = mtd_find_partition_by_name(partition);
 #endif
@@ -372,6 +394,15 @@ int WriteToPartition(const unsigned char* data, size_t len, const char* target) 
 
             printf("Inactive partition: %s\n", buff);
             const MtdPartition* mtd = mtd_find_partition_by_name(buff);
+#ifdef TARGET_NAD_OTA
+            // this condition is to make sure we try partition without _a/_b suffix
+            // for e.g. if a partition with name "sbl_a"/"sbl_b" does not exist
+            // then try to update the partition with name "sbl"
+            if(mtd == NULL) {
+                printf("partition %s not found, search without slot suffix\n", buff);
+                mtd = mtd_find_partition_by_name(partition);
+            }
+#endif
 #else
             const MtdPartition* mtd = mtd_find_partition_by_name(partition);
 #endif
@@ -871,7 +902,7 @@ static int GenerateTarget(FileContents* source_file,
 
             // We still write the original source to cache, in case
             // the partition write is interrupted.
-#ifndef TARGET_NAD_PROD
+#ifndef TARGET_NAD_OTA
             if (MakeFreeSpaceOnCache(source_file->data.size()) < 0) {
                 printf("not enough free space on /cache\n");
                 return 1;

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 /* Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -34,7 +34,12 @@
 #include "common.h"
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#include <limits.h>
+#endif
 const char* slot_suffix_arr[] = {"_a", "_b", NULL};
 #else
 const char* slot_suffix_arr[] = {"", "", ""};
@@ -62,6 +67,25 @@ extern void Register_librecovery_updater_msm();
 extern bool have_eio_error;
 
 struct selabel_handle *sehandle;
+
+#ifdef TARGET_NAD_OTA
+int set_nad_update_status( const char * value ) {
+    FILE* status_fp = fopen(NAD_UPDATE_STATUS, "a+");
+    if (status_fp != nullptr) {
+        char buf[PATH_MAX];
+        snprintf(buf, PATH_MAX, "%s", value);
+        size_t bytes;
+        fwrite(buf, 1, 8, status_fp);
+        fflush(status_fp);
+        if (ferror(status_fp)) printf("Error in %s\n(%s)\n", NAD_UPDATE_STATUS, strerror(errno));
+        fclose(status_fp);
+        return 0;
+    } else {
+        printf(" set nad ota cookie error \n");
+    }
+    return -1;
+}
+#endif
 
 int main(int argc, char** argv) {
     // Various things log information to stdout or stderr more or less
@@ -98,10 +122,20 @@ int main(int argc, char** argv) {
 
     int fd = atoi(argv[2]);
     FILE* cmd_pipe = fdopen(fd, "wb");
+    if(cmd_pipe == NULL) {
+       printf("cmd_pipe is NULL so aborting!\n");
+       return 2;
+    }
     setlinebuf(cmd_pipe);
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
+    printf (" call libabctl \n");
     boot_slot = libabctl_getBootSlot();
+#else
+    printf (" call nadabctl \n");
+    boot_slot = libnadab_get_boot_slot();
+#endif
     if (boot_slot == -1) {
         printf("That's odd.. I was told that A/B boot support be present\n"
                "But libabctl_getBootSlot() returned -1, aborting!\n");
