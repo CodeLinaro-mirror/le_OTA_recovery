@@ -14,7 +14,7 @@
  * limitations under the License.
  *
  *Changes from Qualcomm Innovation Center are provided under the following license:
- *Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ *Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -93,7 +93,11 @@
 #endif
 
 #ifdef TARGET_SUPPORTS_AB
+#ifndef TARGET_NAD_OTA
 #include <libabctl.h>
+#else
+#include <nad-ab-al.h>
+#endif
 #endif
 
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
@@ -153,6 +157,9 @@ static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
 #ifdef TARGET_SUPPORTS_ABC
 static const char *ABC_OTA_STATUS_COOKIE_FILE = "/cache/recovery/abc_ota_status";
 #endif
+#ifdef TARGET_NAD_OTA
+static const char *NAD_STATUS_COOKIE_FILE = "/cache/recovery/nad_ota_status";
+#endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
 // We will try to apply the update package 5 times at most in case of an I/O error.
@@ -171,6 +178,10 @@ char* stage = NULL;
 char* reason = NULL;
 bool modified_flash = false;
 static bool has_cache = false;
+#ifdef TARGET_NAD_OTA
+bool post_install_verify = false;
+bool pre_install_verify = false;
+#endif
 static char* ota_status = NULL;
 
 /*
@@ -744,6 +755,25 @@ error:
     if (fd >= 0) close(fd);
     return -1;
 }
+
+#ifdef TARGET_NAD_OTA
+static int set_nad_ota_cookie( const char * value ) {
+    FILE* status_fp;
+    if (strcmp(value, " OTA_PROG ") == 0){
+        status_fp = fopen(NAD_STATUS_COOKIE_FILE, "w+");
+    } else {
+        status_fp = fopen(NAD_STATUS_COOKIE_FILE, "a+");
+    }
+    if (status_fp != nullptr) {
+        fwrite(value, 1, 10, status_fp);
+        check_and_fclose(status_fp, NAD_STATUS_COOKIE_FILE);
+        return 0;
+    } else {
+        printf(" set nad ota cookie error \n");
+    }
+    return -1;
+}
+#endif
 
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
@@ -1844,7 +1874,27 @@ int main(int argc, char **argv) {
     printf("Starting recovery (pid %d) on %s\n", getpid(), ctime(&start));
 
     load_volume_table();
+#ifdef TARGET_NAD_OTA
+    struct stat st;
+    stat("/cache", &st);
+    has_cache = (S_ISDIR(st.st_mode)) ? true : false;
+    LOGI("has_cache value %d \n", has_cache);
+#else
     has_cache = volume_for_path(CACHE_ROOT) != nullptr;
+#endif
+
+#ifdef TARGET_NAD_OTA
+#ifdef TARGET_SUPPORTS_AB
+    struct stat stats;
+    stat(CACHE_LOG_DIR, &stats);
+    if (S_ISDIR(stats.st_mode)){
+      printf(" recovery folder exist \n");
+    }else{
+      printf(" recovery folder doesnt exist, create folder  \n");
+      mkdir(CACHE_LOG_DIR, 0664);
+    }
+#endif
+#endif
 
     get_args(&argc, &argv);
 
@@ -1971,8 +2021,10 @@ int main(int argc, char **argv) {
                        update_package, modified_path);
                 update_package = modified_path;
             }
-            else
+            else{
                 printf("modified_path allocation failed\n");
+                LOGI("modified_path allocation failed\n");
+            }
         }
         if (!strncmp("/sdcard", update_package, 7)) {
             //If this is a UFS device lets mount the sdcard ourselves.Depending
@@ -1995,6 +2047,43 @@ int main(int argc, char **argv) {
             }
         }
 
+#ifdef TARGET_NAD_OTA
+        //  before AB update we need to check the versions of build, telaf and modem
+        //  that it's not downgrading the existing feature.
+        //  --pre_verify is set to enable this
+        //  "--update_package=/data/update.zip:--pre_verify"
+        //  check in update package path if '--pre_verify' is present is yes, set pre_install_verify true
+        //  to call copy only flow
+        //
+        //  after AB update and success reboot to updated slots,
+        //  need to verify md5 is same..
+        //  --post_verify is set to enable this
+        //  "--update_package=/data/update.zip:--post_verify"
+        //  check in update package path if '--post_verify' is present is yes, set post_install_verify true
+        //  to call copy only flow
+        const char *get_path_suffix = (char*) strchr(update_package, ':');
+        if((get_path_suffix !=NULL) && (!strncmp("--post_verify", ++get_path_suffix , 13))){
+            post_install_verify = true;
+            char *str = (char*)malloc(strlen(update_package));
+            strlcpy(str, update_package, strlen(update_package));
+            char* save = str;
+            update_package = strtok_r(str, "\:", &save);
+            if(update_package !=NULL)
+                printf(" \n post_verify flow update_package: %s \n",update_package);
+        } else if((get_path_suffix !=NULL) && (!strncmp("--pre_verify", ++get_path_suffix , 12))){
+            pre_install_verify = true;
+            char *str = (char*)malloc(strlen(update_package));
+            strlcpy(str, update_package, strlen(update_package));
+            char* save = str;
+            update_package = strtok_r(str, "\:", &save);
+            if(update_package !=NULL)
+                printf(" \n pre_verify flow update_package: %s \n",update_package);
+        } else {
+            printf(" install update flow \n");
+        }
+
+       set_nad_ota_cookie(" OTA_PROG ");
+#endif
     }
     printf("\n");
 #ifndef USE_LE_MODE
@@ -2025,6 +2114,7 @@ int main(int argc, char **argv) {
 #ifdef TARGET_SUPPORTS_ABC
             set_abc_ota_cookie("STARTED");
 #endif
+            LOGI("install_package\n");
             status = install_package(update_package, &should_wipe_cache,
                                      TEMPORARY_INSTALL_FILE, mount_required, retry_count);
             if (status == INSTALL_SUCCESS && should_wipe_cache) {
@@ -2131,13 +2221,22 @@ error:
     printf("Recovery exiting, upgrade %s\n",
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
 #endif
-    ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
+
+#ifdef TARGET_NAD_OTA
+    printf("set nad ota cookie \n");
+    if ( status == INSTALL_SUCCESS ){
+        set_nad_ota_cookie(" OTA_DONE ");
+    } else {
+        set_nad_ota_cookie(" OTA_FAIL ");
+    }
+#else
+   ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
     if (IS_LE_MODE() && ota_status != nullptr) {
         printf("Write OTA status to OTA cookie %s\n", ota_status);
         set_ota_cookie(ota_status);
     }
-    int ota_status_val = get_ota_status();
-    printf("OTA status %d\n", ota_status_val);
+    printf("OTA status %d\n", get_ota_status());
+#endif
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);
     bool reboot = false;
