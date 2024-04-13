@@ -120,6 +120,7 @@ static const struct option OPTIONS[] = {
   { "shutdown_after", no_argument, NULL, 'p' },
   { "reason", required_argument, NULL, 'r' },
   { "security", no_argument, NULL, 'e'},
+  { "update_binary_from_device", no_argument, NULL, 'b'},
   { "wipe_ab", no_argument, NULL, 0 },
   { "wipe_package_size", required_argument, NULL, 0 },
   { NULL, 0, NULL, 0 },
@@ -177,6 +178,7 @@ static const char* locale = "en_US";
 char* stage = NULL;
 char* reason = NULL;
 bool modified_flash = false;
+bool update_binary_from_device = false;
 static bool has_cache = false;
 #ifdef TARGET_NAD_OTA
 bool post_install_verify = false;
@@ -1903,6 +1905,7 @@ int main(int argc, char **argv) {
     bool should_wipe_data = false;
     bool should_wipe_cache = false;
     bool should_wipe_ab = false;
+    update_binary_from_device = false;
     size_t wipe_package_size = 0;
     bool show_text = false;
     bool sideload = false;
@@ -1924,6 +1927,7 @@ int main(int argc, char **argv) {
         case 'w': should_wipe_data = true; break;
         case 'c': should_wipe_cache = true; break;
         case 't': show_text = true; break;
+        case 'b': update_binary_from_device = true; break;
         case 's': sideload = true; break;
         case 'a': sideload = true; sideload_auto_reboot = true; break;
         case 'x': just_exit = true; break;
