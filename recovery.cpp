@@ -14,7 +14,7 @@
  * limitations under the License.
  *
  *Changes from Qualcomm Innovation Center are provided under the following license:
- *Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ *Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -178,6 +178,10 @@ char* stage = NULL;
 char* reason = NULL;
 bool modified_flash = false;
 static bool has_cache = false;
+#ifdef TARGET_NAD_OTA
+bool post_install_verify = false;
+bool pre_install_verify = false;
+#endif
 static char* ota_status = NULL;
 
 /*
@@ -2044,6 +2048,40 @@ int main(int argc, char **argv) {
         }
 
 #ifdef TARGET_NAD_OTA
+        //  before AB update we need to check the versions of build, telaf and modem
+        //  that it's not downgrading the existing feature.
+        //  --pre_verify is set to enable this
+        //  "--update_package=/data/update.zip:--pre_verify"
+        //  check in update package path if '--pre_verify' is present is yes, set pre_install_verify true
+        //  to call copy only flow
+        //
+        //  after AB update and success reboot to updated slots,
+        //  need to verify md5 is same..
+        //  --post_verify is set to enable this
+        //  "--update_package=/data/update.zip:--post_verify"
+        //  check in update package path if '--post_verify' is present is yes, set post_install_verify true
+        //  to call copy only flow
+        const char *get_path_suffix = (char*) strchr(update_package, ':');
+        if((get_path_suffix !=NULL) && (!strncmp("--post_verify", ++get_path_suffix , 13))){
+            post_install_verify = true;
+            char *str = (char*)malloc(strlen(update_package));
+            strlcpy(str, update_package, strlen(update_package));
+            char* save = str;
+            update_package = strtok_r(str, "\:", &save);
+            if(update_package !=NULL)
+                printf(" \n post_verify flow update_package: %s \n",update_package);
+        } else if((get_path_suffix !=NULL) && (!strncmp("--pre_verify", ++get_path_suffix , 12))){
+            pre_install_verify = true;
+            char *str = (char*)malloc(strlen(update_package));
+            strlcpy(str, update_package, strlen(update_package));
+            char* save = str;
+            update_package = strtok_r(str, "\:", &save);
+            if(update_package !=NULL)
+                printf(" \n pre_verify flow update_package: %s \n",update_package);
+        } else {
+            printf(" install update flow \n");
+        }
+
        set_nad_ota_cookie(" OTA_PROG ");
 #endif
     }
@@ -2191,6 +2229,13 @@ error:
     } else {
         set_nad_ota_cookie(" OTA_FAIL ");
     }
+#else
+   ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
+    if (IS_LE_MODE() && ota_status != nullptr) {
+        printf("Write OTA status to OTA cookie %s\n", ota_status);
+        set_ota_cookie(ota_status);
+    }
+    printf("OTA status %d\n", get_ota_status());
 #endif
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);

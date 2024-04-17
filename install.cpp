@@ -13,12 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- *Changes from Qualcomm Innovation Center are provided under the following license:
- *Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
- *SPDX-License-Identifier: BSD-3-Clause-Clear
- */
-/* Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -307,12 +303,43 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
         return INSTALL_ERROR;
     }
 
+#ifdef TARGET_NAD_OTA
+    if(post_install_verify) {
+         LOGI("post install update flow \n");
+         *cmd = {
+             binary,
+             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+             std::to_string(status_fd),
+             path,
+             "post_install_verify",
+         };
+    } else if (pre_install_verify){
+         LOGI("pre install update flow \n");
+         *cmd = {
+             binary,
+             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+             std::to_string(status_fd),
+             path,
+             "pre_install_verify",
+         };
+    } else {
+         LOGI("update flow \n");
+         *cmd = {
+             binary,
+             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+             std::to_string(status_fd),
+             path,
+         };
+    }
+#else
     *cmd = {
         binary,
         EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
         std::to_string(status_fd),
         path,
     };
+#endif
+
     if (retry_count > 0)
         cmd->push_back("retry");
     return 0;
