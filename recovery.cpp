@@ -731,7 +731,7 @@ int get_ota_status() {
 static int set_ota_cookie(const char* ota_status) {
     int fd = -1;
     int rcode = 0;
-    fd = open(STATUS_COOKIE_FILE, O_CREAT | O_WRONLY , S_IRUSR | S_IWUSR);
+    fd = open(STATUS_COOKIE_FILE, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd < 0) {
         LOGE("Failed to open %s : %s\n",
              STATUS_COOKIE_FILE,
@@ -2190,6 +2190,13 @@ error:
         set_nad_ota_cookie(" OTA_DONE ");
     } else {
         set_nad_ota_cookie(" OTA_FAIL ");
+    }
+#else
+    printf("set ota cookie \n");
+    if (status == INSTALL_SUCCESS) {
+       set_ota_cookie("OTA_DONE");
+    } else {
+       set_ota_cookie("OTA_FAIL");
     }
 #endif
     // Save logs and clean up before rebooting or shutting down.
