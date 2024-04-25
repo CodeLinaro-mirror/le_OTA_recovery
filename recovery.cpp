@@ -2062,7 +2062,7 @@ int main(int argc, char **argv) {
         //  check in update package path if '--post_verify' is present is yes, set post_install_verify true
         //  to call copy only flow
         const char *get_path_suffix = (char*) strchr(update_package, ':');
-        if((get_path_suffix !=NULL) && (!strncmp("--post_verify", ++get_path_suffix , 13))){
+        if((get_path_suffix !=NULL) && (!strncmp("--post_verify", get_path_suffix + 1, 13))){
             post_install_verify = true;
             char *str = (char*)malloc(strlen(update_package));
             strlcpy(str, update_package, strlen(update_package));
@@ -2070,7 +2070,7 @@ int main(int argc, char **argv) {
             update_package = strtok_r(str, "\:", &save);
             if(update_package !=NULL)
                 printf(" \n post_verify flow update_package: %s \n",update_package);
-        } else if((get_path_suffix !=NULL) && (!strncmp("--pre_verify", ++get_path_suffix , 12))){
+        } else if((get_path_suffix !=NULL) && (!strncmp("--pre_verify", get_path_suffix + 1, 12))){
             pre_install_verify = true;
             char *str = (char*)malloc(strlen(update_package));
             strlcpy(str, update_package, strlen(update_package));
