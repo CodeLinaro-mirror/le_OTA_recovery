@@ -49,6 +49,7 @@ extern bool post_install_verify;
 extern bool pre_install_verify;
 #endif
 
+extern bool update_binary_from_device;
 typedef struct fstab_rec Volume;
 
 // fopen a file, mounting volumes and making parent dirs as necessary.
