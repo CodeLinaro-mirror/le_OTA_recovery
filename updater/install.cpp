@@ -314,6 +314,10 @@ unsigned int get_partition_size(const char *partition_name) {
                 }
             }
         }
+        if (!dest_path) {
+            printf("\n dest_path is null");
+            return partition_size;
+        }
 #ifdef TARGET_SUPPORTS_AB
         //case where partition _a is not available in /proc/mtd
         if(NULL == mtd_find_partition_by_name(dest_path)) {
@@ -428,6 +432,10 @@ bool pre_requisuit_size_checker(ZipArchive* pArchive) {
                 memset(buffer, 0, PATH_MAX);
                 snprintf(buffer, PATH_MAX, "firmware-update/%s", src.c_str());
                 src_path = strdup(buffer);
+                if (!src_path) {
+                    printf("\n src_path is null");
+                    return false;
+                }
                 printf("\n src_path :%s dest_path: %s\n", src_path, dest.c_str());
                 image_entry = mzFindZipEntry(pArchive, src_path);
                 image_partition_size = get_partition_size(dest.c_str());
@@ -1156,17 +1164,21 @@ Value* PackageExtractFileFn(const char* name, State* state,
             memset(buf, 0, PATH_MAX);
             snprintf(buf, PATH_MAX, "%s/%s", DATA_RECOVERY, basename(zip_path));
             file = strdup(buf);
-            unlink(file);
-            fd = creat(file, 0644);
+            if (file) {
+                unlink(file);
+                fd = creat(file, 0644);
+            }
         }
 
         Value* v = reinterpret_cast<Value*>(malloc(sizeof(Value)));
-        if(extraction_on_disk)
-            v->type = VAL_STRING;
-        else
-            v->type = VAL_BLOB;
-        v->size = -1;
-        v->data = NULL;
+        if(v != NULL) {
+            if(extraction_on_disk)
+                v->type = VAL_STRING;
+            else
+                v->type = VAL_BLOB;
+            v->size = -1;
+            v->data = NULL;
+        }
 
         ZipArchive* za = ((UpdaterInfo*)(state->cookie))->package_zip;
         const ZipEntry* entry = mzFindZipEntry(za, zip_path);
@@ -1205,7 +1217,7 @@ Value* PackageExtractFileFn(const char* name, State* state,
       done1:
         free(zip_path);
         if (!success) {
-            if(extraction_on_disk)
+            if(extraction_on_disk && v->data)
                 unlink(v->data);
             else
                 free(v->data);
