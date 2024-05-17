@@ -21,6 +21,9 @@
 #ifndef _UPDATER_INSTALL_H_
 #define _UPDATER_INSTALL_H_
 
+#include <stdio.h>
+#include "minzip/Zip.h"
+
 void RegisterInstallFunctions();
 
 // uiPrintf function prints msg to screen as well as logs
@@ -29,5 +32,12 @@ void uiPrintf(State* state, const char* format, ...) __attribute__((__format__(p
 static int make_parents(char* name);
 void load_volume_table(FILE *);
 void free_volume_table();
+
+//function to check if partition size is greater than the image present in the zip
+bool pre_requisuit_size_checker(ZipArchive* pArchive);
+
+// Read meta data file of the package, write its content in the string pointed by meta_data.
+// Return true if succeed, otherwise return false.
+bool read_metadata_from_package(ZipArchive* zip, std::string* meta_data);
 
 #endif

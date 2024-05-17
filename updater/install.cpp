@@ -29,20 +29,26 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <stdexcept>
 #include <fcntl.h>
 #include <libgen.h>
 #include <time.h>
+#include <fstream>
 #include <selinux/selinux.h>
 #include <ftw.h>
 #include <sys/capability.h>
 #include <sys/xattr.h>
 #include <linux/xattr.h>
 #include <inttypes.h>
-
+#include <stdint.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
-
+#include <sstream>
 #include <base/file.h>
 #include <android-base/parseint.h>
 #include <base/strings.h>
@@ -80,13 +86,13 @@
 extern "C" {    // Use till system/core is updated
 #include "wipe.h"
 }
-
+#define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
 #ifdef TARGET_SUPPORTS_AB
 #include <libabctl.h>
 #include <errno.h>
 #include <dirent.h>
 #include "print_sha1.h"
-#define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
+
 #define BLOCKSIZE 4096*1024
 #define BOOT_NAME_LENGTH 7
 #define ROOTFS_NAME_LENGTH 10
@@ -103,12 +109,16 @@ extern "C" {    // Use till system/core is updated
 #define SOC_ID_PATH  "/sys/devices/soc0/soc_id"
 //soc_id 571 belonngs to sdx35 128MB DDR(low ram) variant
 int soc_id_list_for_disk_extraction_feature[] = {571};
+#define FILESMAP_PATH "/tmp/filesmap"
+#define SYSTEM_PARTITION_NAME "system"
+#define BOOT_PARTITION_NAME "boot"
+ 
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
 #endif
 
 extern enum DeviceType device_type;
-
+static constexpr const char* METADATA_PATH = "META-INF/com/android/metadata";
 // Send over the buffer to recovery though the command pipe.
 static void uiPrint(State* state, const std::string& buffer) {
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
@@ -230,6 +240,215 @@ void load_volume_table(FILE *logfd) {
     if (parse_fstab(logfd, "/tmp/recovery_volume_detected", &alloc) < 0) {
         fprintf(logfd, "ui_print /tmp/recovery_volume_detected not found\n");
     }
+}
+
+// Read meta data file of the package, write its content in the string pointed by meta_data.
+// Return true if succeed, otherwise return false.
+bool read_metadata_from_package(ZipArchive* zip, std::string* meta_data) {
+    const ZipEntry* meta_entry = mzFindZipEntry(zip, METADATA_PATH);
+     if (meta_entry == nullptr) {
+         printf("Failed to find %s in update package.\n", METADATA_PATH);
+         return false;
+     }
+
+     meta_data->resize(meta_entry->uncompLen, '\0');
+     if (!mzReadZipEntry(zip, meta_entry, &(*meta_data)[0], meta_entry->uncompLen)) {
+         printf("Failed to read metadata in update package.\n");
+         return false;
+     }
+     return true;
+ }
+
+//function to get the output after running the command on shell
+std::string exec_command_on_ubi(const char* cmd) {
+    char buffer[PATH_MAX];
+    std::string result = "";
+    FILE* pipe = popen(cmd, "r");
+    if (!pipe) throw std::runtime_error("popen() failed!");
+    try {
+        while (fgets(buffer, sizeof buffer, pipe) != NULL) {
+            result += buffer;
+        }
+    } catch (...) {
+        pclose(pipe);
+        throw;
+    }
+    pclose(pipe);
+    return result;
+}
+
+unsigned int get_partition_size(const char *partition_name) {
+    unsigned int partition_size = 0;
+    char buffer[PATH_MAX];
+    const char *dest_path = partition_name;
+#ifdef TARGET_SUPPORTS_AB
+        memset(buffer, 0, PATH_MAX);
+        snprintf(buffer, PATH_MAX, "%s%s", dest_path, slot_suffix_arr[inactive_slot]);
+        dest_path = strdup(buffer);
+#endif
+    if(device_type == NAND) {
+        mtd_scan_partitions();
+        const MtdPartition* mtd;
+        if(strncmp(partition_name, SYSTEM_PARTITION_NAME, strlen(SYSTEM_PARTITION_NAME)) == 0) {
+        std::string result;
+#ifdef TARGET_SUPPORTS_AB
+            result  = exec_command_on_ubi("/usr/sbin/ubinfo /dev/ubi0_0");
+#else
+            result  = exec_command_on_ubi("/usr/sbin/ubinfo /dev/ubi1_0");
+#endif
+            std::istringstream resultstream(result);
+            std::string line;
+            size_t start_index, itr, end_index;
+            unsigned int system_partition_size = 0;
+            while (std::getline(resultstream, line)) {
+                if(android::base::StartsWith(line, "Size:")) {
+                    start_index = line.find('(') + 1;
+                    itr = start_index;
+                    while((itr + 1) < line.size() && line.at(itr) != ' ') {
+                        itr++;
+                    }
+                    end_index = itr;
+                    system_partition_size = std::stoi((line.substr(start_index, end_index - start_index).c_str()));
+                    printf("In get_partition_size system_partition_size: %u\n", system_partition_size);
+                    return system_partition_size;
+                }
+            }
+        }
+#ifdef TARGET_SUPPORTS_AB
+        //case where partition _a is not available in /proc/mtd
+        if(NULL == mtd_find_partition_by_name(dest_path)) {
+            dest_path = partition_name;
+        }
+#endif
+        //when squashfs is enabled then dest path will be having BOOTDEVICE_DIR path
+        //and we have to remove it while parsing /proc/mtd
+        if(strncmp(BOOTDEVICE_DIR, dest_path, strlen(BOOTDEVICE_DIR)) == 0) {
+            dest_path = dest_path + (strlen(BOOTDEVICE_DIR) + 1);
+        }
+        mtd = mtd_find_partition_by_name(dest_path);
+        if (mtd == NULL) {
+            printf("no mtd partition named %s\n", dest_path);
+            return partition_size;
+        }
+        partition_size = mtd->size;
+    }
+    else {
+        memset(buffer, 0, PATH_MAX);
+        if(strncmp(BOOTDEVICE_DIR, dest_path, strlen(BOOTDEVICE_DIR)) != 0) {
+            snprintf(buffer, PATH_MAX, "%s/%s", BOOTDEVICE_DIR, dest_path);
+            dest_path = strdup(buffer);
+        }
+        int fd = open(dest_path, O_RDONLY);
+        if (fd == -1) {
+            printf("%s", strerror(errno));
+            return partition_size;
+        }
+         //ioctl approach will not work as blockdev is not installed on some builds
+        //if (ioctl(fd, BLKGETSIZE64, &partition_size) == -1) {
+        //  printf("%s", strerror(errno));
+        //}
+        off_t size_return = lseek(fd, 0, SEEK_END);
+        partition_size = size_return;
+        close(fd);
+    }
+    return partition_size;
+}
+
+//Function which ensure that partition size should be greater than image size.
+bool pre_requisuit_size_checker(ZipArchive* pArchive) {
+    unlink(FILESMAP_PATH);
+    int filesmap_fd = creat(FILESMAP_PATH, 0644);
+    const ZipEntry* filesmap_entry =
+            mzFindZipEntry(pArchive, "filesmap");
+    if(filesmap_entry == NULL){
+        printf("filesmap_entry is null\n");
+        close(filesmap_fd);
+        return false;
+    }
+    bool ok = mzExtractZipEntryToFile(pArchive, filesmap_entry, filesmap_fd);
+    if(!ok){
+        printf("Not able to extract to file\n");
+        unlink(FILESMAP_PATH);
+        return false;
+    }
+    std::string metadata;
+    if (!read_metadata_from_package(pArchive, &metadata)) {
+       unlink(FILESMAP_PATH);
+       close(filesmap_fd);
+       return false;
+    }
+    std::map<std::string, std::string> metadata_str;
+    for (const std::string& line : android::base::Split(metadata, "\n")) {
+        size_t eq = line.find('=');
+        if (eq != std::string::npos) {
+            metadata_str[line.substr(0, eq)] = line.substr(eq + 1);
+        }
+    }
+    const std::string& system_image_size = metadata_str["system_image_size"];
+    const std::string& boot_image_size = metadata_str["boot_image_size"];
+    printf("system_image_size: %s\n", system_image_size.c_str());
+    unsigned int system_sz = stoi(system_image_size);
+    printf("boot_image_size: %s\n", boot_image_size.c_str());
+    unsigned int boot_sz = stoi(boot_image_size);
+    unsigned int system_partition_size = get_partition_size(SYSTEM_PARTITION_NAME);
+    unsigned int boot_partition_size  = get_partition_size(BOOT_PARTITION_NAME);
+    printf("system_partition_size : %u boot_partition_size %u \n", system_partition_size, boot_partition_size);
+    if(system_partition_size < system_sz) {
+        printf("System Partition size is less than image size\n");
+        unlink(FILESMAP_PATH);
+        close(filesmap_fd);
+        return false;
+    }
+    if(boot_partition_size < boot_sz) {
+        printf("Boot Partition size is less than image size\n");
+        unlink(FILESMAP_PATH);
+        close(filesmap_fd);
+        return false;
+    }
+    std::string line;
+    unsigned int image_size_in_zip, image_partition_size;
+    char buffer[PATH_MAX];
+    char *src_path;
+    const ZipEntry* image_entry;
+    size_t sep;
+    std::fstream inputstream;
+    inputstream.open(FILESMAP_PATH, std::ios::in);
+    if(inputstream.is_open()){
+        while (getline(inputstream, line)) {
+            if(line.empty() || line.at(0) == '#')
+                continue;
+            std::string src,dest;
+            printf("\n%s\n", line.c_str());
+            sep = line.find(' ');
+            if (sep != std::string::npos) {
+                src = line.substr(0, sep);
+                while(((sep + 1) < line.size()) && line[sep] == ' ')
+                    sep++;
+                dest = line.substr(sep);
+                memset(buffer, 0, PATH_MAX);
+                snprintf(buffer, PATH_MAX, "firmware-update/%s", src.c_str());
+                src_path = strdup(buffer);
+                printf("\n src_path :%s dest_path: %s\n", src_path, dest.c_str());
+                image_entry = mzFindZipEntry(pArchive, src_path);
+                image_partition_size = get_partition_size(dest.c_str());
+                if(image_entry == NULL || image_partition_size == 0)
+                    continue;
+                image_size_in_zip = image_entry->uncompLen;
+                printf("image_size_in_zip : %u image_partition_size: %u\n", image_size_in_zip, image_partition_size);
+                if(image_partition_size < image_size_in_zip) {
+                    printf("%s partition size is less then %s image\n", dest.c_str(), src_path);
+                    unlink(FILESMAP_PATH);
+                    close(filesmap_fd);
+                    inputstream.close();
+                    return false;
+                }
+            }
+        }
+        inputstream.close();
+    }
+    unlink(FILESMAP_PATH);
+    close(filesmap_fd);
+    return true;
 }
 
 void free_volume_table() {
