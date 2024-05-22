@@ -29,19 +29,26 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <stdexcept>
 #include <fcntl.h>
+#include <libgen.h>
 #include <time.h>
+#include <fstream>
 #include <selinux/selinux.h>
 #include <ftw.h>
 #include <sys/capability.h>
 #include <sys/xattr.h>
 #include <linux/xattr.h>
 #include <inttypes.h>
-
+#include <stdint.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
-
+#include <sstream>
 #include <base/file.h>
 #include <android-base/parseint.h>
 #include <base/strings.h>
@@ -79,13 +86,13 @@
 extern "C" {    // Use till system/core is updated
 #include "wipe.h"
 }
-
+#define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
 #ifdef TARGET_SUPPORTS_AB
 #include <libabctl.h>
 #include <errno.h>
 #include <dirent.h>
 #include "print_sha1.h"
-#define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
+
 #define BLOCKSIZE 4096*1024
 #define BOOT_NAME_LENGTH 7
 #define ROOTFS_NAME_LENGTH 10
@@ -93,14 +100,25 @@ extern "C" {    // Use till system/core is updated
 #define ROOTFS_VOLUME_B "/dev/ubi0_1"
 #endif
 #define SYSTEM_ROOTFS_NAME  "system.img"
-#define SYSTEM_ROOTFS  "/tmp/system.img"
 #define ROOTFS_VOLUME "/dev/ubi1_0"
+#define DATA_RECOVERY "/data/recovery"
+#define SYSTEM_ROOTFS_TMP  "/tmp/system.img"
+#define SYSTEM_ROOTFS_DATA  "/data/recovery/system.img"
+#define KB_TO_BYTES(x) (x << 10)
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define SOC_ID_PATH  "/sys/devices/soc0/soc_id"
+//soc_id 571 belonngs to sdx35 128MB DDR(low ram) variant
+int soc_id_list_for_disk_extraction_feature[] = {571};
+#define FILESMAP_PATH "/tmp/filesmap"
+#define SYSTEM_PARTITION_NAME "system"
+#define BOOT_PARTITION_NAME "boot"
+ 
 static int num_volumes = 0;
 static Volume* device_volumes = NULL;
 #endif
 
 extern enum DeviceType device_type;
-
+static constexpr const char* METADATA_PATH = "META-INF/com/android/metadata";
 // Send over the buffer to recovery though the command pipe.
 static void uiPrint(State* state, const std::string& buffer) {
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
@@ -222,6 +240,223 @@ void load_volume_table(FILE *logfd) {
     if (parse_fstab(logfd, "/tmp/recovery_volume_detected", &alloc) < 0) {
         fprintf(logfd, "ui_print /tmp/recovery_volume_detected not found\n");
     }
+}
+
+// Read meta data file of the package, write its content in the string pointed by meta_data.
+// Return true if succeed, otherwise return false.
+bool read_metadata_from_package(ZipArchive* zip, std::string* meta_data) {
+    const ZipEntry* meta_entry = mzFindZipEntry(zip, METADATA_PATH);
+     if (meta_entry == nullptr) {
+         printf("Failed to find %s in update package.\n", METADATA_PATH);
+         return false;
+     }
+
+     meta_data->resize(meta_entry->uncompLen, '\0');
+     if (!mzReadZipEntry(zip, meta_entry, &(*meta_data)[0], meta_entry->uncompLen)) {
+         printf("Failed to read metadata in update package.\n");
+         return false;
+     }
+     return true;
+ }
+
+//function to get the output after running the command on shell
+std::string exec_command_on_ubi(const char* cmd) {
+    char buffer[PATH_MAX];
+    std::string result = "";
+    FILE* pipe = popen(cmd, "r");
+    if (!pipe) throw std::runtime_error("popen() failed!");
+    try {
+        while (fgets(buffer, sizeof buffer, pipe) != NULL) {
+            result += buffer;
+        }
+    } catch (...) {
+        pclose(pipe);
+        throw;
+    }
+    pclose(pipe);
+    return result;
+}
+
+unsigned int get_partition_size(const char *partition_name) {
+    unsigned int partition_size = 0;
+    char buffer[PATH_MAX];
+    const char *dest_path = partition_name;
+#ifdef TARGET_SUPPORTS_AB
+        memset(buffer, 0, PATH_MAX);
+        snprintf(buffer, PATH_MAX, "%s%s", dest_path, slot_suffix_arr[inactive_slot]);
+        dest_path = strdup(buffer);
+#endif
+    if(device_type == NAND) {
+        mtd_scan_partitions();
+        const MtdPartition* mtd;
+        if(strncmp(partition_name, SYSTEM_PARTITION_NAME, strlen(SYSTEM_PARTITION_NAME)) == 0) {
+        std::string result;
+#ifdef TARGET_SUPPORTS_AB
+            result  = exec_command_on_ubi("/usr/sbin/ubinfo /dev/ubi0_0");
+#else
+            result  = exec_command_on_ubi("/usr/sbin/ubinfo /dev/ubi1_0");
+#endif
+            std::istringstream resultstream(result);
+            std::string line;
+            size_t start_index, itr, end_index;
+            unsigned int system_partition_size = 0;
+            while (std::getline(resultstream, line)) {
+                if(android::base::StartsWith(line, "Size:")) {
+                    start_index = line.find('(') + 1;
+                    itr = start_index;
+                    while((itr + 1) < line.size() && line.at(itr) != ' ') {
+                        itr++;
+                    }
+                    end_index = itr;
+                    system_partition_size = std::stoi((line.substr(start_index, end_index - start_index).c_str()));
+                    printf("In get_partition_size system_partition_size: %u\n", system_partition_size);
+                    return system_partition_size;
+                }
+            }
+        }
+        if (!dest_path) {
+            printf("\n dest_path is null");
+            return partition_size;
+        }
+#ifdef TARGET_SUPPORTS_AB
+        //case where partition _a is not available in /proc/mtd
+        if(NULL == mtd_find_partition_by_name(dest_path)) {
+            dest_path = partition_name;
+        }
+#endif
+        //when squashfs is enabled then dest path will be having BOOTDEVICE_DIR path
+        //and we have to remove it while parsing /proc/mtd
+        if(strncmp(BOOTDEVICE_DIR, dest_path, strlen(BOOTDEVICE_DIR)) == 0) {
+            dest_path = dest_path + (strlen(BOOTDEVICE_DIR) + 1);
+        }
+        mtd = mtd_find_partition_by_name(dest_path);
+        if (mtd == NULL) {
+            printf("no mtd partition named %s\n", dest_path);
+            return partition_size;
+        }
+        partition_size = mtd->size;
+    }
+    else {
+        memset(buffer, 0, PATH_MAX);
+        if(strncmp(BOOTDEVICE_DIR, dest_path, strlen(BOOTDEVICE_DIR)) != 0) {
+            snprintf(buffer, PATH_MAX, "%s/%s", BOOTDEVICE_DIR, dest_path);
+            dest_path = strdup(buffer);
+        }
+        int fd = open(dest_path, O_RDONLY);
+        if (fd == -1) {
+            printf("%s", strerror(errno));
+            return partition_size;
+        }
+         //ioctl approach will not work as blockdev is not installed on some builds
+        //if (ioctl(fd, BLKGETSIZE64, &partition_size) == -1) {
+        //  printf("%s", strerror(errno));
+        //}
+        off_t size_return = lseek(fd, 0, SEEK_END);
+        partition_size = size_return;
+        close(fd);
+    }
+    return partition_size;
+}
+
+//Function which ensure that partition size should be greater than image size.
+bool pre_requisuit_size_checker(ZipArchive* pArchive) {
+    unlink(FILESMAP_PATH);
+    int filesmap_fd = creat(FILESMAP_PATH, 0644);
+    const ZipEntry* filesmap_entry =
+            mzFindZipEntry(pArchive, "filesmap");
+    if(filesmap_entry == NULL){
+        printf("filesmap_entry is null\n");
+        close(filesmap_fd);
+        return false;
+    }
+    bool ok = mzExtractZipEntryToFile(pArchive, filesmap_entry, filesmap_fd);
+    if(!ok){
+        printf("Not able to extract to file\n");
+        unlink(FILESMAP_PATH);
+        return false;
+    }
+    std::string metadata;
+    if (!read_metadata_from_package(pArchive, &metadata)) {
+       unlink(FILESMAP_PATH);
+       close(filesmap_fd);
+       return false;
+    }
+    std::map<std::string, std::string> metadata_str;
+    for (const std::string& line : android::base::Split(metadata, "\n")) {
+        size_t eq = line.find('=');
+        if (eq != std::string::npos) {
+            metadata_str[line.substr(0, eq)] = line.substr(eq + 1);
+        }
+    }
+    const std::string& system_image_size = metadata_str["system_image_size"];
+    const std::string& boot_image_size = metadata_str["boot_image_size"];
+    printf("system_image_size: %s\n", system_image_size.c_str());
+    unsigned int system_sz = stoi(system_image_size);
+    printf("boot_image_size: %s\n", boot_image_size.c_str());
+    unsigned int boot_sz = stoi(boot_image_size);
+    unsigned int system_partition_size = get_partition_size(SYSTEM_PARTITION_NAME);
+    unsigned int boot_partition_size  = get_partition_size(BOOT_PARTITION_NAME);
+    printf("system_partition_size : %u boot_partition_size %u \n", system_partition_size, boot_partition_size);
+    if(system_partition_size < system_sz) {
+        printf("System Partition size is less than image size\n");
+        unlink(FILESMAP_PATH);
+        close(filesmap_fd);
+        return false;
+    }
+    if(boot_partition_size < boot_sz) {
+        printf("Boot Partition size is less than image size\n");
+        unlink(FILESMAP_PATH);
+        close(filesmap_fd);
+        return false;
+    }
+    std::string line;
+    unsigned int image_size_in_zip, image_partition_size;
+    char buffer[PATH_MAX];
+    char *src_path;
+    const ZipEntry* image_entry;
+    size_t sep;
+    std::fstream inputstream;
+    inputstream.open(FILESMAP_PATH, std::ios::in);
+    if(inputstream.is_open()){
+        while (getline(inputstream, line)) {
+            if(line.empty() || line.at(0) == '#')
+                continue;
+            std::string src,dest;
+            printf("\n%s\n", line.c_str());
+            sep = line.find(' ');
+            if (sep != std::string::npos) {
+                src = line.substr(0, sep);
+                while(((sep + 1) < line.size()) && line[sep] == ' ')
+                    sep++;
+                dest = line.substr(sep);
+                memset(buffer, 0, PATH_MAX);
+                snprintf(buffer, PATH_MAX, "firmware-update/%s", src.c_str());
+                src_path = strdup(buffer);
+                if (!src_path) {
+                    printf("\n src_path is null");
+                    return false;
+                }
+                printf("\n src_path :%s dest_path: %s\n", src_path, dest.c_str());
+                image_entry = mzFindZipEntry(pArchive, src_path);
+                image_partition_size = get_partition_size(dest.c_str());
+                if(image_entry == NULL || image_partition_size == 0)
+                    continue;
+                image_size_in_zip = image_entry->uncompLen;
+                printf("image_size_in_zip : %u image_partition_size: %u\n", image_size_in_zip, image_partition_size);
+                if(image_partition_size < image_size_in_zip) {
+                    printf("%s partition size is less then %s image\n", dest.c_str(), src_path);
+                    unlink(FILESMAP_PATH);
+                    close(filesmap_fd);
+                    inputstream.close();
+                    return false;
+                }
+            }
+        }
+        inputstream.close();
+    }
+    unlink(FILESMAP_PATH);
+    close(filesmap_fd);
+    return true;
 }
 
 void free_volume_table() {
@@ -781,6 +1016,75 @@ Value* PackageExtractDirFn(const char* name, State* state,
 // package_extract_file(package_path)
 //   to return the entire contents of the file as the result of this
 //   function (the char* returned is actually a FileContents*).
+
+static bool startswith(const char *string, const char *prefix) {
+    if(string == NULL || prefix == NULL) return false;
+    size_t l1 = strlen(string);
+    size_t l2 = strlen(prefix);
+    return strncmp(string, prefix, MIN(l1, l2)) == 0;
+}
+static bool Is128MbDDR() {
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    FILE *fp;
+    unsigned long ddr_memory = 0;
+    fp = fopen("/proc/meminfo", "r");
+    if (!fp) {
+        printf("Couldn't open /proc/meminfo\n");
+        return false;
+    }
+    while ((read = getline(&line, &len, fp)) != -1) {
+        if (startswith(line, "MemTotal:")) {
+            sscanf(line, "MemTotal: %lu kB\n", &ddr_memory);
+            ddr_memory = KB_TO_BYTES(ddr_memory);
+            break;
+        }
+    }
+    fclose(fp);
+    printf("MemTotal: %lu \n", ddr_memory);
+    if(ddr_memory <= 67108864) {
+        printf("Target is Either 128MB DDR or less DDR\n");
+        return true;
+    }
+    return false;
+}
+
+static int GetSystemSocId() {
+    int soc_id = 0;
+    FILE* fp;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    fp = fopen(SOC_ID_PATH, "r");
+    if (!fp) {
+        printf("Couldn't open %s \n", SOC_ID_PATH);
+        return -1;
+    }
+    if((read = getline(&line, &len, fp)) != -1) {
+        sscanf(line, "%d", &soc_id);
+    }
+    fclose(fp);
+    printf("soc id:%d\n", soc_id);
+    return soc_id;
+}
+static bool SocIdMatch(int soc_id) {
+    size_t sizeofarray = sizeof(soc_id_list_for_disk_extraction_feature)/sizeof(soc_id_list_for_disk_extraction_feature[0]);
+    for(int i = 0; i < sizeofarray; i++) {
+        if(soc_id == soc_id_list_for_disk_extraction_feature[i]) return true;
+    }
+    return false;
+}
+
+static bool IsExtractionOnDiskEnabled() {
+    int soc_id = GetSystemSocId();
+    if(Is128MbDDR() && soc_id > 0 && SocIdMatch(soc_id)) {
+        printf("Extraction on Disk is Enabled for this target\n");
+        return true;
+    }
+    return false;
+}
+
 Value* PackageExtractFileFn(const char* name, State* state,
                            int argc, Expr* argv[]) {
     if (argc < 1 || argc > 2) {
@@ -788,6 +1092,7 @@ Value* PackageExtractFileFn(const char* name, State* state,
                           name, argc);
     }
     bool success = false;
+    bool extraction_on_disk = IsExtractionOnDiskEnabled();
 
     if (argc == 2) {
         // The two-argument version extracts to a file.
@@ -849,13 +1154,31 @@ Value* PackageExtractFileFn(const char* name, State* state,
         // The one-argument version returns the contents of the file
         // as the result.
 
-        char* zip_path;
+        char* zip_path, *file;
+        char buf[PATH_MAX];
+        int fd, mkdir_ret;
         if (ReadArgs(state, argv, 1, &zip_path) < 0) return NULL;
 
+        if(extraction_on_disk) {
+            mkdir_ret = mkdir(DATA_RECOVERY, 0755);
+            memset(buf, 0, PATH_MAX);
+            snprintf(buf, PATH_MAX, "%s/%s", DATA_RECOVERY, basename(zip_path));
+            file = strdup(buf);
+            if (file) {
+                unlink(file);
+                fd = creat(file, 0644);
+            }
+        }
+
         Value* v = reinterpret_cast<Value*>(malloc(sizeof(Value)));
-        v->type = VAL_BLOB;
-        v->size = -1;
-        v->data = NULL;
+        if(v != NULL) {
+            if(extraction_on_disk)
+                v->type = VAL_STRING;
+            else
+                v->type = VAL_BLOB;
+            v->size = -1;
+            v->data = NULL;
+        }
 
         ZipArchive* za = ((UpdaterInfo*)(state->cookie))->package_zip;
         const ZipEntry* entry = mzFindZipEntry(za, zip_path);
@@ -864,21 +1187,40 @@ Value* PackageExtractFileFn(const char* name, State* state,
             goto done1;
         }
 
+        if (extraction_on_disk && (fd < 0 || mkdir_ret == -1)) {
+            if(fd < 0)
+                printf("%s: Can't make %s\n", name, file);
+            if(mkdir_ret == -1)
+                printf("%s: Can't make %s\n", name, DATA_RECOVERY);
+            goto done1;
+        }
         v->size = mzGetZipEntryUncompLen(entry);
-        v->data = reinterpret_cast<char*>(malloc(v->size));
+        if(extraction_on_disk)
+            v->data = file;
+        else
+            v->data = reinterpret_cast<char*>(malloc(v->size));
         if (v->data == NULL) {
             printf("%s: failed to allocate %ld bytes for %s\n",
                     name, (long)v->size, zip_path);
             goto done1;
         }
-
-        success = mzExtractZipEntryToBuffer(za, entry,
-                                            (unsigned char *)v->data);
-
+        if(extraction_on_disk) {
+            printf("Extracting on file(flash memory)\n");
+            success = mzExtractZipEntryToFile(za, entry, fd);
+            close(fd);
+        }
+        else {
+            printf("Extracting on Buffer(ddr memory)\n");
+            success = mzExtractZipEntryToBuffer(za, entry,
+                                             (unsigned char *)v->data);
+        }
       done1:
         free(zip_path);
         if (!success) {
-            free(v->data);
+            if(extraction_on_disk && v->data)
+                unlink(v->data);
+            else
+                free(v->data);
             v->data = NULL;
             v->size = -1;
         }
@@ -1510,6 +1852,8 @@ if (device_type == NAND) {
         }
         free(buffer);
         ota_fclose(f);
+        remove(filename);
+        remove(DATA_RECOVERY);
     } else {
         // we're given a blob as the contents
         ssize_t wrote = mtd_write_data(ctx, contents->data, contents->size);
@@ -1534,7 +1878,12 @@ if (device_type == NAND) {
 
 done:
     if (result != partition) FreeValue(partition_value);
-    FreeValue(contents);
+    if(contents->type != VAL_STRING){
+        FreeValue(contents);
+    }
+    else {
+        unlink(contents->data);
+    }
     return StringValue(result);
 }
 
@@ -2622,7 +2971,7 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
         printf("%s: can't find %s\n", name, SYSTEM_ROOTFS_NAME);
         return StringValue(strdup(""));
     }
-    const char* rootfs_volume = SYSTEM_ROOTFS;
+    const char* rootfs_volume = SYSTEM_ROOTFS_TMP;
     unlink(rootfs_volume);
     int fd = creat(rootfs_volume, 0644);
     if (fd < 0) {
@@ -2650,16 +2999,16 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
         return StringValue(strdup(""));
     }
     printf("Erasing of Rootfs volume %d is successful\n", inactive_slot);
-    char *args_update[] = {"ubiupdatevol", rootfs_volume_ab, SYSTEM_ROOTFS, 0};
+    char *args_update[] = {"ubiupdatevol", rootfs_volume_ab, SYSTEM_ROOTFS_TMP, 0};
     size = sizeof(args_update)/sizeof(args_update[0]);
     if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_update, size) != 0) {
         printf("%s: Couldn't update Rootfs volume\n", name);
         return StringValue(strdup(""));
     }
     printf("Updating of Rootfs volume %d is successful\n",inactive_slot);
-    int ret = remove(SYSTEM_ROOTFS);
-    if(ret == -1) 
-        printf("Failed to remove %s and may cause no space left\n", SYSTEM_ROOTFS);
+    int ret = remove(rootfs_volume);
+    if(ret == -1)
+        printf("Failed to remove %s and may cause no space left\n", rootfs_volume);
     return StringValue(strdup("success"));
 }
 #endif
@@ -2671,6 +3020,7 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
                 "%s() expects no args, got %d", name, argc);
     }
     size_t size = 0;
+    bool extraction_on_disk = IsExtractionOnDiskEnabled();
     UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
     ZipArchive* zip = ui->package_zip;
     //Extract system image
@@ -2680,7 +3030,18 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
         printf("%s: can't find %s\n", name, SYSTEM_ROOTFS_NAME);
         return StringValue(strdup(""));
     }
-    const char* rootfs_volume = SYSTEM_ROOTFS;
+    char* rootfs_volume = "";
+    if(extraction_on_disk) {
+        rootfs_volume = SYSTEM_ROOTFS_DATA;
+        int mkdir_ret = mkdir(DATA_RECOVERY, 0755);
+        if(mkdir_ret == -1) {
+            printf("%s: Can't make %s\n", name, DATA_RECOVERY);
+            return StringValue(strdup(""));
+        }
+    }
+    else {
+        rootfs_volume = SYSTEM_ROOTFS_TMP;
+    }
     unlink(rootfs_volume);
     int fd = creat(rootfs_volume, 0644);
     if (fd < 0) {
@@ -2703,16 +3064,21 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
     }
     printf("Erasing of Rootfs volume is successful\n");
 
-    char *args_update[] = {"ubiupdatevol", ROOTFS_VOLUME, SYSTEM_ROOTFS, 0};
+    char *args_update[] = {"ubiupdatevol", ROOTFS_VOLUME, rootfs_volume, 0};
     size = sizeof(args_update)/sizeof(args_update[0]);
     if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_update, size) != 0) {
         printf("%s: Couldn't update Rootfs volume\n", name);
         return StringValue(strdup(""));
     }
     printf("Updating of Rootfs volume is successful\n");
-    int ret = remove(SYSTEM_ROOTFS);
+    int ret = remove(rootfs_volume);
+    if(extraction_on_disk) {
+        int data_rec_ret = remove(DATA_RECOVERY);
+        if(data_rec_ret == -1)
+            printf("Failed to remove %s and may cause no space left\n", DATA_RECOVERY);
+    }
     if(ret == -1)
-        printf("Failed to remove %s and may cause no space left\n", SYSTEM_ROOTFS);
+        printf("Failed to remove %s and may cause no space left\n", rootfs_volume);
     return StringValue(strdup("success"));
 }
 #endif
