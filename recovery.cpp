@@ -123,6 +123,7 @@ static const struct option OPTIONS[] = {
   { "shutdown_after", no_argument, NULL, 'p' },
   { "reason", required_argument, NULL, 'r' },
   { "security", no_argument, NULL, 'e'},
+  { "update_binary_from_device", no_argument, NULL, 'b'},
   { "wipe_ab", no_argument, NULL, 0 },
   { "wipe_package_size", required_argument, NULL, 0 },
   { NULL, 0, NULL, 0 },
@@ -184,6 +185,7 @@ static const char* locale = "en_US";
 char* stage = NULL;
 char* reason = NULL;
 bool modified_flash = false;
+bool update_binary_from_device = false;
 static bool has_cache = false;
 static char* ota_status = NULL;
 /*
@@ -781,14 +783,14 @@ int get_ota_status() {
 static int set_ota_cookie(const char* ota_status) {
     int fd = -1;
     int rcode = 0;
-    fd = open(STATUS_COOKIE_FILE, O_CREAT | O_WRONLY , S_IRUSR | S_IWUSR);
+    fd = open(STATUS_COOKIE_FILE, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
     if (fd < 0) {
         LOGE("Failed to open %s : %s\n",
              STATUS_COOKIE_FILE,
              strerror(errno));
         goto error;
     }
-    rcode = write(fd, ota_status, strlen(ota_status)+1);
+    rcode = write(fd, ota_status, strlen(ota_status));
     if (rcode < 0) {
         LOGE("Failed to write to %s : %s\n", STATUS_COOKIE_FILE,
              strerror(errno));
@@ -2002,6 +2004,7 @@ int main(int argc, char **argv) {
     bool should_wipe_data = false;
     bool should_wipe_cache = false;
     bool should_wipe_ab = false;
+    update_binary_from_device = false;
     size_t wipe_package_size = 0;
     bool show_text = false;
     bool sideload = false;
@@ -2023,6 +2026,7 @@ int main(int argc, char **argv) {
         case 'w': should_wipe_data = true; break;
         case 'c': should_wipe_cache = true; break;
         case 't': show_text = true; break;
+        case 'b': update_binary_from_device = true; break;
         case 's': sideload = true; break;
         case 'a': sideload = true; sideload_auto_reboot = true; break;
         case 'x': just_exit = true; break;

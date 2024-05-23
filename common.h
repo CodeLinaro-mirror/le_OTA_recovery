@@ -55,6 +55,7 @@ extern bool mirror_copy;
 extern bool install_only;
 #endif
 
+extern bool update_binary_from_device;
 typedef struct fstab_rec Volume;
 
 // fopen a file, mounting volumes and making parent dirs as necessary.
