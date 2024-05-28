@@ -1917,6 +1917,12 @@ int main(int argc, char **argv) {
     int status = INSTALL_NONE;
     bool mount_required = true;
 
+#ifdef TARGET_NAD_OTA
+#ifdef TARGET_SUPPORTS_AB
+    mount_required = false;
+#endif
+#endif
+
     int arg;
     int option_index;
     while ((arg = getopt_long(argc, argv, "", OPTIONS, &option_index)) != -1) {
