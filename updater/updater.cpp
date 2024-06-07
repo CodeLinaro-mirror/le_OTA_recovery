@@ -24,6 +24,19 @@
 #include <string.h>
 #include <inttypes.h>
 
+
+#include <libxml/parser.h>
+#include <libxml/tree.h>
+#include <sstream>
+#include <chrono>
+#include <limits>
+#include <map>
+#include <string>
+#include <vector>
+
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include "edify/expr.h"
 #include "updater.h"
 #include "install.h"
@@ -62,6 +75,12 @@ extern void Register_librecovery_updater_msm();
 #if defined(TARGET_SUPPORTS_MIRROR_AB_COPY) || defined(TARGET_SUPPORTS_MPLANE_SPEC)
 #define MIRROR_SCRIPT_NAME "META-INF/com/google/android/updater-mirror-script"
 #define INSTALL_SCRIPT_NAME "META-INF/com/google/android/updater-install-script"
+#define MANIFEST_FILE_NAME "manifest.xml"
+#define MANIFEST_FILE_PATH "/tmp/manifest.xml"
+#define COMMON_MANIFEST_FILE_PATH "/tmp/common_manifest.xml"
+#define PATH_MAX 100
+#define PRODUCT_INFO "/etc/device_info.xml"
+#define COMMON_MANIFEST_FILE_NAME "common_manifest.xml"
 #endif
 
 extern bool have_eio_error;
@@ -84,6 +103,102 @@ int set_nad_update_status( const char * value ) {
         printf(" set nad ota cookie error \n");
     }
     return -1;
+}
+#endif
+
+#if defined(TARGET_SUPPORTS_MIRROR_AB_COPY) || defined(TARGET_SUPPORTS_MPLANE_SPEC)
+
+const char* get_build_id_from_manifest(const ZipArchive *pArchive) {
+    xmlDocPtr deviceInfo;
+    xmlNodePtr deviceInfoRootNode = NULL;
+    xmlNodePtr deviceInfoObjNode, deviceInfoChildNode;
+    deviceInfo = xmlReadFile(PRODUCT_INFO, "UTF-8", XML_PARSE_RECOVER);
+    const char *input_vendor = nullptr, *input_code = nullptr, *input_name = nullptr;
+    if(NULL == deviceInfo) {
+        printf("XML Document not parsed successfully.\n ");
+        return nullptr;
+    }
+
+    deviceInfoRootNode = xmlDocGetRootElement(deviceInfo);
+    if(NULL == deviceInfoRootNode) {
+        printf("Empty XML document \n");
+        xmlFreeDoc(deviceInfo);
+        return nullptr;
+    }
+    for(deviceInfoObjNode = deviceInfoRootNode->children; deviceInfoObjNode; deviceInfoObjNode = deviceInfoObjNode->next) {
+        if (deviceInfoObjNode->type != XML_ELEMENT_NODE) {
+            continue;
+        }
+
+        printf("Parsing element , line %u: name=%s \n", deviceInfoObjNode->line, (char*)deviceInfoObjNode->name);
+        if (deviceInfoObjNode->name !=nullptr && strncmp((const char *)deviceInfoObjNode->name, "Device_info", strlen("Device_info")) == 0) {
+            input_vendor = (char * ) xmlGetProp(deviceInfoObjNode, BAD_CAST "vendor");
+            input_code = (char *) xmlGetProp(deviceInfoObjNode, BAD_CAST "code");
+            input_name = (char *) xmlGetProp(deviceInfoObjNode, BAD_CAST "name");
+        }
+    }
+    printf("input_vendor: %s, input_code: %s, input_name: %s", input_vendor, input_code, input_name);
+    xmlDocPtr commonManifest;
+    xmlNodePtr commonManifestRootNode = NULL;
+    xmlNodePtr objNode, childNode;
+
+    const ZipEntry* manifest_entry = mzFindZipEntry(pArchive, COMMON_MANIFEST_FILE_NAME);
+    if (manifest_entry == NULL) {
+        printf("failed to find %s\n", COMMON_MANIFEST_FILE_NAME);
+        return nullptr;
+    }
+    const char* manifest = COMMON_MANIFEST_FILE_PATH;
+    unlink(manifest);
+    int manifest_fd = creat(manifest, 0644);
+    if (manifest_fd < 0) {
+        printf("%s: Can't make\n", manifest);
+        return nullptr;
+    }
+    bool ok = mzExtractZipEntryToFile(pArchive, manifest_entry, manifest_fd);
+    close(manifest_fd);
+    if (!ok) {
+        printf("%s: Can't extract from zip\n", COMMON_MANIFEST_FILE_NAME);
+        return nullptr;
+    }
+    printf("start to load xml: %s", COMMON_MANIFEST_FILE_NAME);
+
+    commonManifest = xmlReadFile(COMMON_MANIFEST_FILE_PATH, "UTF-8", XML_PARSE_RECOVER);
+    if(NULL == commonManifest) {
+        printf("XML Document not parsed successfully.\n ");
+        return nullptr;
+    }
+
+    commonManifestRootNode = xmlDocGetRootElement(commonManifest);
+    if(NULL == commonManifestRootNode) {
+        printf("Empty XML document \n");
+        xmlFreeDoc(commonManifest);
+        return nullptr;
+    }
+    for(objNode = commonManifestRootNode->children; objNode; objNode = objNode->next) {
+        if (objNode->type != XML_ELEMENT_NODE) {
+            continue;
+        }
+        printf("Parsing element , line %u: name=%s \n", objNode->line, (char*)objNode->name);
+        if (objNode->name != nullptr && strncmp((const char *)objNode->name, "products", strlen("products")) == 0) {
+            for(childNode = objNode->children; childNode; childNode = childNode->next) {
+                if (childNode->type != XML_ELEMENT_NODE)
+                    continue;
+                printf("Parsing element , line %u: name=%s \n",childNode->line, (char*)childNode->name);
+                    if (childNode->name != nullptr && strncmp((const char *)childNode->name, "product", strlen("product")) == 0) {
+                        const char *product_vendor = nullptr, *product_code = nullptr, *product_name = nullptr;
+                        product_vendor = (char * ) xmlGetProp(childNode, BAD_CAST "vendor");
+                        product_code = (char *) xmlGetProp(childNode, BAD_CAST "code");
+                        product_name = (char *) xmlGetProp(childNode, BAD_CAST "name");
+                        if(product_vendor != nullptr && product_code != nullptr && product_name != nullptr) {
+                            if (strncmp(product_vendor, input_vendor, strlen(product_vendor)) == 0 && strncmp(product_code, input_code, strlen(product_code)) == 0 && strncmp(product_name, input_name, strlen(product_name)) == 0) {
+                                return (char *) xmlGetProp(childNode, BAD_CAST "build-Id");
+                            }
+                        }
+                    }
+            }
+        }
+    }
+    return nullptr;
 }
 #endif
 
@@ -186,12 +301,13 @@ int main(int argc, char** argv) {
     } else {
         script_name = SCRIPT_NAME;
     }
-    if(script_name == NULL) {
-        printf("script_name is NULL, please check the argument passed\n");
-        return 4;
+    const char *build_id = get_build_id_from_manifest(&za);
+    char buf[PATH_MAX];
+    if (build_id != nullptr){
+        snprintf(buf, PATH_MAX, "build-id%s/%s", build_id, script_name);
     }
-    printf(" updater using  script %s \n",script_name);
-    const ZipEntry* script_entry = mzFindZipEntry(&za, script_name);
+    printf(" updater using  script %s \n",buf);
+    const ZipEntry* script_entry = mzFindZipEntry(&za, buf);
 #else
     const ZipEntry* script_entry = mzFindZipEntry(&za, SCRIPT_NAME);
 #endif

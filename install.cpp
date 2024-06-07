@@ -37,7 +37,7 @@
 #include <sys/types.h>
 #include <libxml/parser.h>
 #include <libxml/tree.h>
-
+#include <sstream>
 #include <chrono>
 #include <limits>
 #include <map>
@@ -91,7 +91,14 @@ static const float DEFAULT_IMAGE_PROGRESS_FRACTION = 0.1;
 static const char *RECOVERYUPDATER_COOKIE = "/cache/recoveryupgrade/RECOVERY_UPGRADE_DONE";
 #define MANIFEST_FILE_NAME "manifest.xml"
 #define MANIFEST_FILE_PATH "/tmp/manifest.xml"
-#define PATH_MAX 50
+#define COMMON_MANIFEST_FILE_PATH "/tmp/common_manifest.xml"
+#define PATH_MAX 100
+#define PRODUCT_INFO "/etc/device_info.xml"
+#define COMMON_MANIFEST_FILE_NAME "common_manifest.xml"
+
+//This variable holds the value of build-id fetched
+static const char* buildId;
+
 // This function parses and returns the build.version.incremental
 static int parse_build_number(std::string str) {
     size_t pos = str.find("=");
@@ -122,6 +129,105 @@ bool read_metadata_from_package(ZipArchive* zip, std::string* meta_data) {
     return true;
 }
 
+#if defined(TARGET_SUPPORTS_MIRROR_AB_COPY) || defined(TARGET_SUPPORTS_MPLANE_SPEC)
+
+const char* get_build_id_from_manifest(const ZipArchive *pArchive) {
+    xmlDocPtr deviceInfo;
+    xmlNodePtr deviceInfoRootNode = NULL;
+    xmlNodePtr deviceInfoObjNode, deviceInfoChildNode;
+    deviceInfo = xmlReadFile(PRODUCT_INFO, "UTF-8", XML_PARSE_RECOVER);
+    const char *input_vendor = nullptr, *input_code = nullptr, *input_name = nullptr;
+    if(NULL == deviceInfo) {
+        printf("XML Document not parsed successfully.\n ");
+        return nullptr;
+    }
+
+    deviceInfoRootNode = xmlDocGetRootElement(deviceInfo);
+    if(NULL == deviceInfoRootNode) {
+        printf("Empty XML document \n");
+        xmlFreeDoc(deviceInfo);
+        return nullptr;
+    }
+    for(deviceInfoObjNode = deviceInfoRootNode->children; deviceInfoObjNode; deviceInfoObjNode = deviceInfoObjNode->next) {
+        if (deviceInfoObjNode->type != XML_ELEMENT_NODE) {
+            continue;
+        }
+
+        printf("Parsing element , line %u: name=%s \n", deviceInfoObjNode->line, (char*)deviceInfoObjNode->name);
+        if (deviceInfoObjNode->name != nullptr && strncmp((const char *)deviceInfoObjNode->name, "Device_info", strlen("Device_info")) == 0) {
+            input_vendor = (char * ) xmlGetProp(deviceInfoObjNode, BAD_CAST "vendor");
+            input_code = (char *) xmlGetProp(deviceInfoObjNode, BAD_CAST "code");
+            input_name = (char *) xmlGetProp(deviceInfoObjNode, BAD_CAST "name");
+        }
+    }
+    if(input_vendor == nullptr || input_code == nullptr || input_name == nullptr) {
+        printf("input_vendor or input_code or input_name is null \n");
+        return nullptr;
+    }
+    printf("input_vendor: %s, input_code: %s, input_name: %s", input_vendor, input_code, input_name);
+    xmlDocPtr commonManifest;
+    xmlNodePtr commonManifestRootNode = NULL;
+    xmlNodePtr objNode, childNode;
+
+    const ZipEntry* manifest_entry = mzFindZipEntry(pArchive, COMMON_MANIFEST_FILE_NAME);
+    if (manifest_entry == NULL) {
+        printf("failed to find %s\n", COMMON_MANIFEST_FILE_NAME);
+        return nullptr;
+    }
+    const char* manifest = COMMON_MANIFEST_FILE_PATH;
+    unlink(manifest);
+    int manifest_fd = creat(manifest, 0644);
+    if (manifest_fd < 0) {
+        printf("%s: Can't make\n", manifest);
+        return nullptr;
+    }
+    bool ok = mzExtractZipEntryToFile(pArchive, manifest_entry, manifest_fd);
+    close(manifest_fd);
+    if (!ok) {
+        printf("%s: Can't extract from zip\n", COMMON_MANIFEST_FILE_NAME);
+        return nullptr;
+    }
+    printf("start to load xml: %s", COMMON_MANIFEST_FILE_NAME);
+
+    commonManifest = xmlReadFile(COMMON_MANIFEST_FILE_PATH, "UTF-8", XML_PARSE_RECOVER);
+    if(NULL == commonManifest) {
+        printf("XML Document not parsed successfully.\n ");
+        return nullptr;
+    }
+
+    commonManifestRootNode = xmlDocGetRootElement(commonManifest);
+    if(NULL == commonManifestRootNode) {
+        printf("Empty XML document \n");
+        xmlFreeDoc(commonManifest);
+        return nullptr;
+    }
+    for(objNode = commonManifestRootNode->children; objNode; objNode = objNode->next) {
+        if (objNode->type != XML_ELEMENT_NODE) {
+            continue;
+        }
+        printf("Parsing element , line %u: name=%s \n", objNode->line, (char*)objNode->name);
+        if (objNode->name != nullptr && strncmp((const char *)objNode->name, "products", strlen("products")) == 0) {
+            for(childNode = objNode->children; childNode; childNode = childNode->next) {
+                if (childNode->type != XML_ELEMENT_NODE)
+                    continue;
+                printf("Parsing element , line %u: name=%s \n",childNode->line, (char*)childNode->name);
+                    if (childNode->name != nullptr && strncmp((const char *)childNode->name, "product", strlen("product")) == 0) {
+                        const char *product_vendor = nullptr, *product_code = nullptr, *product_name = nullptr;
+                        product_vendor = (char * ) xmlGetProp(childNode, BAD_CAST "vendor");
+                        product_code = (char *) xmlGetProp(childNode, BAD_CAST "code");
+                        product_name = (char *) xmlGetProp(childNode, BAD_CAST "name");
+                        if(product_vendor != nullptr && product_code != nullptr && product_name != nullptr) {
+                            if (strncmp(product_vendor, input_vendor, strlen(product_vendor)) == 0 && strncmp(product_code, input_code, strlen(product_code)) == 0 && strncmp(product_name, input_name, strlen(product_name)) == 0) {
+                                return (char *) xmlGetProp(childNode, BAD_CAST "build-Id");
+                            }
+                        }
+                    }
+            }
+        }
+    }
+    return nullptr;
+}
+#endif
 // Read the build.version.incremental of src/tgt from the metadata and log it to last_install.
 static void read_source_target_build(ZipArchive* zip, std::vector<std::string>& log_buffer) {
     std::string meta_data;
@@ -292,11 +398,25 @@ static int
 update_binary_command(const char* path, ZipArchive* zip, int retry_count,
                       int status_fd, std::vector<std::string>* cmd)
 {
+    char buf[PATH_MAX];
+#ifdef TARGET_SUPPORTS_MPLANE_SPEC
+    if(buildId == nullptr) {
+        printf("update_binary_command: Not able to fetch build-id\n");
+        return INSTALL_ERROR;
+    }
+    snprintf(buf, PATH_MAX, "build-id%s/%s", buildId, ASSUMED_UPDATE_BINARY_NAME);
+#else
+    memset(buf, '\0', sizeof(buf));
+    snprintf(buf, PATH_MAX, "%s", ASSUMED_UPDATE_BINARY_NAME);
+#endif
+
+    printf("update-binary path %s \n",buf);
+
     // On traditional updates we extract the update binary from the package.
     const ZipEntry* binary_entry =
-            mzFindZipEntry(zip, ASSUMED_UPDATE_BINARY_NAME);
+            mzFindZipEntry(zip, buf);
     if (binary_entry == NULL) {
-        LOGE("File corrupted %s; can't find %s\n", path, ASSUMED_UPDATE_BINARY_NAME);
+        LOGE("File corrupted %s; can't find %s\n", path, buf);
         return INSTALL_CORRUPT;
     }
 
@@ -346,7 +466,7 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
     }
     close(fd);
     if (!ok && !update_binary_from_device) {
-        LOGE("Can't copy %s\n", ASSUMED_UPDATE_BINARY_NAME);
+        LOGE("Can't copy %s\n", buf);
         return INSTALL_ERROR;
     }
 
@@ -633,16 +753,22 @@ int parse_file(xmlNode *objNode,ZipArchive* zip)
         printf("Skipping for system image\n");
         return 0;
     }
+    char buffer[PATH_MAX];
+    if(buildId == nullptr) {
+        printf("parse_file: Not able to fetch build-id\n");
+        return 1;
+    }
     if(!xmlStrncmp(name, BAD_CAST "boot.img", xmlUTF8Size(name))){
-        const ZipEntry* find_entry_inside_zip = mzFindZipEntry(zip, (char *) name);
+        snprintf(buffer, PATH_MAX, "build-id%s/%s", buildId, (char *) name);
+        const ZipEntry* find_entry_inside_zip = mzFindZipEntry(zip, buffer);
         if (find_entry_inside_zip == NULL) {
             printf("failed to find %s in ZipArchive\n", (char *) name);
             return 1;
         }
         return 0;
     }
-    char buffer[PATH_MAX];
-    snprintf(buffer, PATH_MAX, "%s%s", "firmware-update/", (char *) name);
+    memset(buffer, 0, sizeof(buffer));
+    snprintf(buffer, PATH_MAX, "build-id%s/firmware-update/%s", buildId, (char *) name);
     const ZipEntry* find_entry_inside_zip = mzFindZipEntry(zip, buffer);
     if (find_entry_inside_zip == NULL) {
         printf("failed to find %s in ZipArchive\n", buffer);
@@ -701,10 +827,16 @@ int validate_manifest(ZipArchive* zip)
     char *value = NULL;
     char *build_id_in_product_node = NULL;
     char *build_id_in_build_node = NULL;
-
-    const ZipEntry* manifest_entry = mzFindZipEntry(zip, MANIFEST_FILE_NAME);
+    buildId = get_build_id_from_manifest(zip);
+    char buf[PATH_MAX];
+    if(buildId == nullptr) {
+        printf("validate_manifest: Not able to fetch build-id\n");
+        return 1;
+    }
+    snprintf(buf, PATH_MAX, "build-id%s/%s", buildId, MANIFEST_FILE_NAME);
+    const ZipEntry* manifest_entry = mzFindZipEntry(zip, buf);
     if (manifest_entry == NULL) {
-        printf("failed to find %s\n", MANIFEST_FILE_NAME);
+        printf("failed to find %s\n", buf);
         return 1;
     }
     const char* manifest = MANIFEST_FILE_PATH;

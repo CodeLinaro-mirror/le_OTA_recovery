@@ -38,6 +38,9 @@ bool verify_package(const unsigned char* package_data, size_t package_size);
 // Return true if succeed, otherwise return false.
 bool read_metadata_from_package(ZipArchive* zip, std::string* meta_data);
 
+
+const char* get_build_id_from_manifest(const ZipArchive *pArchive);
+
 #ifdef TARGET_SUPPORTS_OTA_VERIFICATION
 // Verify the OTA package. Return true if the package is verified successfully,
 // otherwise return false.
