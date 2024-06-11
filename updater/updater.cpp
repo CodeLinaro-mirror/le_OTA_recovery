@@ -228,6 +228,12 @@ int main(int argc, char** argv) {
         load_volume_table(cmd_pipe);
     }
 
+    //function to check if partition size is greater than the image present in the zip
+    if(!pre_requisuit_size_checker(&za)) {
+        printf("pre_requisuit_size_checker is failed\n");
+        return 7;
+    }
+
     // Evaluate the parsed script.
 
     UpdaterInfo updater_info;
