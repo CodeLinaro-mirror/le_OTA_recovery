@@ -114,14 +114,24 @@ AM_CONDITIONAL(BUILD_DEVICE, [test "x$ARM$ARM64" != "xnono"])
 # Compile recovery and updater for targets that support A/B boot
 AM_CONDITIONAL([TARGET_SUPPORTS_AB],[test x$TARGET_SUPPORTS_AB = xtrue])
 
+AM_CONDITIONAL([TARGET_SUPPORTS_MIRROR_AB_COPY],[test x$TARGET_SUPPORTS_MIRROR_AB_COPY = xtrue])
+
 # Compile ota package verification code for targets supporting it
 AM_CONDITIONAL([TARGET_SUPPORTS_OTA_VERIFICATION],[test x$TARGET_SUPPORTS_OTA_VERIFICATION = xtrue])
 
 # Compile nand dm verity code for targets supporting it
 AM_CONDITIONAL([TARGET_SUPPORTS_NAND_DM_VERITY],[test x$TARGET_SUPPORTS_NAND_DM_VERITY = xtrue])
 
-# Compile nand ab ota code for targets supporting it
-AM_CONDITIONAL([TARGET_NAND_AB_BOOT],[test x$TARGET_NAND_AB_BOOT = xtrue])
+AM_CONDITIONAL([TARGET_NAND_BOOT],[test x$TARGET_NAND_BOOT = xtrue])
+AM_CONDITIONAL([TARGET_NAD_OTA],[test x$TARGET_NAD_OTA = xtrue])
+
+AC_ARG_WITH([nad-prod],
+      AC_HELP_STRING([--with-nad_prod],
+         [enable nad_prod, Use this for NAD OTA]), with_nad_prod=true)
+# Compile nad_prod ota code for targets supporting it
+AM_CONDITIONAL([TARGET_NAD_PROD],[test "x${with_nad_prod}" = "xtrue"])
+
+# Compile nad ota code for targets supporting it
 
 AC_ARG_WITH([core-headers],
       AC_HELP_STRING([--with-core-headers=@<:@dir@:>@],
@@ -141,5 +151,6 @@ AC_CONFIG_FILES([     \
         otafault/Makefile \
         bootloader_message/Makefile \
         recovery.pc      \
+        mirror_copy/Makefile   \
         ])
 AC_OUTPUT

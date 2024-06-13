@@ -13,6 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 
 #ifndef _UPDATER_UPDATER_H_
 #define _UPDATER_UPDATER_H_
@@ -32,12 +37,15 @@ typedef struct {
     size_t package_zip_len;
 } UpdaterInfo;
 
-extern struct selabel_handle *sehandle;
+#ifdef TARGET_NAD_OTA
+static const char *NAD_UPDATE_STATUS = "/cache/recovery/nad_ota_status";
+int set_nad_update_status( const char * value );
+#endif
 
-#ifdef TARGET_SUPPORTS_AB
+extern struct selabel_handle *sehandle;
+// this variables are defined specifically to append _a/_b to rootfs volume for AB devices
+// for non-AB devices also these are included to have a generic code applicable for both AB and non-AB
 extern int boot_slot;
 extern int inactive_slot;
 extern const char *slot_suffix_arr[];
-#endif
-
 #endif
