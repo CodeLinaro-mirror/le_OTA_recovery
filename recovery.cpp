@@ -1915,7 +1915,7 @@ int main(int argc, char **argv) {
     int retry_count = 0;
     bool security_update = false;
     int status = INSTALL_NONE;
-    bool mount_required = true;
+    bool mount_required = false;
 
 #ifdef TARGET_NAD_OTA
 #ifdef TARGET_SUPPORTS_AB
