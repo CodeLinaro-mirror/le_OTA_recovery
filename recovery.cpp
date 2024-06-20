@@ -2246,8 +2246,8 @@ int main(int argc, char **argv) {
                 ensure_path_unmounted("/manifest_b");
             }
             else {
-                printf("Unmounting /manifest \n");
-                ensure_path_unmounted("/manifest");
+                printf("Unmounting /manifest_a \n");
+                ensure_path_unmounted("/manifest_a");
             }
             status = install_package(update_package, &should_wipe_cache,
                                      TEMPORARY_INSTALL_FILE, mount_required, retry_count);
@@ -2256,8 +2256,8 @@ int main(int argc, char **argv) {
                 ensure_path_mounted("/manifest_b");
             }
             else {
-                printf("Mounting /manifest \n");
-                ensure_path_mounted("/manifest");
+                printf("Mounting /manifest_a \n");
+                ensure_path_mounted("/manifest_a");
             }
             if (status == INSTALL_SUCCESS && should_wipe_cache) {
                 wipe_cache(false, device);
