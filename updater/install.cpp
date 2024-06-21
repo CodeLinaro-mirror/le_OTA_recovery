@@ -343,6 +343,10 @@ unsigned int get_partition_size(const char *partition_name) {
             snprintf(buffer, PATH_MAX, "%s/%s", BOOTDEVICE_DIR, dest_path);
             dest_path = strdup(buffer);
         }
+        if (!dest_path) {
+            printf("\n dest_path is null");
+            return partition_size;
+        }
         int fd = open(dest_path, O_RDONLY);
         if (fd == -1) {
             printf("%s", strerror(errno));
