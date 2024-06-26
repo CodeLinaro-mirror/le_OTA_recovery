@@ -94,7 +94,7 @@ static const char *RECOVERYUPDATER_COOKIE = "/cache/recoveryupgrade/RECOVERY_UPG
 #define COMMON_MANIFEST_FILE_PATH "/tmp/common_manifest.xml"
 #define PATH_MAX 100
 #define PRODUCT_INFO "/etc/device_info.xml"
-#define COMMON_MANIFEST_FILE_NAME "common_manifest.xml"
+#define COMMON_MANIFEST_FILE_NAME "manifest.xml"
 
 //This variable holds the value of build-id fetched
 static const char* buildId;

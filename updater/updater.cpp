@@ -80,7 +80,7 @@ extern void Register_librecovery_updater_msm();
 #define COMMON_MANIFEST_FILE_PATH "/tmp/common_manifest.xml"
 #define PATH_MAX 100
 #define PRODUCT_INFO "/etc/device_info.xml"
-#define COMMON_MANIFEST_FILE_NAME "common_manifest.xml"
+#define COMMON_MANIFEST_FILE_NAME "manifest.xml"
 #endif
 
 extern bool have_eio_error;
