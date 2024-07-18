@@ -24,7 +24,8 @@ AM_CPPFLAGS = \
               -I$(WORKSPACE)/system/core/fs_mgr/include \
               -I$(WORKSPACE)/system/extras/ext4_utils \
               -I$(WORKSPACE)/OTA/system/core/base/include \
-              -std=c++11
+              -std=c++11 \
+              @XML2_CFLAGS@
 
 AM_LDFLAGS = -shared -version-info 1:0:0
 c_sources = install.cpp \
@@ -45,7 +46,8 @@ requiredlibs = -lm \
                ../mtdutils/libmtdutils.la \
                ../edify/libedify.la \
                ../minzip/libminzip.la \
-               ../applypatch/libapplypatch.la
+               ../applypatch/libapplypatch.la \
+               @XML2_LIBS@
 
 bin_PROGRAMS = updater
 if USE_GLIB

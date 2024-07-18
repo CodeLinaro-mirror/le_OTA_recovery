@@ -1997,6 +1997,17 @@ int main(int argc, char **argv) {
     has_cache = volume_for_path(CACHE_ROOT) != nullptr;
 #endif
 
+#ifdef TARGET_SUPPORTS_MPLANE_SPEC
+    struct stat stats;
+    stat(CACHE_LOG_DIR, &stats);
+    if (S_ISDIR(stats.st_mode)){
+      printf(" recovery folder exist \n");
+    }else{
+      printf(" recovery folder doesnt exist, create folder  \n");
+      mkdir(CACHE_LOG_DIR, 0664);
+    }
+#endif
+
     get_args(&argc, &argv);
 
     const char *send_intent = NULL;
@@ -2239,8 +2250,26 @@ int main(int argc, char **argv) {
             set_mirror_copy_cookie("STARTED");
 #endif
             LOGI("install_package\n");
+            int boot_slot = libabctl_getBootSlot();
+            int next_inactive_slot = (boot_slot + 1) % 2;
+            if(next_inactive_slot == 1) {
+                printf("Unmounting /manifest_b \n");
+                ensure_path_unmounted("/manifest_b");
+            }
+            else {
+                printf("Unmounting /manifest_a \n");
+                ensure_path_unmounted("/manifest_a");
+            }
             status = install_package(update_package, &should_wipe_cache,
                                      TEMPORARY_INSTALL_FILE, mount_required, retry_count);
+            if(next_inactive_slot == 1) {
+                printf("Mounting /manifest_b \n");
+                ensure_path_mounted("/manifest_b");
+            }
+            else {
+                printf("Mounting /manifest_a \n");
+                ensure_path_mounted("/manifest_a");
+            }
             if (status == INSTALL_SUCCESS && should_wipe_cache) {
                 wipe_cache(false, device);
             }
