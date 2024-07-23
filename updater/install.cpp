@@ -286,6 +286,11 @@ unsigned int get_partition_size(const char *partition_name) {
         snprintf(buffer, PATH_MAX, "%s%s", dest_path, slot_suffix_arr[inactive_slot]);
         dest_path = strdup(buffer);
 #endif
+    if (!dest_path) {
+        printf("\n dest_path is null");
+        return partition_size;
+    }
+
     if(device_type == NAND) {
         mtd_scan_partitions();
         const MtdPartition* mtd;
@@ -314,10 +319,6 @@ unsigned int get_partition_size(const char *partition_name) {
                 }
             }
         }
-        if (!dest_path) {
-            printf("\n dest_path is null");
-            return partition_size;
-        }
 #ifdef TARGET_SUPPORTS_AB
         //case where partition _a is not available in /proc/mtd
         if(NULL == mtd_find_partition_by_name(dest_path)) {
@@ -341,6 +342,10 @@ unsigned int get_partition_size(const char *partition_name) {
         if(strncmp(BOOTDEVICE_DIR, dest_path, strlen(BOOTDEVICE_DIR)) != 0) {
             snprintf(buffer, PATH_MAX, "%s/%s", BOOTDEVICE_DIR, dest_path);
             dest_path = strdup(buffer);
+        }
+        if (!dest_path) {
+            printf("\n dest_path is null");
+            return partition_size;
         }
         int fd = open(dest_path, O_RDONLY);
         if (fd == -1) {
@@ -1156,7 +1161,7 @@ Value* PackageExtractFileFn(const char* name, State* state,
 
         char* zip_path, *file;
         char buf[PATH_MAX];
-        int fd, mkdir_ret;
+        int fd = -1, mkdir_ret;
         if (ReadArgs(state, argv, 1, &zip_path) < 0) return NULL;
 
         if(extraction_on_disk) {
@@ -1167,6 +1172,8 @@ Value* PackageExtractFileFn(const char* name, State* state,
             if (file) {
                 unlink(file);
                 fd = creat(file, 0644);
+            } else {
+                return StringValue(strdup(""));
             }
         }
 
@@ -1178,8 +1185,9 @@ Value* PackageExtractFileFn(const char* name, State* state,
                 v->type = VAL_BLOB;
             v->size = -1;
             v->data = NULL;
+        } else {
+            return StringValue(strdup(""));
         }
-
         ZipArchive* za = ((UpdaterInfo*)(state->cookie))->package_zip;
         const ZipEntry* entry = mzFindZipEntry(za, zip_path);
         if (entry == NULL) {
