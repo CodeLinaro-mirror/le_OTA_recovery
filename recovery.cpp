@@ -2004,6 +2004,7 @@ int main(int argc, char **argv) {
       printf(" recovery folder exist \n");
     }else{
       printf(" recovery folder doesnt exist, create folder  \n");
+      umask(000);
       mkdir(CACHE_LOG_DIR, 0777);
     }
 #endif
