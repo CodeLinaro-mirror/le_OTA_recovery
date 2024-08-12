@@ -61,6 +61,6 @@ edify_CPPFLAGS := $(AM_CPPFLAGS)
 edify_LDADD := -lm -lpthread -lbase
 endif
 
-if TARGET_NAND_AB_BOOT
-libedify_la_CPPFLAGS += -DTARGET_NAND_AB_BOOT
+if TARGET_NAND_BOOT
+libedify_la_CPPFLAGS += -DTARGET_NAND_BOOT
 endif

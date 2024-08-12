@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- *Changes from Qualcomm Innovation Center are provided under the following license:
- *Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
- *SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <ctype.h>
@@ -295,20 +295,86 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
         LOGE("Can't make %s\n", binary);
         return INSTALL_ERROR;
     }
-    bool ok = mzExtractZipEntryToFile(zip, binary_entry, fd);
+    bool ok = false;
+    if(update_binary_from_device) {
+        printf("Using update-binary from device\n");
+        int src_fd = open("/usr/bin/updater", O_RDONLY);
+        if(src_fd < 0) {
+            printf("can't open /usr/bin/updater\n");
+            return INSTALL_ERROR;
+        }
+        char buffer[PATH_MAX];
+        int err,n;
+        while (1) {
+            err = read(src_fd, buffer, PATH_MAX);
+            if (err == -1) {
+                printf("Error reading updater from the device.\n");
+                close(src_fd);
+                close(fd);
+                return INSTALL_ERROR;
+            }
+            n = err;
+            if (n == 0) {
+                printf("Write done to %s\n", binary);
+                break;
+            }
+            err = write(fd, buffer, n);
+            if (err == -1) {
+                printf("Error writing updater to %s \n", binary);
+                close(src_fd);
+                close(fd);
+                return INSTALL_ERROR;
+            }
+        }
+        close(src_fd);
+    }
+    else {
+        printf("Using update-binary from package\n");
+        ok = mzExtractZipEntryToFile(zip, binary_entry, fd);
+    }
     close(fd);
-
-    if (!ok) {
+    if (!ok && !update_binary_from_device) {
         LOGE("Can't copy %s\n", ASSUMED_UPDATE_BINARY_NAME);
         return INSTALL_ERROR;
     }
 
+#ifdef TARGET_NAD_OTA
+    if(post_install_verify) {
+         LOGI("post install update flow \n");
+         *cmd = {
+             binary,
+             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+             std::to_string(status_fd),
+             path,
+             "post_install_verify",
+         };
+    } else if (pre_install_verify){
+         LOGI("pre install update flow \n");
+         *cmd = {
+             binary,
+             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+             std::to_string(status_fd),
+             path,
+             "pre_install_verify",
+         };
+    } else {
+         LOGI("update flow \n");
+         *cmd = {
+             binary,
+             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+             std::to_string(status_fd),
+             path,
+         };
+    }
+#else
     *cmd = {
         binary,
         EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
         std::to_string(status_fd),
         path,
     };
+#endif
+
     if (retry_count > 0)
         cmd->push_back("retry");
     return 0;
@@ -540,6 +606,7 @@ static int
 really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
                        std::vector<std::string>& log_buffer, int retry_count)
 {
+    LOGI("really_install_package\n");
     ui->SetBackground(RecoveryUI::INSTALLING_UPDATE);
     ui->Print("Finding update package...\n");
     // Give verification half the progress bar...
@@ -614,6 +681,8 @@ int
 install_package(const char* path, bool* wipe_cache, const char* install_file,
                 bool needs_mount, int retry_count)
 {
+
+    LOGI(" install_package\n");
     modified_flash = true;
     auto start = std::chrono::system_clock::now();
 
