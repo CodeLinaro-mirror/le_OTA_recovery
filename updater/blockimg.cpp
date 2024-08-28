@@ -2219,7 +2219,10 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
             slot_suffix_arr[inactive_slot]);
     blockdev_filename->data = strdup(buf);
 #endif
-
+    if (blockdev_filename->data == NULL){
+        printf("BlockEraseFn: failed to get block device name \n");
+        return StringValue(strdup(""));
+    }
     printf(" blockdev_filename_data %s \n", blockdev_filename->data);
 
     int fd = open(blockdev_filename->data, O_RDWR);
@@ -2262,7 +2265,10 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     char *mtd_num = strtok_r(blockdev_filename->data, "block", &save);
     mtd_num = strtok_r(NULL, "block", &save);
-
+    if (mtd_num == NULL){
+        printf("BlockEraseFn: failed to get the mtd_num \n");
+        return StringValue(strdup(""));
+    }
     snprintf(mtd_erase_dev, 12, "%s%s", "/dev/mtd", mtd_num);
 
     fd = open(mtd_erase_dev, O_RDWR);
