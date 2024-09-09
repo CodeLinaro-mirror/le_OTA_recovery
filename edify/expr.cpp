@@ -151,6 +151,9 @@ Value* AbortFn(const char* name, State* state, int argc, Expr* argv[]) {
     std::string buf = tmp + "\nDeleting AB_COPY_DONE before exiting..\n";
     state->errmsg = strdup(buf.c_str());
     unlink("/cache/recovery/AB_COPY_DONE");
+#ifdef TARGET_NAD_OTA
+    system("modprobe -r mtdblock");
+#endif
 #endif
 
     return NULL;
