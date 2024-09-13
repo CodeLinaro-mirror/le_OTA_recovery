@@ -2296,7 +2296,7 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     size_t total_eb_count = vol_size/leb_size;
-    size_t image_eb_count = (image_size * 4096) / leb_size;
+    size_t image_eb_count = (image_size * BLOCKSIZE) / leb_size;
     struct erase_info_user ei;
     struct erase_info_user64 ei64;
     image_eb_count++;
@@ -2319,12 +2319,15 @@ static int read_firmware_version() {
     int version = -1;
     FILE* firmware_fp = fopen(FIRMWARE_VERSION_FILE, "r");
     if (firmware_fp != NULL) {
-      char *firmware_buf = (char*)malloc(4096);
+      char *firmware_buf = (char*)malloc(BLOCKSIZE);
+      if(firmware_buf == NULL){
+        fclose(firmware_fp);
+	return -1;
+      }
       std::vector<std::string> out;
-      while ((fgets(firmware_buf, 4096, firmware_fp)) != NULL) {
+      while ((fgets(firmware_buf, BLOCKSIZE, firmware_fp)) != NULL) {
         std::string firmware_str( firmware_buf);
         if(firmware_str.find("Meta_Build_ID") !=  std::string::npos){
-          printf(" found META Build ID %s \n", firmware_buf);
           size_t pos;
           while ((pos = firmware_str.find("-")) != std::string::npos){
             std::string token = firmware_str.substr(0, pos);
@@ -2333,13 +2336,12 @@ static int read_firmware_version() {
           }
           const char *firmware_ver_str = (out.at(1)).c_str();
           version = atoi(firmware_ver_str);
-          printf(" firmware version %d \n", version);
           break;
         }
+      }
+      free(firmware_buf);
+      fclose(firmware_fp);
     }
-    free(firmware_buf);
-  }
-  fclose(firmware_fp);
   return version;
 }
 
@@ -2349,9 +2351,13 @@ static int read_rootfs_version()
   int version = -1;
   FILE* rootfs_fp = fopen(BUILD_VERSION_FILE, "r");
   if (rootfs_fp != NULL) {
-    char *rootfs_buf = (char*)malloc(4096);
-    size_t bytes;
-    while ((fgets(rootfs_buf, 4096, rootfs_fp)) != NULL) {
+    char *rootfs_buf = (char*)malloc(BLOCKSIZE);
+    if (rootfs_buf == NULL){
+      fclose(rootfs_fp);
+      return -1;
+    }
+
+    while ((fgets(rootfs_buf, BLOCKSIZE, rootfs_fp)) != NULL) {
       std::string rootfs_str(rootfs_buf);
       size_t pos = 0;
       std::string token;
@@ -2366,12 +2372,11 @@ static int read_rootfs_version()
       std::string rootfs_version = out.at(out.size()-2) + out.at(out.size()-1);
       const char *rootfs_ver_str = rootfs_version.c_str();
       version = atoi(rootfs_ver_str);
-      printf(" rootfs version %d \n", version);
       break;
     }
     free(rootfs_buf);
+    fclose(rootfs_fp);
   }
-  fclose(rootfs_fp);
   return version;
 }
 
@@ -2381,6 +2386,9 @@ static int read_telaf_version()
     int version = -1;
     char versionBuffer[MAX_VERSION_STR_BYTES];
     char* telaf_ver = (char*) malloc(7*sizeof(char));
+    if (telaf_ver == NULL){
+        return -1;
+    }
     FILE* versionFile = NULL;
 
     do
@@ -2394,13 +2402,10 @@ static int read_telaf_version()
         memcpy(telaf_ver, ++verStart, 6);
         const char* out = telaf_ver;
         version = atoi(out);
-        printf(" Telaf version is, '%d'.", version);
-      } else {
-        printf("Could not read Telaf version.");
       }
+      free(telaf_ver);
+      fclose(versionFile);
     }
-    fclose(versionFile);
-    free(telaf_ver);
     return version;
 }
 
