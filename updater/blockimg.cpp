@@ -79,6 +79,7 @@ int get_boot_dev_type();
 #define FIRMWARE_VERSION_FILE "/firmware/image/Ver_Info.txt"
 #define MAX_VERSION_STR_BYTES 101
 #define BUILD_VERSION_FILE "/etc/version"
+#define LXC_BUILD_VERSION_FILE "/lxcrootfs/etc/version"
 #define LEGATO_VERSION_FILE "/legato/systems/current/version"
 #endif
 #endif
@@ -2346,10 +2347,14 @@ static int read_firmware_version() {
 }
 
 // read build version from etc/version
-static int read_rootfs_version()
+static long read_rootfs_version(int lxcrootfs)
 {
-  int version = -1;
-  FILE* rootfs_fp = fopen(BUILD_VERSION_FILE, "r");
+  long version = -1;
+  FILE* rootfs_fp;
+  if (lxcrootfs)
+    rootfs_fp = fopen(LXC_BUILD_VERSION_FILE, "r");
+  else
+    rootfs_fp = fopen(BUILD_VERSION_FILE, "r");
   if (rootfs_fp != NULL) {
     char *rootfs_buf = (char*)malloc(BLOCKSIZE);
     if (rootfs_buf == NULL){
@@ -2359,19 +2364,7 @@ static int read_rootfs_version()
 
     while ((fgets(rootfs_buf, BLOCKSIZE, rootfs_fp)) != NULL) {
       std::string rootfs_str(rootfs_buf);
-      size_t pos = 0;
-      std::string token;
-
-      std::vector<std::string> out;
-      while ((pos = rootfs_str.find(".")) != std::string::npos){
-        token = rootfs_str.substr(0, pos);
-        rootfs_str.erase(0, pos + 1);
-        out.push_back(std::string(token));
-      }
-      out.push_back(std::string(rootfs_str));
-      std::string rootfs_version = out.at(out.size()-2) + out.at(out.size()-1);
-      const char *rootfs_ver_str = rootfs_version.c_str();
-      version = atoi(rootfs_ver_str);
+      version = strtol(rootfs_buf, NULL, 10);
       break;
     }
     free(rootfs_buf);
@@ -2381,9 +2374,9 @@ static int read_rootfs_version()
 }
 
 // read telaf version from /legato/systems/current/version
-static int read_telaf_version()
+static long read_telaf_version()
 {
-    int version = -1;
+    long version = -1;
     char versionBuffer[MAX_VERSION_STR_BYTES];
     char* telaf_ver = (char*) malloc(7*sizeof(char));
     if (telaf_ver == NULL){
@@ -2401,7 +2394,7 @@ static int read_telaf_version()
         char* verStart = strchr(versionBuffer, '-');
         memcpy(telaf_ver, ++verStart, 6);
         const char* out = telaf_ver;
-        version = atoi(out);
+        version = strtol(out, NULL, 10);
       }
       free(telaf_ver);
       fclose(versionFile);
@@ -2434,7 +2427,7 @@ Value* BlockPreCheckVersion(const char* name, State* state, int argc, Expr* argv
                    name);
         return StringValue(strdup(""));
     }
-    version = atoi(blockdev_num->data);
+    version = strtol(blockdev_num->data, NULL, 10);
 
     if(blockdev_filename->data == NULL) {
         printf("BlockEraseFn: blockdev_filename_data is NULL\n");
@@ -2442,7 +2435,7 @@ Value* BlockPreCheckVersion(const char* name, State* state, int argc, Expr* argv
     }
 
     if (strncmp(blockdev_filename->data, SYSTEM_PATH, strlen(SYSTEM_PATH)) == 0){
-      if (version < read_rootfs_version()){
+      if (version < read_rootfs_version(0)){
         printf("BlockPreCheckVersion: rootfs version will be downgraded with this update \n");
         return StringValue(strdup(""));
       }
@@ -2458,6 +2451,12 @@ Value* BlockPreCheckVersion(const char* name, State* state, int argc, Expr* argv
     if (strncmp(blockdev_filename->data, MODEM_PATH, strlen(MODEM_PATH)) == 0){
       if (version < read_firmware_version()){
         printf("BlockPreCheckVersion: firmware version will be downgraded with this update \n");
+        return StringValue(strdup(""));
+      }
+    }
+    if (strncmp(blockdev_filename->data, LXCROOTFS_PATH, strlen(LXCROOTFS_PATH)) == 0){
+      if (version < read_rootfs_version(1)){
+        printf("BlockPreCheckVersion: lxc version will be downgraded with this update \n");
         return StringValue(strdup(""));
       }
     }
