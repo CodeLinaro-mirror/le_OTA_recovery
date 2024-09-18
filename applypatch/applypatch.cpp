@@ -893,6 +893,7 @@ static int GenerateTarget(FileContents* source_file,
 
             // We still write the original source to cache, in case
             // the partition write is interrupted.
+#ifndef TARGET_NAD_OTA
             if (MakeFreeSpaceOnCache(source_file->data.size()) < 0) {
                 printf("not enough free space on /cache\n");
                 return 1;
@@ -902,6 +903,7 @@ static int GenerateTarget(FileContents* source_file,
                 return 1;
             }
             made_copy = 1;
+#endif
             retry = 0;
         } else {
             int enough_space = 0;
