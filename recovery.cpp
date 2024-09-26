@@ -2081,7 +2081,6 @@ int main(int argc, char **argv) {
                 update_package = strtok_r(str, "\:", &save);
                 if(update_package !=NULL)
                     printf(" \n post_verify flow update_package: %s \n",update_package);
-                free(str);
             } else {
                 LOGE("strcreation failed: %s\n", strerror(errno));	    
 	    }
@@ -2094,7 +2093,6 @@ int main(int argc, char **argv) {
                 update_package = strtok_r(str, "\:", &save);
                 if(update_package !=NULL)
                     printf(" \n pre_verify flow update_package: %s \n",update_package);
-                free(str);
             } else {
                 LOGE("strcreation failed: %s\n", strerror(errno));
             }
