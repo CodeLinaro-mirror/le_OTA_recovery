@@ -2074,20 +2074,28 @@ int main(int argc, char **argv) {
         const char *get_path_suffix = (char*) strchr(update_package, ':');
         if((get_path_suffix !=NULL) && (!strncmp("--post_verify", get_path_suffix + 1, 13))){
             post_install_verify = true;
-            char *str = (char*)malloc(strlen(update_package));
-            strlcpy(str, update_package, strlen(update_package));
-            char* save = str;
-            update_package = strtok_r(str, "\:", &save);
-            if(update_package !=NULL)
-                printf(" \n post_verify flow update_package: %s \n",update_package);
+            char *str = (char*)malloc(strlen(update_package)+1);
+            if (str != NULL){
+                strlcpy(str, update_package, strlen(update_package));
+                char* save = str;
+                update_package = strtok_r(str, "\:", &save);
+                if(update_package !=NULL)
+                    printf(" \n post_verify flow update_package: %s \n",update_package);
+            } else {
+                LOGE("strcreation failed: %s\n", strerror(errno));	    
+	    }
         } else if((get_path_suffix !=NULL) && (!strncmp("--pre_verify", get_path_suffix + 1, 12))){
             pre_install_verify = true;
-            char *str = (char*)malloc(strlen(update_package));
-            strlcpy(str, update_package, strlen(update_package));
-            char* save = str;
-            update_package = strtok_r(str, "\:", &save);
-            if(update_package !=NULL)
-                printf(" \n pre_verify flow update_package: %s \n",update_package);
+            char *str = (char*)malloc(strlen(update_package)+1);
+            if (str != NULL){
+                strlcpy(str, update_package, strlen(update_package));
+                char* save = str;
+                update_package = strtok_r(str, "\:", &save);
+                if(update_package !=NULL)
+                    printf(" \n pre_verify flow update_package: %s \n",update_package);
+            } else {
+                LOGE("strcreation failed: %s\n", strerror(errno));
+            }
         } else {
             printf(" install update flow \n");
         }
