@@ -48,7 +48,16 @@
 #include <limits.h>
 static int boot_slot;
 static int inactive_slot;
+#ifdef TARGET_NAD_OTA
+#ifdef TARGET_NAND_BOOT
 static const char* slot_suffix_arr[] = {"_a", "_b", NULL};
+#else
+//all partitions names in Telematics emmc devices are without suffix, and only _b slot suffix are added
+static const char* slot_suffix_arr[] = {"", "_b", NULL};
+#endif
+#else
+static const char* slot_suffix_arr[] = {"_a", "_b", NULL};
+#endif
 #endif
 
 static int LoadPartitionContents(const char* filename, FileContents* file);
