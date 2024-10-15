@@ -1117,7 +1117,7 @@ static char* browse_directory(const char* path, Device* device) {
         strlcat(new_path, "/", PATH_MAX);
         strlcat(new_path, item, PATH_MAX);
 
-        if (item[item_len-1] == '/') {
+        if (strlen(new_path)-1 >= 0 && item[item_len-1] == '/') {
             // recurse down into a subdirectory
             new_path[strlen(new_path)-1] = '\0';  // truncate the trailing '/'
             result = browse_directory(new_path, device);
