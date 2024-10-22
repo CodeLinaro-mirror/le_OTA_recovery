@@ -215,7 +215,7 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
 
         // Duplicate the SHA context and finalize the duplicate so we can
         // check it against this pair's expected hash.
-        SHA_CTX temp_ctx;
+        SHA_CTX temp_ctx = {0};
         memcpy(&temp_ctx, &sha_ctx, sizeof(SHA_CTX));
         uint8_t sha_so_far[SHA_DIGEST_LENGTH];
         SHA1_Final(sha_so_far, &temp_ctx);
