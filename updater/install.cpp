@@ -2853,6 +2853,83 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
 #endif //TARGET_SUPPORTS_NAND_DM_VERITY
 
 
+#ifdef TARGET_NAD_FDE
+#define PART_NAME_LENGTH 64
+Value* setupInactiveDmcryptDevice(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 1) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects exactly 1 arg, got %d", name, argc);
+    }
+
+    char *partition = NULL; // partition = rootfs
+    if (ReadArgs(state, argv, 1, &partition) < 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+    }
+
+    char dm_name[PART_NAME_LENGTH];
+    // name of the dmcrypt device to be created on inactive_block_device
+    snprintf(dm_name, PART_NAME_LENGTH, "%s_inactive", partition);
+
+    // Get the inactive block device
+#ifdef TARGET_NAND_BOOT
+    char inactive_partition[PART_NAME_LENGTH];
+    snprintf(inactive_partition, PART_NAME_LENGTH, "%s%s", partition, slot_suffix_arr[inactive_slot]);
+    char *inactive_block_device = getMtdBlock(inactive_partition);
+#else
+    if (strncmp(partition, "rootfs", strlen("rootfs")) == 0)
+      partition = strdup("system");
+    char inactive_block_device[PART_NAME_LENGTH];
+    snprintf(inactive_block_device, PART_NAME_LENGTH, "/dev/block/bootdevice/by-name/%s%s", partition, slot_suffix_arr[inactive_slot]);
+#endif
+
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+
+    // nad-fde-app -d /dev/mtd58 -n rootfs_inactive -k 0
+    // nad-fde-app -d /dev/block/bootdevice/by-name/system_b -n rootfs_inactive -k 0
+    char *args[] = {"nad-fde-app", "-d", inactive_block_device, "-n", dm_name, "-k", "0", 0};
+    size_t size = sizeof(args)/sizeof(args[0]);
+
+    if (exec_command(ui->cmd_pipe, "/usr/bin/nad-fde-app", args, size) != 0) {
+        fprintf(stderr, "Failed to create dmcrypt device %s on %s\n", dm_name, inactive_block_device);
+        fprintf(ui->cmd_pipe, "Failed to create dmcrypt device %s on %s\n", dm_name, inactive_block_device);
+        return StringValue(strdup(""));
+    }
+    printf("Created dmcrypt device %s on %s\n", dm_name, inactive_block_device);
+    return StringValue(strdup("success"));
+}
+
+Value* closeInactiveDmcryptDevice(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 1) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects exactly 1 arg, got %d", name, argc);
+    }
+
+    char *partition = NULL; // partition = rootfs
+    if (ReadArgs(state, argv, 1, &partition) < 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+    }
+
+    char dm_name[PART_NAME_LENGTH];
+    snprintf(dm_name, PART_NAME_LENGTH, "%s_inactive", partition);
+
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+
+    // nad-fde-app -n rootfs_inactive -x
+    char *args[] = {"nad-fde-app", "-n", dm_name, "-x", 0};
+    size_t size = sizeof(args)/sizeof(args[0]);
+
+    if (exec_command(ui->cmd_pipe, "/usr/bin/nad-fde-app", args, size) != 0) {
+        fprintf(stderr, "failed to close dmcrypt device %s", partition);
+        fprintf(ui->cmd_pipe, "failed to close dmcrypt device  %s", partition);
+        return StringValue(strdup(""));
+    }
+    printf("Closed dmcrypt device %s\n", dm_name);
+    return StringValue(strdup("success"));
+}
+#endif //TARGET_NAD_FDE
+
 #ifdef TARGET_NAND_BOOT
 #ifdef TARGET_NAD_OTA
 
@@ -3043,7 +3120,10 @@ void RegisterInstallFunctions() {
 #ifdef TARGET_SUPPORTS_NAND_DM_VERITY
     RegisterFunction("update_rootfs_ubi_volume", updateRootfsUbiVolume);
 #endif
-
+#ifdef TARGET_NAD_FDE
+    RegisterFunction("setup_inactive_dmcrypt_device", setupInactiveDmcryptDevice);
+    RegisterFunction("close_inactive_dmcrypt_device", closeInactiveDmcryptDevice);
+#endif
 #ifdef TARGET_NAND_BOOT
     RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
     RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);

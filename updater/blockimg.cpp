@@ -1664,24 +1664,26 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     }
 #endif
 #endif
+
+#ifdef TARGET_NAD_FDE
+    if (strstr(blockdev_filename->data ,"/dev/mapper/")==NULL) {
+#endif
+
 #ifdef TARGET_SUPPORTS_AB
-    int boot_device_type = TYPE_ERROR;
-#ifdef TARGET_NAD_OTA
-    boot_device_type = get_boot_dev_type();
-#endif
-    printf("boot device type: %d\n", boot_device_type);
-    if ( TYPE_MTD == boot_device_type ) {
-        printf("Calling getInactiveRootfsMtdBlock\n");
 #ifdef TARGET_NAND_BOOT
-        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+    printf("Calling getInactiveRootfsMtdBlock\n");
+    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#else
+    char buf[PATH_MAX];
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data, slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
 #endif
-    } else {
-        char buf[PATH_MAX];
-        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-                slot_suffix_arr[inactive_slot]);
-        blockdev_filename->data = strdup(buf);
+#endif
+
+#ifdef TARGET_NAD_FDE
     }
 #endif
+
     printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
             blockdev_filename->data);
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
@@ -2018,24 +2020,25 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
 
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
+#ifdef TARGET_NAD_FDE
+    if (strstr(blockdev_filename->data ,"/dev/mapper/")==NULL) {
+#endif
+
 #ifdef TARGET_SUPPORTS_AB
-    int boot_device_type = TYPE_ERROR;
-#ifdef TARGET_NAD_OTA
-    boot_device_type = get_boot_dev_type();
-#endif
-    printf("boot device type: %d\n", boot_device_type);
-    if ( TYPE_MTD == boot_device_type ) {
-        printf("Calling getInactiveRootfsMtdBlock\n");
 #ifdef TARGET_NAND_BOOT
-        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+    printf("Calling getInactiveRootfsMtdBlock\n");
+    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#else
+    char buf[PATH_MAX];
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data, slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
 #endif
-    } else {
-        char buf[PATH_MAX];
-        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-                slot_suffix_arr[inactive_slot]);
-        blockdev_filename->data = strdup(buf);
+#endif
+
+#ifdef TARGET_NAD_FDE
     }
 #endif
+
     printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
             blockdev_filename->data);
 
