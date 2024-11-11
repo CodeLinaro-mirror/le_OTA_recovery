@@ -1915,7 +1915,7 @@ int main(int argc, char **argv) {
     int retry_count = 0;
     bool security_update = false;
     int status = INSTALL_NONE;
-    bool mount_required = false;
+    bool mount_required = true;
 
 #ifdef TARGET_NAD_OTA
 #ifdef TARGET_SUPPORTS_AB
@@ -2081,7 +2081,6 @@ int main(int argc, char **argv) {
                 update_package = strtok_r(str, "\:", &save);
                 if(update_package !=NULL)
                     printf(" \n post_verify flow update_package: %s \n",update_package);
-                free(str);
             } else {
                 LOGE("strcreation failed: %s\n", strerror(errno));	    
 	    }
@@ -2094,7 +2093,6 @@ int main(int argc, char **argv) {
                 update_package = strtok_r(str, "\:", &save);
                 if(update_package !=NULL)
                     printf(" \n pre_verify flow update_package: %s \n",update_package);
-                free(str);
             } else {
                 LOGE("strcreation failed: %s\n", strerror(errno));
             }
