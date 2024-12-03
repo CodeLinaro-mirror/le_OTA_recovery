@@ -78,7 +78,7 @@ int get_boot_dev_type();
 #ifdef TARGET_NAD_OTA
 #define FIRMWARE_VERSION_FILE "/firmware/image/Ver_Info.txt"
 #define MAX_VERSION_STR_BYTES 101
-#define BUILD_VERSION_FILE "/etc/version"
+#define BUILD_VERSION_FILE "/etc/timestamp"
 #define LXC_BUILD_VERSION_FILE "/lxcrootfs/etc/timestamp"
 #define LEGATO_VERSION_FILE "/legato/systems/current/version"
 #endif
