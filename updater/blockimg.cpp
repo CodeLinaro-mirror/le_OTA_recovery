@@ -1034,7 +1034,6 @@ static int LoadSrcTgtVersion3(CommandParameters& params, RangeSet& tgt, size_t& 
     }
 
     std::vector<uint8_t> tgtbuffer(tgt.size * BLOCKSIZE);
-
     if (ReadBlocks(tgt, tgtbuffer, params.fd) == -1) {
         return -1;
     }
@@ -1089,7 +1088,7 @@ static int PerformCommandMove(CommandParameters& params) {
     size_t blocks = 0;
     bool overlap = false;
     int status = 0;
-    RangeSet tgt;
+    RangeSet tgt={0,0,{}};
 
     if (params.version == 1) {
         status = LoadSrcTgtVersion1(params, tgt, blocks, params.buffer, params.fd);
@@ -1128,7 +1127,6 @@ static int PerformCommandMove(CommandParameters& params) {
         FreeStash(params.stashbase, params.freestash);
         params.freestash.clear();
     }
-
     params.written += tgt.size;
 
     return 0;
@@ -1211,7 +1209,7 @@ static int PerformCommandNew(CommandParameters& params) {
         return -1;
     }
 
-    RangeSet tgt;
+    RangeSet tgt={0,0,{}};
     parse_range(params.tokens[params.cpos++], tgt);
 
     if (params.canwrite) {
@@ -1241,7 +1239,6 @@ static int PerformCommandNew(CommandParameters& params) {
 
         pthread_mutex_unlock(&params.nti.mu);
     }
-
     params.written += tgt.size;
 
     return 0;
@@ -1342,7 +1339,6 @@ static int PerformCommandDiff(CommandParameters& params) {
         FreeStash(params.stashbase, params.freestash);
         params.freestash.clear();
     }
-
     params.written += tgt.size;
 
     return 0;
@@ -1796,10 +1792,11 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     // Build a hash table of the available commands
     HashTable* cmdht = mzHashTableCreate(cmdcount, nullptr);
     std::unique_ptr<HashTable, decltype(&mzHashTableFree)> cmdht_holder(cmdht, mzHashTableFree);
-
-    for (size_t i = 0; i < cmdcount; ++i) {
-        unsigned int cmdhash = HashString(commands[i].name);
-        mzHashTableLookup(cmdht, cmdhash, (void*) &commands[i], CompareCommands, true);
+    if (cmdht != nullptr) {
+        for (size_t i = 0; i < cmdcount; ++i) {
+            unsigned int cmdhash = HashString(commands[i].name);
+            mzHashTableLookup(cmdht, cmdhash, (void*) &commands[i], CompareCommands, true);
+        }
     }
 
     int rc = -1;
