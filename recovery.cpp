@@ -14,7 +14,7 @@
  * limitations under the License.
  *
  *Changes from Qualcomm Innovation Center are provided under the following license:
- *Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ *Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -120,6 +120,7 @@ static const struct option OPTIONS[] = {
   { "shutdown_after", no_argument, NULL, 'p' },
   { "reason", required_argument, NULL, 'r' },
   { "security", no_argument, NULL, 'e'},
+  { "update_binary_from_device", no_argument, NULL, 'b'},
   { "wipe_ab", no_argument, NULL, 0 },
   { "wipe_package_size", required_argument, NULL, 0 },
   { NULL, 0, NULL, 0 },
@@ -177,7 +178,12 @@ static const char* locale = "en_US";
 char* stage = NULL;
 char* reason = NULL;
 bool modified_flash = false;
+bool update_binary_from_device = false;
 static bool has_cache = false;
+#ifdef TARGET_NAD_OTA
+bool post_install_verify = false;
+bool pre_install_verify = false;
+#endif
 static char* ota_status = NULL;
 
 /*
@@ -738,7 +744,7 @@ static int set_ota_cookie(const char* ota_status) {
              strerror(errno));
         goto error;
     }
-    rcode = write(fd, ota_status, strlen(ota_status)+1);
+    rcode = write(fd, ota_status, strlen(ota_status));
     if (rcode < 0) {
         LOGE("Failed to write to %s : %s\n", STATUS_COOKIE_FILE,
              strerror(errno));
@@ -1899,6 +1905,7 @@ int main(int argc, char **argv) {
     bool should_wipe_data = false;
     bool should_wipe_cache = false;
     bool should_wipe_ab = false;
+    update_binary_from_device = false;
     size_t wipe_package_size = 0;
     bool show_text = false;
     bool sideload = false;
@@ -1910,6 +1917,12 @@ int main(int argc, char **argv) {
     int status = INSTALL_NONE;
     bool mount_required = true;
 
+#ifdef TARGET_NAD_OTA
+#ifdef TARGET_SUPPORTS_AB
+    mount_required = false;
+#endif
+#endif
+
     int arg;
     int option_index;
     while ((arg = getopt_long(argc, argv, "", OPTIONS, &option_index)) != -1) {
@@ -1920,6 +1933,7 @@ int main(int argc, char **argv) {
         case 'w': should_wipe_data = true; break;
         case 'c': should_wipe_cache = true; break;
         case 't': show_text = true; break;
+        case 'b': update_binary_from_device = true; break;
         case 's': sideload = true; break;
         case 'a': sideload = true; sideload_auto_reboot = true; break;
         case 'x': just_exit = true; break;
@@ -2044,6 +2058,48 @@ int main(int argc, char **argv) {
         }
 
 #ifdef TARGET_NAD_OTA
+        //  before AB update we need to check the versions of build, telaf and modem
+        //  that it's not downgrading the existing feature.
+        //  --pre_verify is set to enable this
+        //  "--update_package=/data/update.zip:--pre_verify"
+        //  check in update package path if '--pre_verify' is present is yes, set pre_install_verify true
+        //  to call copy only flow
+        //
+        //  after AB update and success reboot to updated slots,
+        //  need to verify md5 is same..
+        //  --post_verify is set to enable this
+        //  "--update_package=/data/update.zip:--post_verify"
+        //  check in update package path if '--post_verify' is present is yes, set post_install_verify true
+        //  to call copy only flow
+        const char *get_path_suffix = (char*) strchr(update_package, ':');
+        if((get_path_suffix !=NULL) && (!strncmp("--post_verify", get_path_suffix + 1, 13))){
+            post_install_verify = true;
+            char *str = (char*)malloc(strlen(update_package)+1);
+            if (str != NULL){
+                strlcpy(str, update_package, strlen(update_package));
+                char* save = str;
+                update_package = strtok_r(str, "\:", &save);
+                if(update_package !=NULL)
+                    printf(" \n post_verify flow update_package: %s \n",update_package);
+            } else {
+                LOGE("strcreation failed: %s\n", strerror(errno));	    
+	    }
+        } else if((get_path_suffix !=NULL) && (!strncmp("--pre_verify", get_path_suffix + 1, 12))){
+            pre_install_verify = true;
+            char *str = (char*)malloc(strlen(update_package)+1);
+            if (str != NULL){
+                strlcpy(str, update_package, strlen(update_package));
+                char* save = str;
+                update_package = strtok_r(str, "\:", &save);
+                if(update_package !=NULL)
+                    printf(" \n pre_verify flow update_package: %s \n",update_package);
+            } else {
+                LOGE("strcreation failed: %s\n", strerror(errno));
+            }
+        } else {
+            printf(" install update flow \n");
+        }
+
        set_nad_ota_cookie(" OTA_PROG ");
 #endif
     }
@@ -2192,12 +2248,12 @@ error:
         set_nad_ota_cookie(" OTA_FAIL ");
     }
 #else
-    printf("set ota cookie \n");
-    if (status == INSTALL_SUCCESS) {
-       set_ota_cookie("OTA_DONE");
-    } else {
-       set_ota_cookie("OTA_FAIL");
+   ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
+    if (IS_LE_MODE() && ota_status != nullptr) {
+        printf("Write OTA status to OTA cookie %s\n", ota_status);
+        set_ota_cookie(ota_status);
     }
+    printf("OTA status %d\n", get_ota_status());
 #endif
     // Save logs and clean up before rebooting or shutting down.
     finish_recovery(send_intent);

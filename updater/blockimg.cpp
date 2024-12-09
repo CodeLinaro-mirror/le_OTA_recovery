@@ -14,6 +14,9 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #include <ctype.h>
@@ -72,6 +75,13 @@
 int get_boot_dev_type();
 #else
 #include <nad-ab-al.h>
+#ifdef TARGET_NAD_OTA
+#define FIRMWARE_VERSION_FILE "/firmware/image/Ver_Info.txt"
+#define MAX_VERSION_STR_BYTES 101
+#define BUILD_VERSION_FILE "/etc/timestamp"
+#define LXC_BUILD_VERSION_FILE "/lxcrootfs/etc/timestamp"
+#define LEGATO_VERSION_FILE "/legato/systems/current/version"
+#endif
 #endif
 #endif
 #ifdef TARGET_NAND_BOOT
@@ -85,6 +95,7 @@ int get_boot_dev_type();
 #define TELAF_PATH "/dev/block/bootdevice/by-name/telaf"
 #define RECOVERYFS_PATH "/dev/block/bootdevice/by-name/recoveryfs"
 #define VMBOOTSYS_PATH "/dev/block/bootdevice/by-name/vm-bootsys"
+#define LXCROOTFS_PATH "/dev/block/bootdevice/by-name/lxcrootfs"
 #include <mtd/mtd-user.h>
 #endif
 
@@ -202,6 +213,9 @@ static int write_all(int fd, const uint8_t* data, size_t size) {
         if (w == -1) {
             failure_type = kFwriteFailure;
             fprintf(stderr, "write failed: %s\n", strerror(errno));
+            if(errno == ENOSPC) {
+                exit(1);
+            }
             return -1;
         }
         written += w;
@@ -1507,6 +1521,29 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
         snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
         return strdup(mtd_devname);
     }
+    else if (strncmp(blockdev_filename->data, LXCROOTFS_PATH, len) == 0) {
+        char lxcrootfs_volume[PATH_MAX];
+        mtd_scan_partitions();
+
+        if(isABVolumes()) {
+            snprintf(lxcrootfs_volume, PATH_MAX, "%s%s", "lxcrootfs", slot_suffix_arr[inactive_slot]);
+            printf("Inactive lxcrootfs volume: %s\n", lxcrootfs_volume);
+        } else {
+            snprintf(lxcrootfs_volume, PATH_MAX, "%s", "lxcrootfs");
+            printf("lxcrootfs_volume: %s\n", lxcrootfs_volume);
+        }
+
+        const MtdPartition* mtd = mtd_find_partition_by_name(lxcrootfs_volume);
+        if (mtd == NULL) {
+            printf("no mtd partition named \"%s\"\n", lxcrootfs_volume);
+            return strdup("");
+        }
+        char mtd_devname[PATH_MAX];
+        printf("RangeSha1Fn: for volume : %s  mtd block devindex is: %d\n",
+              lxcrootfs_volume, mtd->device_index);
+        snprintf(mtd_devname, sizeof(mtd_devname), "/dev/mtdblock%d", mtd->device_index);
+        return strdup(mtd_devname);
+    }
 #ifdef TARGET_NAND_BOOT
     else if (strncmp(blockdev_filename->data, TELAF_PATH, strlen(TELAF_PATH)) == 0) {
         char telaf_volume[PATH_MAX];
@@ -1838,6 +1875,8 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
       snprintf(part_name, sizeof(part_name), "%s", " telaf ");
     } else if(strncmp(part_name, VMBOOTSYS_PATH, strlen(VMBOOTSYS_PATH)) == 0) {
       snprintf(part_name, sizeof(part_name), "%s", " vm-bootsys ");
+    } else if(strncmp(part_name, LXCROOTFS_PATH, strlen(LXCROOTFS_PATH)) == 0) {
+      snprintf(part_name, sizeof(part_name), "%s", " lxcrootfs ");
     } else {
       snprintf(part_name, sizeof(part_name), "%s", " ");
     }
@@ -2198,13 +2237,6 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
         return StringValue(strdup(""));
     }
     image_size = atoi(blockdev_num->data);
-    // check if  8+8 and recoveryfs
-    if (strncmp(blockdev_filename->data, RECOVERYFS_PATH, strlen(RECOVERYFS_PATH)) == 0) {
-        printf(" recoveryfs update only performed on 4+4 \n");
-        if(isABVolumes()) {
-            return StringValue(strdup("t"));
-        }
-    }
 
 #ifdef TARGET_NAND_BOOT
     blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
@@ -2213,7 +2245,10 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
             slot_suffix_arr[inactive_slot]);
     blockdev_filename->data = strdup(buf);
 #endif
-
+    if (blockdev_filename->data == NULL){
+        printf("BlockEraseFn: failed to get block device name \n");
+        return StringValue(strdup(""));
+    }
     printf(" blockdev_filename_data %s \n", blockdev_filename->data);
 
     int fd = open(blockdev_filename->data, O_RDWR);
@@ -2256,7 +2291,10 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     char *mtd_num = strtok_r(blockdev_filename->data, "block", &save);
     mtd_num = strtok_r(NULL, "block", &save);
-
+    if (mtd_num == NULL){
+        printf("BlockEraseFn: failed to get the mtd_num \n");
+        return StringValue(strdup(""));
+    }
     snprintf(mtd_erase_dev, 12, "%s%s", "/dev/mtd", mtd_num);
 
     fd = open(mtd_erase_dev, O_RDWR);
@@ -2265,7 +2303,7 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     size_t total_eb_count = vol_size/leb_size;
-    size_t image_eb_count = (image_size * 4096) / leb_size;
+    size_t image_eb_count = (image_size * BLOCKSIZE) / leb_size;
     struct erase_info_user ei;
     struct erase_info_user64 ei64;
     image_eb_count++;
@@ -2282,6 +2320,155 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     printf ("erase operation complete \n");
     return StringValue(strdup("t"));
 }
+
+// read META build id from Ver_info.txt
+static int read_firmware_version() {
+    int version = -1;
+    FILE* firmware_fp = fopen(FIRMWARE_VERSION_FILE, "r");
+    if (firmware_fp != NULL) {
+      char *firmware_buf = (char*)malloc(BLOCKSIZE);
+      if(firmware_buf == NULL){
+        fclose(firmware_fp);
+	return -1;
+      }
+      std::vector<std::string> out;
+      while ((fgets(firmware_buf, BLOCKSIZE, firmware_fp)) != NULL) {
+        std::string firmware_str( firmware_buf);
+        if(firmware_str.find("Meta_Build_ID") !=  std::string::npos){
+          size_t pos;
+          while ((pos = firmware_str.find("-")) != std::string::npos){
+            std::string token = firmware_str.substr(0, pos);
+            firmware_str.erase(0, pos + 1);
+            out.push_back(std::string(token));
+          }
+          const char *firmware_ver_str = (out.at(1)).c_str();
+          version = atoi(firmware_ver_str);
+          break;
+        }
+      }
+      free(firmware_buf);
+      fclose(firmware_fp);
+    }
+  return version;
+}
+
+// read build version from etc/version
+static long read_rootfs_version(int lxcrootfs)
+{
+  long version = -1;
+  FILE* rootfs_fp;
+  if (lxcrootfs)
+    rootfs_fp = fopen(LXC_BUILD_VERSION_FILE, "r");
+  else
+    rootfs_fp = fopen(BUILD_VERSION_FILE, "r");
+  if (rootfs_fp != NULL) {
+    char *rootfs_buf = (char*)malloc(BLOCKSIZE);
+    if (rootfs_buf == NULL){
+      fclose(rootfs_fp);
+      return -1;
+    }
+
+    while ((fgets(rootfs_buf, BLOCKSIZE, rootfs_fp)) != NULL) {
+      std::string rootfs_str(rootfs_buf);
+      version = strtol(rootfs_buf, NULL, 10);
+      break;
+    }
+    free(rootfs_buf);
+    fclose(rootfs_fp);
+  }
+  return version;
+}
+
+// read telaf version from /legato/systems/current/version
+static long read_telaf_version()
+{
+    long version = -1;
+    char versionBuffer[MAX_VERSION_STR_BYTES];
+    char* telaf_ver = (char*) malloc(7*sizeof(char));
+    if (telaf_ver == NULL){
+        return -1;
+    }
+    FILE* versionFile = NULL;
+
+    do
+    {
+      versionFile = fopen(LEGATO_VERSION_FILE, "r");
+    }while ((versionFile != NULL)&&(errno == EINTR));
+
+    if (versionFile != NULL){
+      if (fgets(versionBuffer, MAX_VERSION_STR_BYTES, versionFile) != NULL){
+        char* verStart = strchr(versionBuffer, '-');
+        memcpy(telaf_ver, ++verStart, 6);
+        const char* out = telaf_ver;
+        version = strtol(out, NULL, 10);
+      }
+      free(telaf_ver);
+      fclose(versionFile);
+    }
+    return version;
+}
+
+Value* BlockPreCheckVersion(const char* name, State* state, int argc, Expr* argv[]) {
+    Value* blockdev_filename = nullptr;
+    Value* blockdev_num = nullptr;
+    char buf[PATH_MAX];
+    int ret;
+    size_t version;
+    if (ReadValueArgs(state, argv, 2, &blockdev_filename, &blockdev_num) < 0) {
+        return StringValue(strdup(""));
+    }
+    printf ("BlockPreCheckVersion \n");
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_filename_holder(blockdev_filename,
+            FreeValue);
+    std::unique_ptr<Value, decltype(&FreeValue)> blockdev_num_holder(blockdev_num,
+            FreeValue);
+
+    if (blockdev_filename->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_filename argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+    if (blockdev_num->type != VAL_STRING) {
+        ErrorAbort(state, kArgsParsingFailure, "blockdev_num argument to %s must be string",
+                   name);
+        return StringValue(strdup(""));
+    }
+    version = strtol(blockdev_num->data, NULL, 10);
+
+    if(blockdev_filename->data == NULL) {
+        printf("BlockEraseFn: blockdev_filename_data is NULL\n");
+        return StringValue(strdup(""));
+    }
+
+    if (strncmp(blockdev_filename->data, SYSTEM_PATH, strlen(SYSTEM_PATH)) == 0){
+      if (version < read_rootfs_version(0)){
+        printf("BlockPreCheckVersion: rootfs version will be downgraded with this update \n");
+        return StringValue(strdup(""));
+      }
+    }
+
+    if (strncmp(blockdev_filename->data, TELAF_PATH, strlen(TELAF_PATH)) == 0){
+      if (version < read_telaf_version()){
+        printf("BlockPreCheckVersion: telaf version will be downgraded with this update \n");
+        return StringValue(strdup(""));
+      }
+    }
+
+    if (strncmp(blockdev_filename->data, MODEM_PATH, strlen(MODEM_PATH)) == 0){
+      if (version < read_firmware_version()){
+        printf("BlockPreCheckVersion: firmware version will be downgraded with this update \n");
+        return StringValue(strdup(""));
+      }
+    }
+    if (strncmp(blockdev_filename->data, LXCROOTFS_PATH, strlen(LXCROOTFS_PATH)) == 0){
+      if (version < read_rootfs_version(1)){
+        printf("BlockPreCheckVersion: lxc version will be downgraded with this update \n");
+        return StringValue(strdup(""));
+      }
+    }
+
+    return StringValue(strdup("t"));
+}
 #endif
 void RegisterBlockImageFunctions() {
     RegisterFunction("block_image_verify", BlockImageVerifyFn);
@@ -2293,5 +2480,6 @@ void RegisterBlockImageFunctions() {
     RegisterFunction("range_sha1", RangeSha1Fn);
 #ifdef TARGET_NAD_OTA
     RegisterFunction("block_erase", BlockEraseFn);
+    RegisterFunction("pre_check_version", BlockPreCheckVersion);
 #endif
 }

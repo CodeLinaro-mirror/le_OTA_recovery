@@ -15,13 +15,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- *Changes from Qualcomm Innovation Center are provided under the following license:
- *Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
- *SPDX-License-Identifier: BSD-3-Clause-Clear
- */
-/*
- * Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -1693,6 +1688,14 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* part_name;
     part_name = strtok_r(source_filename, ":", &source_filename);
     part_name = strtok_r(NULL, ":", &source_filename);
+    if (part_name == NULL){
+      ErrorAbort(state, kArgsParsingFailure, "%s: part_name failure at line %d: %s\n", name, __LINE__, strerror(errno));
+      free(source_filename);
+      free(target_filename);
+      free(target_sha1);
+      free(target_size_str);
+      return nullptr;
+    }
     printf("%s\n", part_name);
     if (result == 0) {
       set_nad_update_status(part_name);
@@ -2937,6 +2940,11 @@ Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv
     }
 
     char *inactive_mtd_block = getMtdBlock(partition);
+    if (inactive_mtd_block == NULL){
+        ErrorAbort(state, kArgsParsingFailure, "%s: inactive_mtd_block failure at line %d for partition %s: %s\n", name, __LINE__, partition, strerror(errno));
+        unlink(modem_ubifs);
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     if (chmod(modem_ubifs, 0777) < 0) {
         printf("chmod of %s failed\n",modem_ubifs);
