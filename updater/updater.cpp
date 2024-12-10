@@ -43,7 +43,16 @@
 #if defined(TARGET_SUPPORTS_ABC)
 const char* slot_suffix_arr[] = {"_a", "_b","_c", NULL};
 #else
+#ifdef TARGET_NAD_OTA
+#ifdef TARGET_NAND_BOOT
 const char* slot_suffix_arr[] = {"_a", "_b", NULL};
+#else
+//all partitions names in Telematics emmc devices are without suffix, and only _b slot suffix are added
+const char* slot_suffix_arr[] = {"", "_b", NULL};
+#endif
+#else
+const char* slot_suffix_arr[] = {"_a", "_b", NULL};
+#endif
 #endif
 #else
 const char* slot_suffix_arr[] = {"", "", ""};
