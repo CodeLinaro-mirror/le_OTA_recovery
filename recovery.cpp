@@ -435,12 +435,14 @@ get_args(int *argc, char ***argv) {
     // --- if arguments weren't supplied, look in the bootloader control block
     if (*argc <= 1) {
         boot.recovery[sizeof(boot.recovery) - 1] = '\0';  // Ensure termination
-        const char *arg = strtok(boot.recovery, "\n");
+        char *saveptr;
+        const char *arg = strtok_r(boot.recovery, "\n", &saveptr);
         if (arg != NULL && !strcmp(arg, "recovery")) {
             *argv = (char **) malloc(sizeof(char *) * MAX_ARGS);
             (*argv)[0] = strdup(arg);
+            char *save;
             for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
-                if ((arg = strtok(NULL, "\n")) == NULL) break;
+                if ((arg = strtok_r(NULL, "\n", &save)) == NULL) break;
                 (*argv)[*argc] = strdup(arg);
             }
             LOGI("Got arguments from boot message\n");
@@ -872,7 +874,7 @@ static bool erase_volume(const char* volume) {
         if (d) {
             char path[PATH_MAX];
             strlcpy(path, CACHE_LOG_DIR, PATH_MAX);
-            strcat(path, "/");
+            strlcat(path, "/", sizeof(path));
             int path_len = strlen(path);
             while ((de = readdir(d)) != NULL) {
                 if (strncmp(de->d_name, "last_", 5) == 0 || strcmp(de->d_name, "log") == 0) {
@@ -1941,7 +1943,7 @@ int main(int argc, char **argv) {
         case 'g': {
             if (stage == NULL || *stage == '\0') {
                 char buffer[20] = "1/";
-                strncat(buffer, optarg, sizeof(buffer)-3);
+                strlcat(buffer, optarg, sizeof(buffer));
                 stage = strdup(buffer);
             }
             break;
