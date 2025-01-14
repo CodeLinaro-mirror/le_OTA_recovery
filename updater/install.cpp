@@ -1965,7 +1965,7 @@ Value* RebootNowFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     strlcpy(buffer, "reboot,", sizeof(buffer));
     if (property != NULL) {
-        strncat(buffer, property, sizeof(buffer)-10);
+        strlcat(buffer, property, sizeof(buffer));
     }
 
     property_set(ANDROID_RB_PROPERTY, buffer);
