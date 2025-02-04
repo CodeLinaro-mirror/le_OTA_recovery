@@ -215,6 +215,11 @@ int main(int argc, char** argv) {
     }
 
     char* script = reinterpret_cast<char*>(malloc(script_entry->uncompLen+1));
+    if(script == NULL) {
+       printf("Failed to allocate memory: %s\n", strerror(errno));
+       mzCloseZipArchive(&za);
+       return 4;
+    }
     if (!mzReadZipEntry(&za, script_entry, script, script_entry->uncompLen)) {
         printf("failed to read script from package\n");
         fprintf(cmd_pipe, "ui_print failed to read script from package\n");
