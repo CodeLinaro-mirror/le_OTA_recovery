@@ -2911,6 +2911,10 @@ Value* setupInactiveDmcryptDevice(const char* name, State* state, int argc, Expr
     char inactive_partition[PART_NAME_LENGTH];
     snprintf(inactive_partition, PART_NAME_LENGTH, "%s%s", partition, slot_suffix_arr[inactive_slot]);
     char *inactive_block_device = getMtdBlock(inactive_partition);
+    if (inactive_block_device == NULL){
+        printf("Failed to get inactive block");
+        return StringValue(strdup(""));
+    }
 #else
     if (strncmp(partition, "rootfs", strlen("rootfs")) == 0)
       partition = strdup("system");
