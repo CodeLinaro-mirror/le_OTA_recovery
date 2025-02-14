@@ -10,6 +10,12 @@ AM_CFLAGS := -Wundef \
         -D_LARGEFILE64_SOURCE \
         -DUSE_LE_MODE
 
+
+if SELINUX_ENABLE
+      AM_CFLAGS += $(LIBSELINUX_CFLAGS)
+      libminzip_la_CFLAGS := -DSELINUX_IS_ENABLE
+endif
+
 AM_CPPFLAGS := \
               -DUSE_LE_MODE \
               -I. \

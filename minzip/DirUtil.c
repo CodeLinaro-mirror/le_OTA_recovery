@@ -54,9 +54,11 @@ getPathDirStatus(const char *path)
 
 int
 dirCreateHierarchy(const char *path, int mode,
-        const struct utimbuf *timestamp, bool stripFileName,
-        struct selabel_handle *sehnd)
-{
+        const struct utimbuf *timestamp, bool stripFileName
+        #ifdef SELINUX_IS_ENABLE
+        , struct selabel_handle *sehnd
+        #endif
+){
     DirStatus ds;
 
     /* Check for an empty string before we bother
@@ -147,18 +149,22 @@ dirCreateHierarchy(const char *path, int mode,
 
             char *secontext = NULL;
 
+            #ifdef SELINUX_IS_ENABLE
             if (sehnd) {
                 selabel_lookup(sehnd, &secontext, cpath, mode);
                 setfscreatecon(secontext);
             }
+            #endif
 
             err = mkdir(cpath, mode);
 
+            #ifdef SELINUX_IS_ENABLE
             if (secontext) {
                 freecon(secontext);
                 setfscreatecon(NULL);
             }
-
+            #endif
+            
             if (err != 0) {
                 free(cpath);
                 return -1;

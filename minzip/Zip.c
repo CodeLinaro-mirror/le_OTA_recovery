@@ -818,9 +818,11 @@ static const char *targetEntryPath(MzPathHelper *helper, ZipEntry *pEntry)
 bool mzExtractRecursive(const ZipArchive *pArchive,
                         const char *zipDir, const char *targetDir,
                         const struct utimbuf *timestamp,
-                        void (*callback)(const char *fn, void *), void *cookie,
-                        struct selabel_handle *sehnd)
-{
+                        void (*callback)(const char *fn, void *), void *cookie
+		        #ifdef SELINUX_IS_ENABLED
+                        struct selabel_handle *sehnd
+                        #endif
+){
     if (zipDir[0] == '/') {
         LOGE("mzExtractRecursive(): zipDir must be a relative path.\n");
         return false;
@@ -938,7 +940,11 @@ bool mzExtractRecursive(const ZipArchive *pArchive,
              * the containing directory exists.
              */
             int ret = dirCreateHierarchy(
-                    targetFile, UNZIP_DIRMODE, timestamp, true, sehnd);
+                    targetFile, UNZIP_DIRMODE, timestamp, true 
+                    #ifdef SELINUX_IS_ENABLED
+                    , sehnd
+                    #endif
+);
             if (ret != 0) {
                 LOGE("Can't create containing directory for \"%s\": %s\n",
                         targetFile, strerror(errno));
@@ -960,19 +966,23 @@ bool mzExtractRecursive(const ZipArchive *pArchive,
             }
 
             char *secontext = NULL;
-
+           
+            #ifdef SELINUX_IS_ENABLE
             if (sehnd) {
                 selabel_lookup(sehnd, &secontext, targetFile, UNZIP_FILEMODE);
                 setfscreatecon(secontext);
             }
+	    #endif
 
             int fd = open(targetFile, O_CREAT|O_WRONLY|O_TRUNC|O_SYNC,
                 UNZIP_FILEMODE);
-
+	    
+            #ifdef SELINUX_IS_ENABLE
             if (secontext) {
                 freecon(secontext);
                 setfscreatecon(NULL);
             }
+            #endif
 
             if (fd < 0) {
                 LOGE("Can't create target file \"%s\": %s\n",

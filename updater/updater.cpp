@@ -251,7 +251,8 @@ int main(int argc, char** argv) {
         mzCloseZipArchive(&za);
         return 6;
     }
-
+    
+    #ifdef SELINUX_IS_ENABLE
     struct selinux_opt seopts[] = {
       { SELABEL_OPT_PATH, "/file_contexts" }
     };
@@ -261,7 +262,8 @@ int main(int argc, char** argv) {
     if (!sehandle) {
         fprintf(cmd_pipe, "ui_print Warning: No file_contexts\n");
     }
-
+    #endif
+    
     // read the partition mapping
     if (IS_LE_MODE()) {
         load_volume_table(cmd_pipe);

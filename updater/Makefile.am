@@ -44,7 +44,6 @@ requiredlibs = -lm \
                -lpthread \
                -lz \
                -lcutils \
-               -lselinux \
                -lext4_utils \
                -lcrypto \
                -lrecovery_updater_msm \
@@ -53,7 +52,16 @@ requiredlibs = -lm \
                ../minzip/libminzip.la \
                ../applypatch/libapplypatch.la
 
+if SELINUX_ENABLE
+requiredlibs += -lselinux
+endif
+
 bin_PROGRAMS = updater
+
+if SELINUX_ENABLE
+updater_CFLAGS = -DSELINUX_IS_ENABLE
+endif
+
 if USE_GLIB
 updater_SOURCES = $(c_sources) $(h_sources)
 updater_CFLAGS = $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@

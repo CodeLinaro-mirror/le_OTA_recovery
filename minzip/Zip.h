@@ -18,8 +18,10 @@
 extern "C" {
 #endif
 
+#ifdef SELINUX_IS_ENABLE
 #include <selinux/selinux.h>
 #include <selinux/label.h>
+#endif
 
 /*
  * One entry in the Zip archive.  Treat this as opaque -- use accessors below.
@@ -162,8 +164,11 @@ bool mzExtractZipEntryToBuffer(const ZipArchive *pArchive,
 bool mzExtractRecursive(const ZipArchive *pArchive,
         const char *zipDir, const char *targetDir,
         const struct utimbuf *timestamp,
-        void (*callback)(const char *fn, void*), void *cookie,
-        struct selabel_handle *sehnd);
+        void (*callback)(const char *fn, void*), void *cookie
+        #ifdef SELINUX_IS_ENABLED
+        struct selabel_handle *sehnd
+        #endif
+);
 
 #ifdef __cplusplus
 }

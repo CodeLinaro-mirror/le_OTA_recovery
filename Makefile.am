@@ -70,7 +70,6 @@ requiredlibs := -lm \
                -lz \
                -lcutils \
                -lmincrypt \
-               -lselinux \
                -lfs_mgr \
                -lext4_utils \
                ./mtdutils/libmtdutils.la \
@@ -81,6 +80,9 @@ requiredlibs := -lm \
                ./otafault/libotafault.la \
                ./bootloader_message/libbootloader_message.la
 
+if SELINUX_ENABLE
+requiredlibs += -lselinux
+endif
 
 RECOVERY_API_VERSION := 3
 

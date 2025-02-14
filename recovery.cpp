@@ -299,7 +299,11 @@ FILE* fopen_path(const char *path, const char *mode) {
 
     // When writing, try to create the containing directory, if necessary.
     // Use generous permissions, the system (init.rc) will reset them.
-    if (strchr("wa", mode[0])) dirCreateHierarchy(path, 0777, NULL, 1, sehandle);
+    if (strchr("wa", mode[0])) dirCreateHierarchy(path, 0777, NULL, 1
+    #ifdef SELINUX_IS_ENABLE
+    , sehandle
+    #endif
+);
 
     FILE *fp = fopen(path, mode);
     return fp;
@@ -2016,6 +2020,7 @@ int main(int argc, char **argv) {
     ui->SetBackground(RecoveryUI::NONE);
     if (show_text) ui->ShowText(true);
 
+    #ifdef SELINUX_IS_ENABLE
     struct selinux_opt seopts[] = {
       { SELABEL_OPT_PATH, "/file_contexts" }
     };
@@ -2025,6 +2030,7 @@ int main(int argc, char **argv) {
     if (!sehandle) {
         ui->Print("Warning: No file_contexts\n");
     }
+    #endif
 
     device->StartRecovery();
 

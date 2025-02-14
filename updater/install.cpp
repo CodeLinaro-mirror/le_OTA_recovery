@@ -33,7 +33,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+
+#ifdef SELINUX_IS_ENABLE
 #include <selinux/selinux.h>
+#endif
+
 #include <ftw.h>
 #include <sys/capability.h>
 #include <sys/xattr.h>
@@ -366,17 +370,21 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
     {
         char *secontext = NULL;
 
+        #ifdef SELINUX_IS_ENABLE
         if (sehandle) {
             selabel_lookup(sehandle, &secontext, mount_point, 0755);
             setfscreatecon(secontext);
         }
+        #endif
 
         mkdir(mount_point, 0755);
 
+        #ifdef SELINUX_IS_ENABLE
         if (secontext) {
             freecon(secontext);
             setfscreatecon(NULL);
         }
+        #endif
     }
 
     if (strcmp(partition_type, "MTD") == 0) {
@@ -794,7 +802,11 @@ Value* PackageExtractDirFn(const char* name, State* state,
 
     bool success = mzExtractRecursive(za, zip_path, dest_path,
                                       &timestamp,
-                                      NULL, NULL, sehandle);
+                                      NULL, NULL
+                                      #ifdef SELINUX_IS_ENABLED
+                                      , sehandle
+                                      #endif
+                                      );
     free(zip_path);
     free(dest_path);
     return StringValue(strdup(success ? "t" : ""));
@@ -1170,6 +1182,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
             }
             continue;
         }
+        #ifdef SELINUX_IS_ENABLED
         if (strcmp("selabel", args[i]) == 0) {
             if (args[i+1][0] != '\0') {
                 parsed.selabel = args[i+1];
@@ -1180,6 +1193,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
             }
             continue;
         }
+        #endif
         if (max_warnings != 0) {
             printf("ParsedPermArgs: unknown key \"%s\", ignoring\n", args[i]);
             max_warnings--;
@@ -1198,7 +1212,7 @@ static int ApplyParsedPerms(
         struct perm_parsed_args parsed)
 {
     int bad = 0;
-
+    #ifdef SELINUX_IS_ENABLED
     if (parsed.has_selabel) {
         if (lsetfilecon(filename, parsed.selabel) != 0) {
             uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
@@ -1206,7 +1220,7 @@ static int ApplyParsedPerms(
             bad++;
         }
     }
-
+    #endif
     /* ignore symlinks */
     if (S_ISLNK(statptr->st_mode)) {
         return bad;
