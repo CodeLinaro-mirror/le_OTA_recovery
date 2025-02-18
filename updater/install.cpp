@@ -1539,7 +1539,10 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         char* buffer = reinterpret_cast<char*>(malloc(BUFSIZ));
         int read;
         if(buffer != nullptr) {
-            while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
+            while (success) {
+                read = ota_fread(buffer, 1, BUFSIZ, f);
+                if (read <= 0)
+                    break;
                 int wrote = mtd_write_data(ctx, buffer, read);
                 success = success && (wrote == read);
             }
@@ -2214,8 +2217,10 @@ bool PerformBlockCopyOperation(char* source, char* dest) {
     uint8_t src_hash[SHA_DIGEST_LENGTH], dest_hash[SHA_DIGEST_LENGTH];
 
     char* buffer = reinterpret_cast<char*>(malloc(BLOCKSIZE));
-    while (success && (read =
-            TEMP_FAILURE_RETRY(ota_read(source_fd, buffer, BLOCKSIZE))) > 0) {
+    while (success) {
+        read = TEMP_FAILURE_RETRY(ota_read(source_fd, buffer, BLOCKSIZE));
+        if (read <= 0)
+            break;
         // printf("Read %zd bytes from source_fd\n", read);
         SHA1_Update(&src_ctx, buffer, read); //update sha1 with was just read
         ssize_t wrote = TEMP_FAILURE_RETRY(ota_write(dest_fd, buffer, read));
@@ -2619,7 +2624,10 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
         return StringValue(strdup(""));
     }
     int read;
-    while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
+    while (success) {
+        read = ota_fread(buffer, 1, BUFSIZ, f);
+        if (read <= 0)
+            break;
         int wrote = mtd_write_data(ctx, buffer, read);
         success = success && (wrote == read);
     }
