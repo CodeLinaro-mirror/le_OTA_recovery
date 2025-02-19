@@ -56,7 +56,8 @@ static struct fstab* read_fstab(std::string* err) {
     return nullptr;
   }
 #endif
-  fstab_path += value;
+  size_t value_length = strnlen(value, PROP_VALUE_MAX);
+  fstab_path += std::string(value, value_length);
   struct fstab* fstab = fs_mgr_read_fstab(fstab_path.c_str());
   if (fstab == nullptr) {
     *err = "failed to read " + fstab_path;
