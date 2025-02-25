@@ -58,10 +58,6 @@ endif
 
 bin_PROGRAMS = updater
 
-if SELINUX_ENABLE
-updater_CFLAGS = -DSELINUX_IS_ENABLE
-endif
-
 if USE_GLIB
 updater_SOURCES = $(c_sources) $(h_sources)
 updater_CFLAGS = $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
@@ -72,6 +68,10 @@ updater_SOURCES = $(c_sources) $(h_sources)
 updater_CFLAGS = $(AM_CFLAGS)
 updater_CPPFLAGS = $(AM_CPPFLAGS)
 updater_LDADD = $(requiredlibs)
+endif
+
+if SELINUX_ENABLE
+updater_CPPFLAGS = -DSELINUX_IS_ENABLE
 endif
 
 if TARGET_SUPPORTS_AB

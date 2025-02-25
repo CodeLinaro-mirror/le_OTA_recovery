@@ -803,7 +803,7 @@ Value* PackageExtractDirFn(const char* name, State* state,
     bool success = mzExtractRecursive(za, zip_path, dest_path,
                                       &timestamp,
                                       NULL, NULL
-                                      #ifdef SELINUX_IS_ENABLED
+                                      #ifdef SELINUX_IS_ENABLE
                                       , sehandle
                                       #endif
                                       );
@@ -1182,7 +1182,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
             }
             continue;
         }
-        #ifdef SELINUX_IS_ENABLED
+        #ifdef SELINUX_IS_ENABLE
         if (strcmp("selabel", args[i]) == 0) {
             if (args[i+1][0] != '\0') {
                 parsed.selabel = args[i+1];
@@ -1212,7 +1212,7 @@ static int ApplyParsedPerms(
         struct perm_parsed_args parsed)
 {
     int bad = 0;
-    #ifdef SELINUX_IS_ENABLED
+    #ifdef SELINUX_IS_ENABLE
     if (parsed.has_selabel) {
         if (lsetfilecon(filename, parsed.selabel) != 0) {
             uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",

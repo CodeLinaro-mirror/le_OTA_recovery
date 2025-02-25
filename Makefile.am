@@ -98,6 +98,9 @@ recovery_CPPFLAGS := $(AM_CPPFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSIO
 recovery_LDADD := $(requiredlibs) -lcrypto
 endif
 
+if SELINUX_ENABLE
+recovery_CPPFLAGS += -DSELINUX_IS_ENABLE
+endif
 
 verifier_test_libs := -lmincrypt ./minzip/libminzip.la -lm -lpthread -lcutils
 verifier_test_CFLAGS := $(AM_CFLAGS)

@@ -13,7 +13,6 @@ AM_CFLAGS := -Wundef \
 
 if SELINUX_ENABLE
       AM_CFLAGS += $(LIBSELINUX_CFLAGS)
-      libminzip_la_CFLAGS := -DSELINUX_IS_ENABLE
 endif
 
 AM_CPPFLAGS := \
@@ -58,4 +57,8 @@ libminzip_la_CFLAGS := $(AM_CFLAGS)
 libminzip_la_CPPFLAGS := $(AM_CPPFLAGS)
 libminzip_la_LIBADD := -lm -lpthread
 libminzip_la_LDFLAGS := -all-static
+endif
+
+if SELINUX_ENABLE
+libminzip_la_CFLAGS += -DSELINUX_IS_ENABLE
 endif

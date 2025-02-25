@@ -48,7 +48,7 @@ int dirCreateHierarchy(const char *path, int mode,
         , struct selabel_handle *sehnd
         #endif
 );
-          
+
 /* rm -rf <path>
  */
 int dirUnlinkHierarchy(const char *path);

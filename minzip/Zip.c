@@ -819,8 +819,8 @@ bool mzExtractRecursive(const ZipArchive *pArchive,
                         const char *zipDir, const char *targetDir,
                         const struct utimbuf *timestamp,
                         void (*callback)(const char *fn, void *), void *cookie
-		        #ifdef SELINUX_IS_ENABLED
-                        struct selabel_handle *sehnd
+		        #ifdef SELINUX_IS_ENABLE
+                        , struct selabel_handle *sehnd
                         #endif
 ){
     if (zipDir[0] == '/') {
@@ -940,8 +940,8 @@ bool mzExtractRecursive(const ZipArchive *pArchive,
              * the containing directory exists.
              */
             int ret = dirCreateHierarchy(
-                    targetFile, UNZIP_DIRMODE, timestamp, true 
-                    #ifdef SELINUX_IS_ENABLED
+                    targetFile, UNZIP_DIRMODE, timestamp, true
+                    #ifdef SELINUX_IS_ENABLE
                     , sehnd
                     #endif
 );
@@ -966,7 +966,7 @@ bool mzExtractRecursive(const ZipArchive *pArchive,
             }
 
             char *secontext = NULL;
-           
+
             #ifdef SELINUX_IS_ENABLE
             if (sehnd) {
                 selabel_lookup(sehnd, &secontext, targetFile, UNZIP_FILEMODE);
@@ -976,7 +976,7 @@ bool mzExtractRecursive(const ZipArchive *pArchive,
 
             int fd = open(targetFile, O_CREAT|O_WRONLY|O_TRUNC|O_SYNC,
                 UNZIP_FILEMODE);
-	    
+
             #ifdef SELINUX_IS_ENABLE
             if (secontext) {
                 freecon(secontext);

@@ -164,7 +164,7 @@ dirCreateHierarchy(const char *path, int mode,
                 setfscreatecon(NULL);
             }
             #endif
-            
+
             if (err != 0) {
                 free(cpath);
                 return -1;

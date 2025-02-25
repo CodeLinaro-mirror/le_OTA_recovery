@@ -165,8 +165,8 @@ bool mzExtractRecursive(const ZipArchive *pArchive,
         const char *zipDir, const char *targetDir,
         const struct utimbuf *timestamp,
         void (*callback)(const char *fn, void*), void *cookie
-        #ifdef SELINUX_IS_ENABLED
-        struct selabel_handle *sehnd
+        #ifdef SELINUX_IS_ENABLE
+        , struct selabel_handle *sehnd
         #endif
 );
 
