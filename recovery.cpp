@@ -446,6 +446,15 @@ get_args(int *argc, char ***argv) {
                 (*argv)[*argc] = strdup(arg);
             }
             LOGI("Got arguments from boot message\n");
+             if(argv != NULL) {
+                (*argv)[0] = strdup(arg);
+                 char *save_ptr;
+                for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
+                    if ((arg = strtok_r(NULL, "\n", &save_ptr)) == NULL) break;
+                    (*argv)[*argc] = strdup(arg);
+                }
+                LOGI("Got arguments from boot message\n");
+             }
         } else if (boot.recovery[0] != 0 && boot.recovery[0] != 255) {
             LOGE("Bad boot message\n\"%.20s\"\n", boot.recovery);
         }
@@ -460,19 +469,20 @@ get_args(int *argc, char ***argv) {
             char *saveptr = NULL;
             char *argv0 = (*argv)[0];
             *argv = (char **) malloc(sizeof(char *) * MAX_ARGS);
-            (*argv)[0] = argv0;  // use the same program name
+            if(argv != NULL) {
+                (*argv)[0] = argv0;  // use the same program name
 
-            char buf[MAX_ARG_LENGTH];
-            for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
-                if (!fgets(buf, sizeof(buf), fp)) break;
-                token = strtok_r(buf, "\r\n", &saveptr);
-                if (token != NULL) {
-                    (*argv)[*argc] = strdup(token);  // Strip newline.
-                } else {
-                    --*argc;
+                char buf[MAX_ARG_LENGTH];
+                for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
+                    if (!fgets(buf, sizeof(buf), fp)) break;
+                    token = strtok_r(buf, "\r\n", &saveptr);
+                    if (token != NULL) {
+                        (*argv)[*argc] = strdup(token);  // Strip newline.
+                    } else {
+                        --*argc;
+                    }
                 }
             }
-
             check_and_fclose(fp, COMMAND_FILE);
             LOGI("Got arguments from %s\n", COMMAND_FILE);
         }
@@ -879,23 +889,25 @@ static bool erase_volume(const char* volume) {
             while ((de = readdir(d)) != NULL) {
                 if (strncmp(de->d_name, "last_", 5) == 0 || strcmp(de->d_name, "log") == 0) {
                     saved_log_file* p = (saved_log_file*) malloc(sizeof(saved_log_file));
-                    strlcpy(path+path_len, de->d_name, PATH_MAX-path_len);
-                    p->name = strdup(path);
-                    if (stat(path, &(p->st)) == 0) {
-                        // truncate files to 512kb
-                        if (p->st.st_size > (1 << 19)) {
-                            p->st.st_size = 1 << 19;
+                    if(p != NULL) {
+                        strlcpy(path+path_len, de->d_name, PATH_MAX-path_len);
+                        p->name = strdup(path);
+                        if (stat(path, &(p->st)) == 0) {
+                            // truncate files to 512kb
+                            if (p->st.st_size > (1 << 19)) {
+                                p->st.st_size = 1 << 19;
+                            }
+                            p->data = (unsigned char*) malloc(p->st.st_size);
+                            FILE* f = fopen(path, "rb");
+                            if(f != nullptr && p->data != nullptr) {
+                                fread(p->data, 1, p->st.st_size, f);
+                                fclose(f);
+                                p->next = head;
+                                head = p;
+                            }
+                        } else {
+                            free(p);
                         }
-                        p->data = (unsigned char*) malloc(p->st.st_size);
-                        FILE* f = fopen(path, "rb");
-                        if(f != nullptr && p->data != nullptr) {
-                            fread(p->data, 1, p->st.st_size, f);
-                            fclose(f);
-                            p->next = head;
-                            head = p;
-                        }
-                    } else {
-                        free(p);
                     }
                 }
             }
@@ -935,19 +947,23 @@ static bool erase_volume(const char* volume) {
 
     if (is_cache) {
         while (head) {
-            FILE* f = fopen_path(head->name, "wb");
-            if (f) {
-                fwrite(head->data, 1, head->st.st_size, f);
-                fclose(f);
-                chmod(head->name, head->st.st_mode);
-                chown(head->name, head->st.st_uid, head->st.st_gid);
+            if (head->name) {
+               FILE* f = fopen_path(head->name, "wb");
+               if (f) {
+                   fwrite(head->data, 1, head->st.st_size, f);
+                   fclose(f);
+                   chmod(head->name, head->st.st_mode);
+                   chown(head->name, head->st.st_uid, head->st.st_gid);
+               }
             }
-            free(head->name);
+            if (head->name) {
+                free(head->name);
+            }
             free(head->data);
             saved_log_file* temp = head->next;
             free(head);
             head = temp;
-        }
+      }
 
         // Any part of the log we'd copied to cache is now gone.
         // Reset the pointer so we copy from the beginning of the temp
@@ -1029,6 +1045,10 @@ static char* browse_directory(const char* path, Device* device) {
     int z_size = 1;
     int z_alloc = 10;
     char** zips = (char**)malloc(z_alloc * sizeof(char*));
+    if(dirs == NULL || zips == NULL) {
+       printf("browse_directory:, Failed to allocate memory: %s\n", strerror(errno));
+       return NULL;
+    }
     zips[0] = strdup("../");
 
     struct dirent* de;
@@ -1970,8 +1990,12 @@ int main(int argc, char **argv) {
     if (locale == nullptr && has_cache) {
         load_locale_from_cache();
     }
-    printf("locale is [%s]\n", locale);
-    printf("stage is [%s]\n", stage);
+    if (locale != NULL) {
+        printf("locale is [%s]\n", locale);
+    }
+    if (stage != NULL) {
+        printf("stage is [%s]\n", stage);
+    }
     printf("reason is [%s]\n", reason);
 
     Device* device = make_device();

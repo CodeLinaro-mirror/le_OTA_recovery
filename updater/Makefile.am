@@ -89,5 +89,8 @@ endif
 
 if TARGET_NAD_OTA
 updater_CPPFLAGS += -DTARGET_NAD_OTA
+if TARGET_SUPPORT_FDE_OTA
+updater_CPPFLAGS += -DTARGET_NAD_FDE
+endif
 endif
 
