@@ -99,6 +99,11 @@ recovery_CPPFLAGS := $(AM_CPPFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSIO
 recovery_LDADD := $(requiredlibs) -lcrypto
 endif
 
+if USE_G_STRLCPY_STRLCAT
+recovery_CFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+recovery_CPPFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+endif
+
 if SELINUX_ENABLE
 recovery_CPPFLAGS += -DSELINUX_IS_ENABLE
 endif
@@ -108,6 +113,11 @@ verifier_test_CFLAGS := $(AM_CFLAGS)
 
 verifier_test_CPPFLAGS := $(AM_CPPFLAGS)
 verifier_test_LDADD := $(verifier_test_libs)
+
+if USE_G_STRLCPY_STRLCAT
+verifier_test_CFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+verifier_test_CPPFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+endif
 
 verifier_test_SOURCES := verifier_test.cpp asn1_decoder.cpp verifier.cpp ui.cpp
 
