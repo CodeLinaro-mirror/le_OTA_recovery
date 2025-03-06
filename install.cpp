@@ -481,6 +481,12 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
 
     char buffer[1024];
     FILE* from_child = fdopen(pipefd[0], "r");
+    if(from_child == NULL) {
+        printf("Failed to open file descriptor as FILE stream: %s\n", strerror(errno));
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return INSTALL_ERROR;
+    }
     while (fgets(buffer, sizeof(buffer), from_child) != NULL) {
         char* saveptr = NULL;
         char* command = strtok_r(buffer, " \n", &saveptr);
@@ -489,15 +495,18 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
         } else if (strcmp(command, "progress") == 0) {
             char* fraction_s = strtok_r(NULL, " \n", &saveptr);
             char* seconds_s = strtok_r(NULL, " \n", &saveptr);
+            if(fraction_s != NULL && seconds_s != NULL) {
+                float fraction = strtof(fraction_s, NULL);
+                int seconds = strtol(seconds_s, NULL, 10);
 
-            float fraction = strtof(fraction_s, NULL);
-            int seconds = strtol(seconds_s, NULL, 10);
-
-            ui->ShowProgress(fraction * (1-VERIFICATION_PROGRESS_FRACTION), seconds);
+                ui->ShowProgress(fraction * (1-VERIFICATION_PROGRESS_FRACTION), seconds);
+            }
         } else if (strcmp(command, "set_progress") == 0) {
             char* fraction_s = strtok_r(NULL, " \n", &saveptr);
-            float fraction = strtof(fraction_s, NULL);
-            ui->SetProgress(fraction);
+            if(fraction_s != NULL) {
+                float fraction = strtof(fraction_s, NULL);
+                ui->SetProgress(fraction);
+            }
         } else if (strcmp(command, "ui_print") == 0) {
             char* str = strtok_r(NULL, "\n", &saveptr);
             if (str) {
@@ -520,7 +529,10 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
         } else if (strcmp(command, "log") == 0) {
             // Save the logging request from updater and write to
             // last_install later.
-            log_buffer.push_back(std::string(strtok_r(NULL, "\n", &saveptr)));
+            char* fraction_s = strtok_r(NULL, "\n", &saveptr);
+            if(fraction_s != NULL) {
+                log_buffer.push_back(std::string(fraction_s));
+            }
         } else {
             LOGE("unknown command [%s]\n", command);
         }
@@ -626,9 +638,11 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
     }
 
     MemMapping map;
-    if (sysMapFile(path, &map) != 0) {
-        LOGE("failed to map file\n");
-        return INSTALL_CORRUPT;
+    if (path != NULL) {
+        if (sysMapFile(path, &map) != 0) {
+            LOGE("failed to map file\n");
+            return INSTALL_CORRUPT;
+        }
     }
 
     // Try to open the package.
