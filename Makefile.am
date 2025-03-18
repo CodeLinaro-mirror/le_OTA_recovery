@@ -12,9 +12,7 @@ AM_CFLAGS := -Wundef \
              -D__reboot=reboot \
              $(LIBSELINUX_CFLAGS) \
              -D_GNU_SOURCE \
-             -D_LARGEFILE64_SOURCE \
-             -Dstrlcpy=g_strlcpy \
-             -Dstrlcat=g_strlcat
+             -D_LARGEFILE64_SOURCE
 
 AM_CPPFLAGS := \
               -DUSE_LE_MODE \
@@ -28,9 +26,7 @@ AM_CPPFLAGS := \
               $(LIBSELINUX_CFLAGS) \
               -I$(WORKSPACE)/OTA/system/core/base/include \
               -std=c++11 \
-              -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
-              -Dstrlcpy=g_strlcpy \
-              -Dstrlcat=g_strlcat
+              -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS
 
 #AM_LDFLAGS := -shared -version-info 1:0:0
 
@@ -51,6 +47,11 @@ libfusesideload_la_CFLAGS := $(AM_CFLAGS)
 libfusesideload_la_CPPFLAGS := $(AM_CPPFLAGS)
 libfusesideload_la_LIBADD := -lm -lpthread
 libfusesideload_la_LDFLAGS := -all-static
+endif
+
+if USE_G_STRLCPY_STRLCAT
+libfusesideload_la_CFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat -include glib.h
+libfusesideload_la_CPPFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
 endif
 
 
