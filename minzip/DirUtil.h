@@ -24,8 +24,12 @@
 extern "C" {
 #endif
 
+#ifdef SELINUX_IS_ENABLE
 #include <selinux/selinux.h>
 #include <selinux/label.h>
+#else
+struct selabel_handle;
+#endif
 
 /* Like "mkdir -p", try to guarantee that all directories
  * specified in path are present, creating as many directories
@@ -42,7 +46,7 @@ extern "C" {
  */
 int dirCreateHierarchy(const char *path, int mode,
         const struct utimbuf *timestamp, bool stripFileName,
-        struct selabel_handle* sehnd);
+        struct selabel_handle *sehnd);
 
 /* rm -rf <path>
  */

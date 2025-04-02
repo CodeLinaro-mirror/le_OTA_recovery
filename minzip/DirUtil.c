@@ -147,17 +147,21 @@ dirCreateHierarchy(const char *path, int mode,
 
             char *secontext = NULL;
 
+            #ifdef SELINUX_IS_ENABLE
             if (sehnd) {
                 selabel_lookup(sehnd, &secontext, cpath, mode);
                 setfscreatecon(secontext);
             }
+            #endif
 
             err = mkdir(cpath, mode);
 
+            #ifdef SELINUX_IS_ENABLE
             if (secontext) {
                 freecon(secontext);
                 setfscreatecon(NULL);
             }
+            #endif
 
             if (err != 0) {
                 free(cpath);
@@ -169,7 +173,7 @@ dirCreateHierarchy(const char *path, int mode,
             }
         }
         // else, this directory already exists.
-        
+
         /* Repair the path and continue.
          */
         *p = '/';
