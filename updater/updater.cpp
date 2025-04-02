@@ -141,7 +141,7 @@ int main(int argc, char** argv) {
 #else
     printf (" call nadabctl \n");
     boot_slot = libnadab_get_boot_slot();
-    
+
 #endif
     if (boot_slot == -1) {
         printf("That's odd.. I was told that A/B boot support be present\n"
@@ -252,6 +252,7 @@ int main(int argc, char** argv) {
         return 6;
     }
 
+    #ifdef SELINUX_IS_ENABLE
     struct selinux_opt seopts[] = {
       { SELABEL_OPT_PATH, "/file_contexts" }
     };
@@ -261,6 +262,7 @@ int main(int argc, char** argv) {
     if (!sehandle) {
         fprintf(cmd_pipe, "ui_print Warning: No file_contexts\n");
     }
+    #endif
 
     // read the partition mapping
     if (IS_LE_MODE()) {

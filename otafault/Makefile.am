@@ -25,8 +25,11 @@ library_includedir := $(pkgincludedir)
 
 requiredlibs := -lz \
                ../minzip/libminzip.la \
-               -lbase \
-               -lselinux
+               -lbase
+
+if SELINUX_ENABLE
+requiredlibs += -lselinux
+endif
 
 lib_LTLIBRARIES := libotafault.la
 
