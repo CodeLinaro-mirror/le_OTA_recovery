@@ -44,7 +44,6 @@ requiredlibs = -lm \
                -lpthread \
                -lz \
                -lcutils \
-               -lselinux \
                -lext4_utils \
                -lcrypto \
                -lrecovery_updater_msm \
@@ -52,6 +51,10 @@ requiredlibs = -lm \
                ../edify/libedify.la \
                ../minzip/libminzip.la \
                ../applypatch/libapplypatch.la
+
+if SELINUX_ENABLE
+requiredlibs += -lselinux
+endif
 
 bin_PROGRAMS = updater
 if USE_GLIB
@@ -64,6 +67,10 @@ updater_SOURCES = $(c_sources) $(h_sources)
 updater_CFLAGS = $(AM_CFLAGS)
 updater_CPPFLAGS = $(AM_CPPFLAGS)
 updater_LDADD = $(requiredlibs)
+endif
+
+if SELINUX_ENABLE
+updater_CPPFLAGS += -DSELINUX_IS_ENABLE
 endif
 
 if TARGET_SUPPORTS_AB
