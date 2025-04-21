@@ -178,7 +178,7 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
             }
     }
 
-    SHA_CTX sha_ctx;
+    SHA_CTX sha_ctx = {0};
     SHA1_Init(&sha_ctx);
     uint8_t parsed_sha[SHA_DIGEST_LENGTH];
 
@@ -215,7 +215,7 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
 
         // Duplicate the SHA context and finalize the duplicate so we can
         // check it against this pair's expected hash.
-        SHA_CTX temp_ctx;
+        SHA_CTX temp_ctx = {0};
         memcpy(&temp_ctx, &sha_ctx, sizeof(SHA_CTX));
         uint8_t sha_so_far[SHA_DIGEST_LENGTH];
         SHA1_Final(sha_so_far, &temp_ctx);
@@ -774,7 +774,7 @@ static int GenerateTarget(FileContents* source_file,
                           size_t target_size,
                           const Value* bonus_data) {
     int retry = 1;
-    SHA_CTX ctx;
+    SHA_CTX ctx = {0};
     std::string memory_sink_str;
     FileContents* source_to_use;
     int made_copy = 0;
