@@ -33,17 +33,26 @@ PKG_CHECK_MODULES([CUTILS], [libcutils])
 AC_SUBST([CUTILS_CFLAGS])
 AC_SUBST([CUTILS_LIBS])
 
-AC_ARG_ENABLE(selinux,
-      AC_HELP_STRING([--enable-selinux], [DISTRO enable selinux feature.]),
-      [selinux_enable=${enableval}], [selinux_enable="yes"])
+PKG_CHECK_MODULES([LIBSELINUX], [libselinux], [
+    AC_SUBST([LIBSELINUX_CFLAGS])
+    AC_SUBST([LIBSELINUX_LIBS])
+    selinux_enable="yes"
+], [
+    AC_MSG_NOTICE([libselinux not found, disabling support])
+    LIBSELINUX_CFLAGS=""
+    LIBSELINUX_LIBS=""
+    selinux_enable="no"
+])
 
-AM_CONDITIONAL(SELINUX_ENABLE, [test "x${selinux_enable}" = "xyes"])
+AC_ARG_ENABLE([selinux],
+    AC_HELP_STRING([--disable-selinux], [Disable selinux support]),
+    [selinux_enable_flag=${enableval}], [selinux_enable_flag="yes"])
 
-if test "x$selinux_enable" = "xyes"; then
-      PKG_CHECK_MODULES([LIBSELINUX], [libselinux])
-      AC_SUBST([LIBSELINUX_CFLAGS])
-      AC_SUBST([LIBSELINUX_LIBS])
+if test "x$selinux_enable_flag" = "xno"; then
+    selinux_enable="no"
 fi
+
+AM_CONDITIONAL([SELINUX_ENABLE], [test "x${selinux_enable}" = "xyes"])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_HEADER_STDBOOL
