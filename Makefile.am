@@ -70,7 +70,6 @@ requiredlibs := -lm \
                -lz \
                -lcutils \
                -lmincrypt \
-               -lselinux \
                -lfs_mgr \
                -lext4_utils \
                ./mtdutils/libmtdutils.la \
@@ -81,6 +80,9 @@ requiredlibs := -lm \
                ./otafault/libotafault.la \
                ./bootloader_message/libbootloader_message.la
 
+if SELINUX_ENABLE
+requiredlibs += -lselinux
+endif
 
 RECOVERY_API_VERSION := 3
 
@@ -96,6 +98,9 @@ recovery_CPPFLAGS := $(AM_CPPFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSIO
 recovery_LDADD := $(requiredlibs) -lcrypto
 endif
 
+if SELINUX_ENABLE
+recovery_CPPFLAGS += -DSELINUX_IS_ENABLE
+endif
 
 verifier_test_libs := -lmincrypt ./minzip/libminzip.la -lm -lpthread -lcutils
 verifier_test_CFLAGS := $(AM_CFLAGS)
