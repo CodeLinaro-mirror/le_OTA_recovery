@@ -25,8 +25,10 @@
 #include <stdio.h>
 #include "minzip/Zip.h"
 
+#ifdef SELINUX_IS_ENABLE
 #include <selinux/selinux.h>
 #include <selinux/label.h>
+#endif
 
 typedef struct {
     FILE* cmd_pipe;
