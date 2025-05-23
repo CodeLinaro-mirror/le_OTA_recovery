@@ -19,9 +19,7 @@ AM_CPPFLAGS := \
               -I$(WORKSPACE)/system/core/fs_mgr/include \
               -I$(WORKSPACE)/OTA/system/core/base/include \
               -std=c++11 \
-              -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
-              -Dstrlcpy=g_strlcpy \
-              -Dstrlcat=g_strlcat
+              -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS
 
 AM_LDFLAGS := -shared -version-info 1:0:0
 
@@ -45,4 +43,8 @@ libbootloader_message_la_CFLAGS := $(AM_CFLAGS)
 libbootloader_message_la_CPPFLAGS := $(AM_CPPFLAGS)
 libbootloader_message_la_LIBADD := $(requiredlibs)
 libbootloader_message_la_LDFLAGS := -all-static
+endif
+
+if USE_G_STRLCPY_STRLCAT
+libbootloader_message_la_CPPFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
 endif
