@@ -33,9 +33,26 @@ PKG_CHECK_MODULES([CUTILS], [libcutils])
 AC_SUBST([CUTILS_CFLAGS])
 AC_SUBST([CUTILS_LIBS])
 
-PKG_CHECK_MODULES([LIBSELINUX], [libselinux])
-AC_SUBST([LIBSELINUX_CFLAGS])
-AC_SUBST([LIBSELINUX_LIBS])
+PKG_CHECK_MODULES([LIBSELINUX], [libselinux], [
+    AC_SUBST([LIBSELINUX_CFLAGS])
+    AC_SUBST([LIBSELINUX_LIBS])
+    selinux_enable="yes"
+], [
+    AC_MSG_NOTICE([libselinux not found, disabling support])
+    LIBSELINUX_CFLAGS=""
+    LIBSELINUX_LIBS=""
+    selinux_enable="no"
+])
+
+AC_ARG_ENABLE([selinux],
+    AC_HELP_STRING([--disable-selinux], [Disable selinux support]),
+    [selinux_enable_flag=${enableval}], [selinux_enable_flag="yes"])
+
+if test "x$selinux_enable_flag" = "xno"; then
+    selinux_enable="no"
+fi
+
+AM_CONDITIONAL([SELINUX_ENABLE], [test "x${selinux_enable}" = "xyes"])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_HEADER_STDBOOL
@@ -74,6 +91,10 @@ AC_ARG_WITH([sanitized-headers],
 AC_ARG_WITH([glib],
       AC_HELP_STRING([--with-glib],
          [enable glib, building HLOS systems which use glib]))
+
+AC_CHECK_FUNCS([strlcpy],[STRLCPY=yes],[STRLCPY=no])
+AC_CHECK_FUNCS([strlcat],[STRLCAT=yes],[STRLCAT=no])
+AM_CONDITIONAL([USE_G_STRLCPY_STRLCAT], [test "x$STRLCPY" = "xno" && test "x$STRLCAT" = "xno"])
 
 if (test "x${with_glib}" = "xyes"); then
         AC_DEFINE(ENABLE_USEGLIB, 1, [Define if HLOS systems uses glib])
