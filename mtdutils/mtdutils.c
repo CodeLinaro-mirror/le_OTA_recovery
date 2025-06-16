@@ -416,6 +416,10 @@ static void add_bad_block_offset(MtdWriteContext *ctx, off_t pos) {
         ctx->bad_block_alloc = (ctx->bad_block_alloc*2) + 1;
         ctx->bad_block_offsets = realloc(ctx->bad_block_offsets,
                                          ctx->bad_block_alloc * sizeof(off_t));
+        if(ctx->bad_block_offsets == NULL) {
+            printf("Memory Rellocation failed: %s\n", strerror(errno));
+            return;
+        }
     }
     ctx->bad_block_offsets[ctx->bad_block_count++] = pos;
 }

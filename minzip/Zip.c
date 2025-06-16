@@ -961,18 +961,22 @@ bool mzExtractRecursive(const ZipArchive *pArchive,
 
             char *secontext = NULL;
 
+            #ifdef SELINUX_IS_ENABLE
             if (sehnd) {
                 selabel_lookup(sehnd, &secontext, targetFile, UNZIP_FILEMODE);
                 setfscreatecon(secontext);
             }
+            #endif
 
             int fd = open(targetFile, O_CREAT|O_WRONLY|O_TRUNC|O_SYNC,
                 UNZIP_FILEMODE);
 
+            #ifdef SELINUX_IS_ENABLE
             if (secontext) {
                 freecon(secontext);
                 setfscreatecon(NULL);
             }
+            #endif
 
             if (fd < 0) {
                 LOGE("Can't create target file \"%s\": %s\n",
