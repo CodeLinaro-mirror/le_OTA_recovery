@@ -33,7 +33,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+
+#ifdef SELINUX_IS_ENABLE
 #include <selinux/selinux.h>
+#endif
+
 #include <ftw.h>
 #include <sys/capability.h>
 #include <sys/xattr.h>
@@ -152,6 +156,10 @@ void uiPrintf(State* state, const char* format, ...) {
 // Take a sha-1 digest and return it as a newly-allocated hex string.
 char* PrintSha1(const uint8_t* digest) {
     char* buffer = reinterpret_cast<char*>(malloc(SHA_DIGEST_LENGTH*2 + 1));
+    if(buffer == NULL){
+        printf("Memory Allocation failed\n");
+        return NULL;
+    }
     const char* alphabet = "0123456789abcdef";
     size_t i;
     for (i = 0; i < SHA_DIGEST_LENGTH; ++i) {
@@ -362,17 +370,21 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
     {
         char *secontext = NULL;
 
+        #ifdef SELINUX_IS_ENABLE
         if (sehandle) {
             selabel_lookup(sehandle, &secontext, mount_point, 0755);
             setfscreatecon(secontext);
         }
+        #endif
 
         mkdir(mount_point, 0755);
 
+        #ifdef SELINUX_IS_ENABLE
         if (secontext) {
             freecon(secontext);
             setfscreatecon(NULL);
         }
+        #endif
     }
 
     if (strcmp(partition_type, "MTD") == 0) {
@@ -704,6 +716,10 @@ done:
 
 Value* DeleteFn(const char* name, State* state, int argc, Expr* argv[]) {
     char** paths = reinterpret_cast<char**>(malloc(argc * sizeof(char*)));
+    if(paths == NULL){
+        printf("Memory Allocation failed\n");
+        return NULL;
+    }
     for (int i = 0; i < argc; ++i) {
         paths[i] = Evaluate(state, argv[i]);
         if (paths[i] == NULL) {
@@ -870,6 +886,11 @@ Value* PackageExtractFileFn(const char* name, State* state,
         if (ReadArgs(state, argv, 1, &zip_path) < 0) return NULL;
 
         Value* v = reinterpret_cast<Value*>(malloc(sizeof(Value)));
+        if(v == NULL){
+            printf("%s: failed to allocate %ld bytes\n",
+                     name, sizeof(Value));
+            return NULL;
+        }
         v->type = VAL_BLOB;
         v->size = -1;
         v->data = NULL;
@@ -1157,6 +1178,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
             }
             continue;
         }
+        #ifdef SELINUX_IS_ENABLE
         if (strcmp("selabel", args[i]) == 0) {
             if (args[i+1][0] != '\0') {
                 parsed.selabel = args[i+1];
@@ -1167,6 +1189,7 @@ static struct perm_parsed_args ParsePermArgs(State * state, int argc, char** arg
             }
             continue;
         }
+        #endif
         if (max_warnings != 0) {
             printf("ParsedPermArgs: unknown key \"%s\", ignoring\n", args[i]);
             max_warnings--;
@@ -1185,7 +1208,7 @@ static int ApplyParsedPerms(
         struct perm_parsed_args parsed)
 {
     int bad = 0;
-
+    #ifdef SELINUX_IS_ENABLE
     if (parsed.has_selabel) {
         if (lsetfilecon(filename, parsed.selabel) != 0) {
             uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
@@ -1193,7 +1216,7 @@ static int ApplyParsedPerms(
             bad++;
         }
     }
-
+    #endif
     /* ignore symlinks */
     if (S_ISLNK(statptr->st_mode)) {
         return bad;
@@ -1399,6 +1422,10 @@ Value* FileGetPropFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     char* line;
     line = strtok_r(buffer, "\n", &saveptr);
+    if(line == NULL){
+       result = strdup("");
+       goto done;
+    }
     do {
         // skip whitespace at start of line
         while (*line && isspace(*line)) ++line;
@@ -1522,7 +1549,10 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         char* buffer = reinterpret_cast<char*>(malloc(BUFSIZ));
         int read;
         if(buffer != nullptr) {
-            while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
+            while (success) {
+                read = ota_fread(buffer, 1, BUFSIZ, f);
+                if (read <= 0)
+                    break;
                 int wrote = mtd_write_data(ctx, buffer, read);
                 success = success && (wrote == read);
             }
@@ -1688,6 +1718,14 @@ Value* ApplyPatchFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* part_name;
     part_name = strtok_r(source_filename, ":", &source_filename);
     part_name = strtok_r(NULL, ":", &source_filename);
+    if (part_name == NULL){
+      ErrorAbort(state, kArgsParsingFailure, "%s: part_name failure at line %d: %s\n", name, __LINE__, strerror(errno));
+      free(source_filename);
+      free(target_filename);
+      free(target_sha1);
+      free(target_size_str);
+      return nullptr;
+    }
     printf("%s\n", part_name);
     if (result == 0) {
       set_nad_update_status(part_name);
@@ -1733,9 +1771,11 @@ Value* ApplyPatchCheckFn(const char* name, State* state,
 
     int patchcount = argc-1;
     char** sha1s = ReadVarArgs(state, argc-1, argv+1);
-
+    if (sha1s == NULL) {
+        printf("sha1s is pointing to null\n");
+	return NULL;
+    }
     int result = applypatch_check(filename, patchcount, sha1s);
-
     int i;
     for (i = 0; i < patchcount; ++i) {
         free(sha1s[i]);
@@ -1783,6 +1823,10 @@ Value* RunProgramFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     char** args2 = reinterpret_cast<char**>(malloc(sizeof(char*) * (argc+1)));
+    if(args2 == NULL) {
+       printf("RunProgramFn : Failed to allocate memory: %s\n", strerror(errno));
+       return NULL;
+    }
     memcpy(args2, args, sizeof(char*) * argc);
     args2[argc] = NULL;
 
@@ -1950,6 +1994,10 @@ Value* RebootNowFn(const char* name, State* state, int argc, Expr* argv[]) {
     // zero out the 'command' field of the bootloader message.
     memset(buffer, 0, sizeof(((struct bootloader_message*)0)->command));
     FILE* f = fopen(filename, "r+b");
+    if(f == NULL) {
+        printf("Failed to open file: %s\n", filename);
+        return NULL;
+    }
     fseek(f, offsetof(struct bootloader_message, command), SEEK_SET);
     ota_fwrite(buffer, sizeof(((struct bootloader_message*)0)->command), 1, f);
     fclose(f);
@@ -1957,7 +2005,7 @@ Value* RebootNowFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     strlcpy(buffer, "reboot,", sizeof(buffer));
     if (property != NULL) {
-        strncat(buffer, property, sizeof(buffer)-10);
+        strlcat(buffer, property, sizeof(buffer));
     }
 
     property_set(ANDROID_RB_PROPERTY, buffer);
@@ -1992,6 +2040,10 @@ Value* SetStageFn(const char* name, State* state, int argc, Expr* argv[]) {
     // arguments in case of the device restarting midway through
     // package installation.
     FILE* f = fopen(filename, "r+b");
+    if(f == NULL) {
+        printf("Failed to open file: %s\n", filename);
+        return NULL;
+    }
     fseek(f, offsetof(struct bootloader_message, stage), SEEK_SET);
     int to_write = strlen(stagestr)+1;
     int max_size = sizeof(((struct bootloader_message*)0)->stage);
@@ -2018,6 +2070,10 @@ Value* GetStageFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     char buffer[sizeof(((struct bootloader_message*)0)->stage)];
     FILE* f = fopen(filename, "rb");
+    if(f == NULL) {
+        printf("Failed to open file: %s\n", filename);
+        return NULL;
+    }
     fseek(f, offsetof(struct bootloader_message, stage), SEEK_SET);
     ota_fread(buffer, sizeof(buffer), 1, f);
     fclose(f);
@@ -2171,8 +2227,10 @@ bool PerformBlockCopyOperation(char* source, char* dest) {
     uint8_t src_hash[SHA_DIGEST_LENGTH], dest_hash[SHA_DIGEST_LENGTH];
 
     char* buffer = reinterpret_cast<char*>(malloc(BLOCKSIZE));
-    while (success && (read =
-            TEMP_FAILURE_RETRY(ota_read(source_fd, buffer, BLOCKSIZE))) > 0) {
+    while (success) {
+        read = TEMP_FAILURE_RETRY(ota_read(source_fd, buffer, BLOCKSIZE));
+        if (read <= 0)
+            break;
         // printf("Read %zd bytes from source_fd\n", read);
         SHA1_Update(&src_ctx, buffer, read); //update sha1 with was just read
         ssize_t wrote = TEMP_FAILURE_RETRY(ota_write(dest_fd, buffer, read));
@@ -2248,14 +2306,14 @@ Value* CopyABPartitionsFn(const char* name, State* state,
             return ErrorAbort(state, kArgsParsingFailure,
                 "%s: couldn't parse args!", name);
         }
-        char *p = strtok (exclude_arg, ",");
+        char *p = strtok_r (exclude_arg, ",", &exclude_arg);
         while (p != NULL) {
             // append the boot/active slot to the name and then save it
             snprintf(partitions_to_exclude[exclude_length], PATH_MAX, "%s%s",
                     p, slot_suffix_arr[boot_slot]);
             printf("%s: Excluding partition \"%s\" from being copied\n", name, p);
             exclude_length ++;
-            p = strtok (NULL, ",");
+            p = strtok_r (NULL, ",", &exclude_arg);
         }
         if (exclude_length > 0)
             exclude_from_copy = true; // we have partitions that need not be copied
@@ -2576,7 +2634,10 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
         return StringValue(strdup(""));
     }
     int read;
-    while (success && (read = ota_fread(buffer, 1, BUFSIZ, f)) > 0) {
+    while (success) {
+        read = ota_fread(buffer, 1, BUFSIZ, f);
+        if (read <= 0)
+            break;
         int wrote = mtd_write_data(ctx, buffer, read);
         success = success && (wrote == read);
     }
@@ -2845,6 +2906,83 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
 #endif //TARGET_SUPPORTS_NAND_DM_VERITY
 
 
+#ifdef TARGET_NAD_FDE
+#define PART_NAME_LENGTH 64
+Value* setupInactiveDmcryptDevice(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 1) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects exactly 1 arg, got %d", name, argc);
+    }
+
+    char *partition = NULL; // partition = rootfs
+    if (ReadArgs(state, argv, 1, &partition) < 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+    }
+
+    char dm_name[PART_NAME_LENGTH];
+    // name of the dmcrypt device to be created on inactive_block_device
+    snprintf(dm_name, PART_NAME_LENGTH, "%s_inactive", partition);
+
+    // Get the inactive block device
+#ifdef TARGET_NAND_BOOT
+    char inactive_partition[PART_NAME_LENGTH];
+    snprintf(inactive_partition, PART_NAME_LENGTH, "%s%s", partition, slot_suffix_arr[inactive_slot]);
+    char *inactive_block_device = getMtdBlock(inactive_partition);
+#else
+    if (strncmp(partition, "rootfs", strlen("rootfs")) == 0)
+      partition = strdup("system");
+    char inactive_block_device[PART_NAME_LENGTH];
+    snprintf(inactive_block_device, PART_NAME_LENGTH, "/dev/block/bootdevice/by-name/%s%s", partition, slot_suffix_arr[inactive_slot]);
+#endif
+
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+
+    // nad-fde-app -d /dev/mtd58 -n rootfs_inactive -k 0
+    // nad-fde-app -d /dev/block/bootdevice/by-name/system_b -n rootfs_inactive -k 0
+    char *args[] = {"nad-fde-app", "-d", inactive_block_device, "-n", dm_name, "-k", "0", 0};
+    size_t size = sizeof(args)/sizeof(args[0]);
+
+    if (exec_command(ui->cmd_pipe, "/usr/bin/nad-fde-app", args, size) != 0) {
+        fprintf(stderr, "Failed to create dmcrypt device %s on %s\n", dm_name, inactive_block_device);
+        fprintf(ui->cmd_pipe, "Failed to create dmcrypt device %s on %s\n", dm_name, inactive_block_device);
+        return StringValue(strdup(""));
+    }
+    printf("Created dmcrypt device %s on %s\n", dm_name, inactive_block_device);
+    return StringValue(strdup("success"));
+}
+
+Value* closeInactiveDmcryptDevice(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 1) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects exactly 1 arg, got %d", name, argc);
+    }
+
+    char *partition = NULL; // partition = rootfs
+    if (ReadArgs(state, argv, 1, &partition) < 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+    }
+
+    char dm_name[PART_NAME_LENGTH];
+    snprintf(dm_name, PART_NAME_LENGTH, "%s_inactive", partition);
+
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+
+    // nad-fde-app -n rootfs_inactive -x
+    char *args[] = {"nad-fde-app", "-n", dm_name, "-x", 0};
+    size_t size = sizeof(args)/sizeof(args[0]);
+
+    if (exec_command(ui->cmd_pipe, "/usr/bin/nad-fde-app", args, size) != 0) {
+        fprintf(stderr, "failed to close dmcrypt device %s", partition);
+        fprintf(ui->cmd_pipe, "failed to close dmcrypt device  %s", partition);
+        return StringValue(strdup(""));
+    }
+    printf("Closed dmcrypt device %s\n", dm_name);
+    return StringValue(strdup("success"));
+}
+#endif //TARGET_NAD_FDE
+
 #ifdef TARGET_NAND_BOOT
 #ifdef TARGET_NAD_OTA
 
@@ -2932,6 +3070,11 @@ Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv
     }
 
     char *inactive_mtd_block = getMtdBlock(partition);
+    if (inactive_mtd_block == NULL){
+        ErrorAbort(state, kArgsParsingFailure, "%s: inactive_mtd_block failure at line %d for partition %s: %s\n", name, __LINE__, partition, strerror(errno));
+        unlink(modem_ubifs);
+        return StringValue(strdup(""));
+    }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     if (chmod(modem_ubifs, 0777) < 0) {
         printf("chmod of %s failed\n",modem_ubifs);
@@ -3030,7 +3173,10 @@ void RegisterInstallFunctions() {
 #ifdef TARGET_SUPPORTS_NAND_DM_VERITY
     RegisterFunction("update_rootfs_ubi_volume", updateRootfsUbiVolume);
 #endif
-
+#ifdef TARGET_NAD_FDE
+    RegisterFunction("setup_inactive_dmcrypt_device", setupInactiveDmcryptDevice);
+    RegisterFunction("close_inactive_dmcrypt_device", closeInactiveDmcryptDevice);
+#endif
 #ifdef TARGET_NAND_BOOT
     RegisterFunction("scan_mtd_partitions", scanMtdPartitions);
     RegisterFunction("copy_active_rootfs_to_inactive_rootfs", copyActiveRootfsToInactiveRootfs);

@@ -43,7 +43,16 @@
 #if defined(TARGET_SUPPORTS_ABC)
 const char* slot_suffix_arr[] = {"_a", "_b","_c", NULL};
 #else
+#ifdef TARGET_NAD_OTA
+#ifdef TARGET_NAND_BOOT
 const char* slot_suffix_arr[] = {"_a", "_b", NULL};
+#else
+//all partitions names in Telematics emmc devices are without suffix, and only _b slot suffix are added
+const char* slot_suffix_arr[] = {"", "_b", NULL};
+#endif
+#else
+const char* slot_suffix_arr[] = {"_a", "_b", NULL};
+#endif
 #endif
 #else
 const char* slot_suffix_arr[] = {"", "", ""};
@@ -132,7 +141,7 @@ int main(int argc, char** argv) {
 #else
     printf (" call nadabctl \n");
     boot_slot = libnadab_get_boot_slot();
-    
+
 #endif
     if (boot_slot == -1) {
         printf("That's odd.. I was told that A/B boot support be present\n"
@@ -206,6 +215,11 @@ int main(int argc, char** argv) {
     }
 
     char* script = reinterpret_cast<char*>(malloc(script_entry->uncompLen+1));
+    if(script == NULL) {
+       printf("Failed to allocate memory: %s\n", strerror(errno));
+       mzCloseZipArchive(&za);
+       return 4;
+    }
     if (!mzReadZipEntry(&za, script_entry, script, script_entry->uncompLen)) {
         printf("failed to read script from package\n");
         fprintf(cmd_pipe, "ui_print failed to read script from package\n");
@@ -238,6 +252,7 @@ int main(int argc, char** argv) {
         return 6;
     }
 
+    #ifdef SELINUX_IS_ENABLE
     struct selinux_opt seopts[] = {
       { SELABEL_OPT_PATH, "/file_contexts" }
     };
@@ -247,6 +262,7 @@ int main(int argc, char** argv) {
     if (!sehandle) {
         fprintf(cmd_pipe, "ui_print Warning: No file_contexts\n");
     }
+    #endif
 
     // read the partition mapping
     if (IS_LE_MODE()) {

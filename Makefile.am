@@ -12,9 +12,7 @@ AM_CFLAGS := -Wundef \
              -D__reboot=reboot \
              $(LIBSELINUX_CFLAGS) \
              -D_GNU_SOURCE \
-             -D_LARGEFILE64_SOURCE \
-             -Dstrlcpy=g_strlcpy \
-             -Dstrlcat=g_strlcat
+             -D_LARGEFILE64_SOURCE
 
 AM_CPPFLAGS := \
               -DUSE_LE_MODE \
@@ -28,9 +26,7 @@ AM_CPPFLAGS := \
               $(LIBSELINUX_CFLAGS) \
               -I$(WORKSPACE)/OTA/system/core/base/include \
               -std=c++11 \
-              -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
-              -Dstrlcpy=g_strlcpy \
-              -Dstrlcat=g_strlcat
+              -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS
 
 #AM_LDFLAGS := -shared -version-info 1:0:0
 
@@ -53,6 +49,11 @@ libfusesideload_la_LIBADD := -lm -lpthread
 libfusesideload_la_LDFLAGS := -all-static
 endif
 
+if USE_G_STRLCPY_STRLCAT
+libfusesideload_la_CFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+libfusesideload_la_CPPFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+endif
+
 
 cpp_sources := adb_install.cpp \
     asn1_decoder.cpp \
@@ -70,7 +71,6 @@ requiredlibs := -lm \
                -lz \
                -lcutils \
                -lmincrypt \
-               -lselinux \
                -lfs_mgr \
                -lext4_utils \
                ./mtdutils/libmtdutils.la \
@@ -81,6 +81,9 @@ requiredlibs := -lm \
                ./otafault/libotafault.la \
                ./bootloader_message/libbootloader_message.la
 
+if SELINUX_ENABLE
+requiredlibs += -lselinux
+endif
 
 RECOVERY_API_VERSION := 3
 
@@ -96,12 +99,25 @@ recovery_CPPFLAGS := $(AM_CPPFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSIO
 recovery_LDADD := $(requiredlibs) -lcrypto
 endif
 
+if USE_G_STRLCPY_STRLCAT
+recovery_CFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+recovery_CPPFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+endif
+
+if SELINUX_ENABLE
+recovery_CPPFLAGS += -DSELINUX_IS_ENABLE
+endif
 
 verifier_test_libs := -lmincrypt ./minzip/libminzip.la -lm -lpthread -lcutils
 verifier_test_CFLAGS := $(AM_CFLAGS)
 
 verifier_test_CPPFLAGS := $(AM_CPPFLAGS)
 verifier_test_LDADD := $(verifier_test_libs)
+
+if USE_G_STRLCPY_STRLCAT
+verifier_test_CFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+verifier_test_CPPFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+endif
 
 verifier_test_SOURCES := verifier_test.cpp asn1_decoder.cpp verifier.cpp ui.cpp
 

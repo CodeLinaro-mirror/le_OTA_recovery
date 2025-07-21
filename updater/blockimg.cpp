@@ -78,8 +78,8 @@ int get_boot_dev_type();
 #ifdef TARGET_NAD_OTA
 #define FIRMWARE_VERSION_FILE "/firmware/image/Ver_Info.txt"
 #define MAX_VERSION_STR_BYTES 101
-#define BUILD_VERSION_FILE "/etc/version"
-#define LXC_BUILD_VERSION_FILE "/lxcrootfs/etc/version"
+#define BUILD_VERSION_FILE "/etc/timestamp"
+#define LXC_BUILD_VERSION_FILE "/lxcrootfs/etc/timestamp"
 #define LEGATO_VERSION_FILE "/legato/systems/current/version"
 #endif
 #endif
@@ -1034,7 +1034,6 @@ static int LoadSrcTgtVersion3(CommandParameters& params, RangeSet& tgt, size_t& 
     }
 
     std::vector<uint8_t> tgtbuffer(tgt.size * BLOCKSIZE);
-
     if (ReadBlocks(tgt, tgtbuffer, params.fd) == -1) {
         return -1;
     }
@@ -1089,7 +1088,7 @@ static int PerformCommandMove(CommandParameters& params) {
     size_t blocks = 0;
     bool overlap = false;
     int status = 0;
-    RangeSet tgt;
+    RangeSet tgt={0,0,{}};
 
     if (params.version == 1) {
         status = LoadSrcTgtVersion1(params, tgt, blocks, params.buffer, params.fd);
@@ -1128,7 +1127,6 @@ static int PerformCommandMove(CommandParameters& params) {
         FreeStash(params.stashbase, params.freestash);
         params.freestash.clear();
     }
-
     params.written += tgt.size;
 
     return 0;
@@ -1211,7 +1209,7 @@ static int PerformCommandNew(CommandParameters& params) {
         return -1;
     }
 
-    RangeSet tgt;
+    RangeSet tgt={0,0,{}};
     parse_range(params.tokens[params.cpos++], tgt);
 
     if (params.canwrite) {
@@ -1241,7 +1239,6 @@ static int PerformCommandNew(CommandParameters& params) {
 
         pthread_mutex_unlock(&params.nti.mu);
     }
-
     params.written += tgt.size;
 
     return 0;
@@ -1342,7 +1339,6 @@ static int PerformCommandDiff(CommandParameters& params) {
         FreeStash(params.stashbase, params.freestash);
         params.freestash.clear();
     }
-
     params.written += tgt.size;
 
     return 0;
@@ -1664,24 +1660,26 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     }
 #endif
 #endif
+
+#ifdef TARGET_NAD_FDE
+    if (strstr(blockdev_filename->data ,"/dev/mapper/")==NULL) {
+#endif
+
 #ifdef TARGET_SUPPORTS_AB
-    int boot_device_type = TYPE_ERROR;
-#ifdef TARGET_NAD_OTA
-    boot_device_type = get_boot_dev_type();
-#endif
-    printf("boot device type: %d\n", boot_device_type);
-    if ( TYPE_MTD == boot_device_type ) {
-        printf("Calling getInactiveRootfsMtdBlock\n");
 #ifdef TARGET_NAND_BOOT
-        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+    printf("Calling getInactiveRootfsMtdBlock\n");
+    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#else
+    char buf[PATH_MAX];
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data, slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
 #endif
-    } else {
-        char buf[PATH_MAX];
-        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-                slot_suffix_arr[inactive_slot]);
-        blockdev_filename->data = strdup(buf);
+#endif
+
+#ifdef TARGET_NAD_FDE
     }
 #endif
+
     printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
             blockdev_filename->data);
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
@@ -1796,10 +1794,11 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     // Build a hash table of the available commands
     HashTable* cmdht = mzHashTableCreate(cmdcount, nullptr);
     std::unique_ptr<HashTable, decltype(&mzHashTableFree)> cmdht_holder(cmdht, mzHashTableFree);
-
-    for (size_t i = 0; i < cmdcount; ++i) {
-        unsigned int cmdhash = HashString(commands[i].name);
-        mzHashTableLookup(cmdht, cmdhash, (void*) &commands[i], CompareCommands, true);
+    if (cmdht != nullptr) {
+        for (size_t i = 0; i < cmdcount; ++i) {
+            unsigned int cmdhash = HashString(commands[i].name);
+            mzHashTableLookup(cmdht, cmdhash, (void*) &commands[i], CompareCommands, true);
+        }
     }
 
     int rc = -1;
@@ -2018,24 +2017,25 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
 
 // Now that the arguments have been populated,
 // make A/B specific changes to block-device name
+#ifdef TARGET_NAD_FDE
+    if (strstr(blockdev_filename->data ,"/dev/mapper/")==NULL) {
+#endif
+
 #ifdef TARGET_SUPPORTS_AB
-    int boot_device_type = TYPE_ERROR;
-#ifdef TARGET_NAD_OTA
-    boot_device_type = get_boot_dev_type();
-#endif
-    printf("boot device type: %d\n", boot_device_type);
-    if ( TYPE_MTD == boot_device_type ) {
-        printf("Calling getInactiveRootfsMtdBlock\n");
 #ifdef TARGET_NAND_BOOT
-        blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+    printf("Calling getInactiveRootfsMtdBlock\n");
+    blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
+#else
+    char buf[PATH_MAX];
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data, slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
 #endif
-    } else {
-        char buf[PATH_MAX];
-        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-                slot_suffix_arr[inactive_slot]);
-        blockdev_filename->data = strdup(buf);
+#endif
+
+#ifdef TARGET_NAD_FDE
     }
 #endif
+
     printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
             blockdev_filename->data);
 
@@ -2245,7 +2245,10 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
             slot_suffix_arr[inactive_slot]);
     blockdev_filename->data = strdup(buf);
 #endif
-
+    if (blockdev_filename->data == NULL){
+        printf("BlockEraseFn: failed to get block device name \n");
+        return StringValue(strdup(""));
+    }
     printf(" blockdev_filename_data %s \n", blockdev_filename->data);
 
     int fd = open(blockdev_filename->data, O_RDWR);
@@ -2288,7 +2291,10 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
 
     char *mtd_num = strtok_r(blockdev_filename->data, "block", &save);
     mtd_num = strtok_r(NULL, "block", &save);
-
+    if (mtd_num == NULL){
+        printf("BlockEraseFn: failed to get the mtd_num \n");
+        return StringValue(strdup(""));
+    }
     snprintf(mtd_erase_dev, 12, "%s%s", "/dev/mtd", mtd_num);
 
     fd = open(mtd_erase_dev, O_RDWR);
