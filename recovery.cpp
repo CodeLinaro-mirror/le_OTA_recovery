@@ -1047,6 +1047,9 @@ static char* browse_directory(const char* path, Device* device) {
     char** zips = (char**)malloc(z_alloc * sizeof(char*));
     if(dirs == NULL || zips == NULL) {
        printf("browse_directory:, Failed to allocate memory: %s\n", strerror(errno));
+       closedir(d);
+       if(dirs != NULL) free(dirs);
+       if(zips != NULL) free(zips);
        return NULL;
     }
     zips[0] = strdup("../");
@@ -1129,6 +1132,12 @@ static char* browse_directory(const char* path, Device* device) {
 
     for (int i = 0; i < z_size; ++i) free(zips[i]);
     free(zips);
+
+    for (int i = 0; i < d_size; ++i) {
+        free(dirs[i]);
+    }
+    free(dirs);
+
 
     return result;
 }
@@ -2109,8 +2118,9 @@ int main(int argc, char **argv) {
                 update_package = strtok_r(str, "\:", &save);
                 if(update_package !=NULL)
                     printf(" \n post_verify flow update_package: %s \n",update_package);
+                free(str);
             } else {
-                LOGE("strcreation failed: %s\n", strerror(errno));	    
+                LOGE("strcreation failed: %s\n", strerror(errno));
 	    }
         } else if((get_path_suffix !=NULL) && (!strncmp("--pre_verify", get_path_suffix + 1, 12))){
             pre_install_verify = true;
@@ -2121,6 +2131,7 @@ int main(int argc, char **argv) {
                 update_package = strtok_r(str, "\:", &save);
                 if(update_package !=NULL)
                     printf(" \n pre_verify flow update_package: %s \n",update_package);
+                free(str);
             } else {
                 LOGE("strcreation failed: %s\n", strerror(errno));
             }
