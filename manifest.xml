@@ -34,6 +34,7 @@
 <file fileName="devcfg.mbn" path="trustzone_images/build/ms/bin/SAJAANAA/" checksum="AEE00C" fileVersion="1.0"/>
 <file fileName="hypvm.mbn" path="trustzone_images/build/ms/bin/SAJAANAA/" checksum="AEE00C" fileVersion="1.0"/>
 <file fileName="tz.mbn" path="trustzone_images/build/ms/bin/SAJAANAA/" checksum="AEE00C" fileVersion="1.0"/>
+<file fileName="apdp.mbn" path="trustzone_images/ssg/securemsm/trustzone/debug/apdp/lassen/" checksum="AEE00C" fileVersion="1.0"/>
 </build>
 
 
