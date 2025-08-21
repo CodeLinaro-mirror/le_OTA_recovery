@@ -41,3 +41,7 @@ libminadbd_la_CPPFLAGS := $(AM_CPPFLAGS)
 libminadbd_la_LIBADD := $(requiredlibs) -lm -lpthread
 #libminadbd_la_LDFLAGS := -all-static
 endif
+
+if USE_G_STRLCPY_STRLCAT
+libminadbd_la_CPPFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+endif
