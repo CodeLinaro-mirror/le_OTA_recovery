@@ -116,6 +116,10 @@ int main(int argc, char** argv) {
 
     int fd = atoi(argv[2]);
     FILE* cmd_pipe = fdopen(fd, "wb");
+    if(cmd_pipe == NULL) {
+        printf("Error opening file descriptor %s\n", strerror(errno));
+        return -1;
+    }
     setlinebuf(cmd_pipe);
 
 #ifdef TARGET_SUPPORTS_AB
