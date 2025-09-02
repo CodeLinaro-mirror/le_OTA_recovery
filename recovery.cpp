@@ -2036,8 +2036,9 @@ int main(int argc, char **argv) {
     FILE* dest_fp = fopen_path(STATUS_COOKIE_FILE, "w");
     if (dest_fp == nullptr) {
         LOGE("Can't open %s\n", STATUS_COOKIE_FILE);
+    } else {
+        check_and_fclose(dest_fp, STATUS_COOKIE_FILE);
     }
-    check_and_fclose(dest_fp, STATUS_COOKIE_FILE);
     if (IS_LE_MODE()) {
         LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
         ota_status = strdup("OTA_INPROGRESS");
