@@ -2402,9 +2402,9 @@ static long read_telaf_version()
         const char* out = telaf_ver;
         version = strtol(out, NULL, 10);
       }
-      free(telaf_ver);
       fclose(versionFile);
     }
+    free(telaf_ver);
     return version;
 }
 
