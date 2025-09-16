@@ -1510,6 +1510,7 @@ Value* WriteRawImageFn(const char* name, State* state, int argc, Expr* argv[]) {
         // this condition is to make sure we try partition without _a/_b suffix
         // for e.g. if a partition with name "sbl_a"/"sbl_b" does not exist
         // then try to update the partition with name "sbl"
+        free(partition);
         partition = partition_value->data;
        printf ("single partition update \n");
     } else
@@ -1825,6 +1826,7 @@ Value* RunProgramFn(const char* name, State* state, int argc, Expr* argv[]) {
     char** args2 = reinterpret_cast<char**>(malloc(sizeof(char*) * (argc+1)));
     if(args2 == NULL) {
        printf("RunProgramFn : Failed to allocate memory: %s\n", strerror(errno));
+       free(args);
        return NULL;
     }
     memcpy(args2, args, sizeof(char*) * argc);
@@ -2561,6 +2563,8 @@ Value* copyActiveRootfsToInactiveRootfs(const char* name, State* state, int argc
     char *active_mtd_block = getMtdBlock(active_rootfs_volume);
     if(inactive_mtd_block == NULL || active_mtd_block == NULL) {
         printf("copyActiveRootfsToInactiveRootfs: inactive_mtd_block or active_mtd_block is NULL \n");
+        if(inactive_mtd_block != NULL) free(inactive_mtd_block);
+        if(active_mtd_block != NULL) free(active_mtd_block);
         return StringValue(strdup(""));
     }
     char in_file[PATH_MAX], out_file[PATH_MAX];
@@ -2574,9 +2578,13 @@ Value* copyActiveRootfsToInactiveRootfs(const char* name, State* state, int argc
     if (exec_command(ui->cmd_pipe, "/bin/dd", args, size) != 0) {
         fprintf(stderr, "can not copy rootfs");
         fprintf(ui->cmd_pipe, "can not copy rootfs");
+        free(inactive_mtd_block);
+        free(active_mtd_block);
         return StringValue(strdup(""));
     }
     printf("copying of active rootfs to inactive rootfs done\n");
+    free(inactive_mtd_block);
+    free(active_mtd_block);
     return StringValue(strdup("success"));
 }
 
@@ -2596,6 +2604,8 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
     char *active_boot_mtd_block = getMtdBlock(active_boot_partition);
     if(inactive_boot_mtd_block == NULL || active_boot_mtd_block == NULL) {
         printf("copyBootPartitionToInActiveSlot: inactive_boot_mtd_block or active_boot_mtd_block is NULL \n");
+        if(inactive_boot_mtd_block != NULL) free(inactive_boot_mtd_block);
+        if(active_boot_mtd_block != NULL) free(active_boot_mtd_block);
         return StringValue(strdup(""));
     }
     char in_file[PATH_MAX], out_file[PATH_MAX];
@@ -2609,6 +2619,8 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
     mtd = mtd_find_partition_by_name(inactive_boot_partition);
     if (mtd == NULL) {
         printf("no mtd partition named \"%s\"\n", inactive_boot_partition);
+        free(inactive_boot_mtd_block);
+        free(active_boot_mtd_block);
         return StringValue(strdup(""));
     }
 
@@ -2616,6 +2628,8 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
     ctx = mtd_write_partition(mtd);
     if (ctx == NULL) {
         printf("can't write mtd partition \"%s\"\n", inactive_boot_partition);
+        free(inactive_boot_mtd_block);
+        free(active_boot_mtd_block);
         return StringValue(strdup(""));
     }
 
@@ -2624,6 +2638,9 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
     FILE* f = ota_fopen(filename, "rb");
     if (f == NULL) {
         printf("%s: can't open %s: %s\n", name, filename, strerror(errno));
+        mtd_write_close(ctx);
+        free(inactive_boot_mtd_block);
+        free(active_boot_mtd_block);
         return StringValue(strdup(""));
     }
 
@@ -2631,6 +2648,10 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
     char* buffer = reinterpret_cast<char*>(malloc(BUFSIZ));
     if(buffer == NULL) {
         printf(" can't allocate bytes to buffer\n");
+        mtd_write_close(ctx);
+        ota_fclose(f);
+        free(inactive_boot_mtd_block);
+        free(active_boot_mtd_block);
         return StringValue(strdup(""));
     }
     int read;
@@ -2641,6 +2662,8 @@ Value* copyBootPartitionToInActiveSlot(const char* name, State* state, int argc,
         int wrote = mtd_write_data(ctx, buffer, read);
         success = success && (wrote == read);
     }
+    free(inactive_boot_mtd_block);
+    free(active_boot_mtd_block);
     free(buffer);
     ota_fclose(f);
 
@@ -2679,6 +2702,8 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
     char *active_mtd_block = getMtdBlock(active_nonhlos_volume);
     if(active_mtd_block == NULL || inactive_mtd_block == NULL) {
         printf("copyActiveNonHlosToInactiveNonHlos: inactive_boot_mtd_block or active_boot_mtd_block is NULL \n");
+        if(inactive_mtd_block != NULL) free(inactive_mtd_block);
+        if(active_mtd_block != NULL) free(active_mtd_block);
         return StringValue(strdup(""));
     }
     char in_file[PATH_MAX], out_file[PATH_MAX];
@@ -2692,9 +2717,13 @@ Value* copyActiveNonHlosToInactiveNonHlos(const char* name, State* state, int ar
     if (exec_command(ui->cmd_pipe, "/bin/dd", args, size) != 0) {
         fprintf(stderr, "can not copy NonHlos");
         fprintf(ui->cmd_pipe, "can not copy NonHlos");
+        free(inactive_mtd_block);
+        free(active_mtd_block);
         return StringValue(strdup(""));
     }
     printf("copying of active NonHlos to inactive NonHlos done\n");
+    free(inactive_mtd_block);
+    free(active_mtd_block);
     return StringValue(strdup("success"));
 }
 #endif
@@ -2842,7 +2871,6 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
                 }
             }
 #endif
-
             return StringValue(strdup("Success"));
         } else {
             printf("That's weird! setActive() didn't return any errors "
@@ -3059,6 +3087,7 @@ Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv
     }
     char *volume_name;
     if (ReadArgs(state, argv, 1, &volume_name) < 0) {
+        if(partition != NULL) free(partition);
         return ErrorAbort(state, kArgsParsingFailure,
                 "%s: couldn't parse args!", name);
     }
@@ -3073,12 +3102,15 @@ Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv
     if (inactive_mtd_block == NULL){
         ErrorAbort(state, kArgsParsingFailure, "%s: inactive_mtd_block failure at line %d for partition %s: %s\n", name, __LINE__, partition, strerror(errno));
         unlink(modem_ubifs);
+        free(partition);
         return StringValue(strdup(""));
     }
     char in_file[PATH_MAX], out_file[PATH_MAX];
     if (chmod(modem_ubifs, 0777) < 0) {
         printf("chmod of %s failed\n",modem_ubifs);
         unlink(modem_ubifs);
+        free(partition);
+        free(inactive_mtd_block);
         return StringValue(strdup(""));
     }
     snprintf(in_file, PATH_MAX, "%s%s", "if=", modem_ubifs);
@@ -3091,11 +3123,15 @@ Value* writeModemUbifsImage(const char* name, State* state, int argc, Expr* argv
     if (exec_command(ui->cmd_pipe, "/bin/dd", args, size) != 0) {
         fprintf(stderr, "can not update ubifs volume %s", partition);
         unlink(modem_ubifs);
+        free(partition);
+        free(inactive_mtd_block);
         return StringValue(strdup(""));
     }
     printf(" updated ubifs volume %s is done \n", partition);
 
     unlink(modem_ubifs);
+    free(partition);
+    free(inactive_mtd_block);
     return StringValue(strdup("success"));
 }
 #endif
