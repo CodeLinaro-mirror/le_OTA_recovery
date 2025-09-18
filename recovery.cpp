@@ -123,6 +123,9 @@ static const struct option OPTIONS[] = {
   { "update_binary_from_device", no_argument, NULL, 'b'},
   { "wipe_ab", no_argument, NULL, 0 },
   { "wipe_package_size", required_argument, NULL, 0 },
+#ifdef TARGET_NAD_OTA
+  { "reboot_after_ota", no_argument, NULL, 0 },
+#endif
   { NULL, 0, NULL, 0 },
 };
 
@@ -1950,6 +1953,7 @@ int main(int argc, char **argv) {
 
 #ifdef TARGET_NAD_OTA
 #ifdef TARGET_SUPPORTS_AB
+    bool reboot_after_ota = false;
     mount_required = false;
 #endif
 #endif
@@ -1987,6 +1991,11 @@ int main(int argc, char **argv) {
             } else if (strcmp(OPTIONS[option_index].name, "wipe_package_size") == 0) {
                 android::base::ParseUint(optarg, &wipe_package_size);
                 break;
+#ifdef TARGET_NAD_OTA
+            } else if (strcmp(OPTIONS[option_index].name, "reboot_after_ota") == 0) {
+                reboot_after_ota = true;
+                break;
+#endif
             }
             break;
         }
@@ -2307,6 +2316,12 @@ error:
          ui->Print("Rebooting...\n");
          property_set(ANDROID_RB_PROPERTY, "reboot,");
          reboot = true;
+         printf("invoking reboot\n"); fflush(stdout);
+         syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
+     }
+#endif
+#ifdef TARGET_NAD_OTA
+     if(status == INSTALL_SUCCESS && reboot_after_ota) {
          printf("invoking reboot\n"); fflush(stdout);
          syscall(SYS_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART, NULL);
      }
