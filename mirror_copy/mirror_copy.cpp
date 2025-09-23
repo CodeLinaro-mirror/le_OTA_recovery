@@ -10,6 +10,8 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #include <chrono>
 #include <cstring>
@@ -169,41 +171,144 @@ int main() {
                  boot_slot == boot_slot_from_ota_status &&
                  (ota_started_slot + 1) % 2 == boot_slot) {
             std::cout << "triggering the mirror copy\n";
-            fclose(stream);
-            char *args[] = {"/usr/bin/recovery", zip_path, NULL};
-            execv(args[0], args);
+            //fclose(stream);
+            pid_t pid = fork();
+            if (pid == 0) {
+                // Child process
+                char *args[] = {"/usr/bin/recovery", zip_path, NULL};
+                execv(args[0], args);
+                // If execv fails
+                std::cerr << "execv failed: " << strerror(errno) << std::endl;
+                exit(1);
+            } else if (pid > 0) {
+                // Parent process
+                int status = 0;
+                waitpid(pid, &status, 0); // Wait for child to finish
+                if (WIFEXITED(status)) {
+                    std::cout << "Recovery process finished with exit code " << WEXITSTATUS(status) << std::endl;
+                    file.close();
+                    file.open(MIRROR_COPY_STATUS_COOKIE_FILE, std::ios::in);
+                    if (is_file_empty(file)) {
+                        std::cout << "File is empty\n";
+                        file.close();
+                        return 0;
+                    }
+                    last_line_new = read_last_line(file);
+
+                    // The following code checks if the last line read from the mirror copy status cookie file
+                    // is properly formatted. The cookie file is expected to have lines in the format:
+                    //    Stage:State:Slot
+                    // For Example:
+                    //     STAGE1:OTA_STARTED:0             //Here slot 0 means ota started from slot a
+                    //     STAGE1:OTA_COMPLETED:1      //Here slot 1 means ota completed on slot b
+                    //     STAGE2:COPY_STARTED:0          //Here slot 0 means copy started on slot a
+                    //     STAGE2:COPY_COMPLETED:0    //Here slot 0 means copy completed on slot a
+
+                    // The code tokenizes the last line using the colon (':') delimiter and ensures that
+                    // after splitting, exactly 3 elements are present. If the format is invalid, it prints
+                    // an error message and exits the function.
+                    tokenize(last_line_new, delim, last_line_split_new);
+                    if (last_line_split_new.size() != 3) {
+                        std::cout << "Invalid Entries in the cookie file\n";
+                        return 0;
+                    }
+                    ota_status_new = last_line_split_new[1];
+                    file.clear();
+                    file.seekg(0, std::ios::beg);
+                    if(ota_status_new == "COPY_COMPLETED") {
+                        std::string line;
+                        while (getline(file, line)) {
+                            std::cout << line << "\n";
+                        }
+                        file.close();
+                        file.open(MIRROR_COPY_STATUS_COOKIE_FILE,
+                               std::ofstream::out | std::ofstream::trunc);
+                        file.close();
+                    }
+                    else {
+                        std::cout << "Copy Operation is failed\n";
+                        file.close();
+                        fclose(stream);
+                        return 0;
+                    }
+                }
+                file.close();
+                fclose(stream);
+            } else {
+                // Fork failed
+                std::cerr << "fork failed: " << strerror(errno) << std::endl;
+            }
         }
 
         // triggering the mirror copy again in recovery
         else if (stage == "STAGE2" && ota_status == "COPY_STARTED" &&
                  (ota_started_slot + 1) % 2 == boot_slot) {
             std::cout << "triggering the mirror copy again\n";
-            fclose(stream);
-            char *args[] = {"/usr/bin/recovery", zip_path, NULL};
-            execv(args[0], args);
-            file.open(MIRROR_COPY_STATUS_COOKIE_FILE,
-                 std::ios::in);
-            if (is_file_empty(file)) {
-                std::cout << "File is empty\n";
-                file.close();
-                return 0;
-            }
-            last_line_new = read_last_line(file);
-            tokenize(last_line_new, delim, last_line_split_new);
-            if (last_line_split_new.size() != 3) {
-                std::cout << "Invalid Entries in the cookie file\n";
-                return 0;
-            }
-            ota_status_new = last_line_split_new[1];
-            if(ota_status_new == "COPY_COMPLETED") {
-                std::string line;
-                while (getline(file, line)) {
-                    std::cout << line << "\n";
+            //fclose(stream);
+            pid_t pid = fork();
+            if (pid == 0) {
+                // Child process
+                char *args[] = {"/usr/bin/recovery", zip_path, NULL};
+                execv(args[0], args);
+                // If execv fails
+                std::cerr << "execv failed: " << strerror(errno) << std::endl;
+                exit(1);
+            } else if (pid > 0) {
+                // Parent process
+                int status = 0;
+                waitpid(pid, &status, 0); // Wait for child to finish
+                if (WIFEXITED(status)) {
+                    std::cout << "Recovery process finished with exit code " << WEXITSTATUS(status) << std::endl;
+                    file.close();
+                    file.open(MIRROR_COPY_STATUS_COOKIE_FILE, std::ios::in);
+                    if (is_file_empty(file)) {
+                        std::cout << "File is empty\n";
+                        file.close();
+                        return 0;
+                    }
+                    last_line_new = read_last_line(file);
+                    // The following code checks if the last line read from the mirror copy status cookie file
+                    // is properly formatted. The cookie file is expected to have lines in the format:
+                    //    Stage:State:Slot
+                    // For Example:
+                    //     STAGE1:OTA_STARTED:0             //Here slot 0 means ota started from slot a
+                    //     STAGE1:OTA_COMPLETED:1      //Here slot 1 means ota completed on slot b
+                    //     STAGE2:COPY_STARTED:0          //Here slot 0 means copy started on slot a
+                    //     STAGE2:COPY_COMPLETED:0    //Here slot 0 means copy completed on slot a
+
+                    // The code tokenizes the last line using the colon (':') delimiter and ensures that
+                    // after splitting, exactly 3 elements are present. If the format is invalid, it prints
+                    // an error message and exits the function.
+                    tokenize(last_line_new, delim, last_line_split_new);
+                    if (last_line_split_new.size() != 3) {
+                        std::cout << "Invalid Entries in the cookie file\n";
+                        return 0;
+                    }
+                    ota_status_new = last_line_split_new[1];
+                    file.clear();
+                    file.seekg(0, std::ios::beg);
+                    if(ota_status_new == "COPY_COMPLETED") {
+                        std::string line;
+                        while (getline(file, line)) {
+                            std::cout << line << "\n";
+                        }
+                        file.close();
+                        file.open(MIRROR_COPY_STATUS_COOKIE_FILE,
+                               std::ofstream::out | std::ofstream::trunc);
+                        file.close();
+                    }
+                    else {
+                        std::cout << "Copy Operation is failed\n";
+                        file.close();
+                        fclose(stream);
+                        return 0;
+                    }
                 }
                 file.close();
-                file.open(MIRROR_COPY_STATUS_COOKIE_FILE,
-                       std::ofstream::out | std::ofstream::trunc);
-                file.close();
+                fclose(stream);
+            } else {
+                // Fork failed
+                std::cerr << "fork failed: " << strerror(errno) << std::endl;
             }
         }
     }
