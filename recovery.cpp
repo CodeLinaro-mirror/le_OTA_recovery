@@ -125,6 +125,8 @@ static const struct option OPTIONS[] = {
   { "wipe_package_size", required_argument, NULL, 0 },
 #ifdef TARGET_NAD_OTA
   { "reboot_after_ota", no_argument, NULL, 0 },
+  { "pre_verify", no_argument, NULL, 0 },
+  { "post_verify", no_argument, NULL, 0 },
 #endif
   { NULL, 0, NULL, 0 },
 };
@@ -1995,6 +1997,12 @@ int main(int argc, char **argv) {
             } else if (strcmp(OPTIONS[option_index].name, "reboot_after_ota") == 0) {
                 reboot_after_ota = true;
                 break;
+            } else if (strcmp(OPTIONS[option_index].name, "pre_verify") == 0) {
+                pre_install_verify = true;
+                break;
+            } else if (strcmp(OPTIONS[option_index].name, "post_verify") == 0) {
+                post_install_verify = true;
+                break;
 #endif
             }
             break;
@@ -2104,53 +2112,8 @@ int main(int argc, char **argv) {
                     ui->Print("Update via sdcard on EMMC dev. Using path from fstab\n");
             }
         }
-
 #ifdef TARGET_NAD_OTA
-        //  before AB update we need to check the versions of build, telaf and modem
-        //  that it's not downgrading the existing feature.
-        //  --pre_verify is set to enable this
-        //  "--update_package=/data/update.zip:--pre_verify"
-        //  check in update package path if '--pre_verify' is present is yes, set pre_install_verify true
-        //  to call copy only flow
-        //
-        //  after AB update and success reboot to updated slots,
-        //  need to verify md5 is same..
-        //  --post_verify is set to enable this
-        //  "--update_package=/data/update.zip:--post_verify"
-        //  check in update package path if '--post_verify' is present is yes, set post_install_verify true
-        //  to call copy only flow
-        const char *get_path_suffix = (char*) strchr(update_package, ':');
-        if((get_path_suffix !=NULL) && (!strncmp("--post_verify", get_path_suffix + 1, 13))){
-            post_install_verify = true;
-            char *str = (char*)malloc(strlen(update_package)+1);
-            if (str != NULL){
-                strlcpy(str, update_package, strlen(update_package));
-                char* save = str;
-                update_package = strtok_r(str, "\:", &save);
-                if(update_package !=NULL)
-                    printf(" \n post_verify flow update_package: %s \n",update_package);
-                free(str);
-            } else {
-                LOGE("strcreation failed: %s\n", strerror(errno));
-	    }
-        } else if((get_path_suffix !=NULL) && (!strncmp("--pre_verify", get_path_suffix + 1, 12))){
-            pre_install_verify = true;
-            char *str = (char*)malloc(strlen(update_package)+1);
-            if (str != NULL){
-                strlcpy(str, update_package, strlen(update_package));
-                char* save = str;
-                update_package = strtok_r(str, "\:", &save);
-                if(update_package !=NULL)
-                    printf(" \n pre_verify flow update_package: %s \n",update_package);
-                free(str);
-            } else {
-                LOGE("strcreation failed: %s\n", strerror(errno));
-            }
-        } else {
-            printf(" install update flow \n");
-        }
-
-       set_nad_ota_cookie(" OTA_PROG ");
+        set_nad_ota_cookie(" OTA_PROG ");
 #endif
     }
     printf("\n");
