@@ -1446,18 +1446,17 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
         char rootfs_volume[PATH_MAX];
         mtd_scan_partitions();
+        const MtdPartition* mtd;
+
 #ifdef TARGET_NAD_OTA
-        const MtdPartition* mtd = mtd_find_partition_by_name("recovery");
-        if (mtd == NULL) {
+        if(isABVolumes()) {
             snprintf(rootfs_volume, PATH_MAX, "%s%s", "rootfs", slot_suffix_arr[inactive_slot]);
             printf("Inactive rootfs volume: %s\n", rootfs_volume);
         } else {
-            printf(" found mtd partition named misc, non-AB system \n");
-            snprintf(rootfs_volume, PATH_MAX, "%s", "system");
+            snprintf(rootfs_volume, PATH_MAX, "%s", "rootfs");
             printf("rootfs volume: %s\n", rootfs_volume);
         }
 #else
-        const MtdPartition* mtd;
         snprintf(rootfs_volume, PATH_MAX, "%s%s", "rootfs", slot_suffix_arr[inactive_slot]);
         printf("Inactive rootfs volume: %s\n", rootfs_volume);
 #endif
