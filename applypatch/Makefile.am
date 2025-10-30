@@ -13,8 +13,7 @@ AM_CPPFLAGS := \
               -I. \
               -I.. \
               -I../otafault \
-              -I$(WORKSPACE)/system/core/include \
-              -I$(WORKSPACE)/system/core/base/include \
+              -I$(WORKSPACE)/OTA/system/core/include \
               -I$(WORKSPACE)/OTA/system/core/base/include \
               -std=c++11
 

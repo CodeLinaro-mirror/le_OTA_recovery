@@ -6,5 +6,5 @@ includedir=@includedir@
 Name: recovery
 Description: recovery services package
 Version: @VERSION@
-libs: -L${libdir} -lretouch
+Libs: -L${libdir} -lretouch
 Cflags: -I${includedir}/recovery

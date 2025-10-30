@@ -17,11 +17,11 @@ AM_CFLAGS := -Wundef \
 AM_CPPFLAGS := \
               -DUSE_LE_MODE \
               -I. \
-              -I$(WORKSPACE)/system/core/include \
-              -I$(WORKSPACE)/system/core/base/include \
-              -I$(WORKSPACE)/system/core/fs_mgr/include \
-              -I$(WORKSPACE)/system/core/adb \
-              -I$(WORKSPACE)/system/extras/ext4_utils \
+              -I$(WORKSPACE)/OTA/system/core/include \
+              -I$(WORKSPACE)/OTA/system/core/base/include \
+              -I$(WORKSPACE)/OTA/system/core/fs_mgr/include \
+              -I$(WORKSPACE)/OTA/system/core/adb \
+              -I$(WORKSPACE)/OTA/system/extras/ext4_utils \
               -I./bootloader_message/include \
               $(LIBSELINUX_CFLAGS) \
               -I$(WORKSPACE)/OTA/system/core/base/include \
@@ -154,4 +154,8 @@ endif
 
 if TARGET_NAD_OTA
 recovery_CPPFLAGS += -DTARGET_NAD_OTA
+endif
+
+if TARGET_SUPPORTS_MIRROR_AB_COPY
+recovery_CPPFLAGS += -DTARGET_SUPPORTS_MIRROR_AB_COPY
 endif

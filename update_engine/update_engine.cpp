@@ -26,7 +26,7 @@ static const char *ABC_OTA_STATUS_COOKIE_FILE =
 static const char *TEMPORARY_LOG_FILE = "/cache/recovery/update_engine.log";
 #ifdef TARGET_SUPPORTS_AB
 #ifndef TARGET_NAD_OTA
-#include <libabctl.h>
+#include <abctl/libabctl.h>
 #else
 #include <nad-ab-al.h>
 #endif

@@ -93,14 +93,14 @@ extern "C" {    // Use till system/core is updated
 
 #ifdef TARGET_SUPPORTS_AB
 #ifndef TARGET_NAD_OTA
-#include <libabctl.h>
+#include <abctl/libabctl.h>
 #else
 #include <nad-ab-al.h>
 #endif
 #include <errno.h>
 #include <dirent.h>
 #include "print_sha1.h"
-#define BOOTDEVICE_DIR "/dev/block/bootdevice/by-name"
+#define BOOTDEVICE_DIR "/dev/disk/by-partlabel"
 #define BLOCKSIZE 4096*1024
 #ifdef TARGET_NAND_BOOT
 #define BOOT_NAME_LENGTH 7
@@ -121,6 +121,21 @@ static Volume* device_volumes = NULL;
 #ifdef TARGET_SUPPORTS_ABC
 static const char *ABC_OTA_STATUS_COOKIE_FILE = "/cache/recovery/abc_ota_status";
 #endif
+
+// OS State Machine values (bits 28-30)
+#define HLOS_STATE_INVALID      0
+#define HLOS_BOOT               1
+#define HLOS_STATE_PRE_UPDATE   2
+#define HLOS_STATE_UPDATE       3
+#define HLOS_STATE_POST_UPDATE  4
+#define HLOS_STATE_ROLLBACK     5
+#define HLOS_STATE_RESERVED     6
+#define HLOS_STATE_MAX          7
+
+// Status values
+#define STATUS_FAIL             0
+#define STATUS_SUCCESS          1
+
 // Send over the buffer to recovery though the command pipe.
 static void uiPrint(State* state, const std::string& buffer) {
     UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
@@ -2282,46 +2297,39 @@ end:
     return success;
 }
 
-/* Copies blocks from active slot of all **A/B**
-   partitions to their respective inactive slots.
-   Takes as argument a comma-separated list of partitions
-   that need to be **excluded** from being copied.
-   If no argument is supplied, **all** AB partitions
-   are copied from active to inactive slots */
 Value* CopyABPartitionsFn(const char* name, State* state,
         int argc, Expr* argv[]) {
-    if (argc > 1) {
-        // Only expect a max of single argument with space-separated list of partitions.
+    if (argc != 1) {
+        // Expect exactly one argument: comma-separated list of partitions to copy
         return ErrorAbort(state, kArgsParsingFailure,
-                "%s() expects <=1 arg, got %d", name, argc);
+                "%s() expects 1 arg, got %d", name, argc);
     }
 
-    char *exclude_arg;
-    bool exclude_from_copy = false;
-    int exclude_length = 0;
-    char partitions_to_exclude[20][PATH_MAX];
+    char *copy_arg;
+    char partitions_to_copy[20][PATH_MAX];
+    int copy_length = 0;
 
-    if (argc == 1) {
-        if (ReadArgs(state, argv, 1, &exclude_arg) < 0) {
-            return ErrorAbort(state, kArgsParsingFailure,
-                "%s: couldn't parse args!", name);
-        }
-        char *p = strtok_r (exclude_arg, ",", &exclude_arg);
-        while (p != NULL) {
-            // append the boot/active slot to the name and then save it
-            snprintf(partitions_to_exclude[exclude_length], PATH_MAX, "%s%s",
-                    p, slot_suffix_arr[boot_slot]);
-            printf("%s: Excluding partition \"%s\" from being copied\n", name, p);
-            exclude_length ++;
-            p = strtok_r (NULL, ",", &exclude_arg);
-        }
-        if (exclude_length > 0)
-            exclude_from_copy = true; // we have partitions that need not be copied
+    if (ReadArgs(state, argv, 1, &copy_arg) < 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+            "%s: couldn't parse args!", name);
     }
 
-    /* iterate through A/B partitions */
+    // Parse comma-separated partition names
+    char *saveptr;
+    char *p = strtok_r(copy_arg, ",", &saveptr);
+    while (p != NULL) {
+        // Remove leading/trailing whitespace if needed
+        while (*p == ' ') p++; // skip leading spaces
+        size_t len = strlen(p);
+        while (len > 0 && (p[len-1] == ' ' || p[len-1] == '\n')) {
+            p[len-1] = '\0';
+            len--;
+        }
+        snprintf(partitions_to_copy[copy_length], PATH_MAX, "%s", p);
+        copy_length++;
+        p = strtok_r(NULL, ",", &saveptr);
+    }
 
-    // open the dir first
     DIR *dir = opendir(BOOTDEVICE_DIR);
     if (dir == NULL) {
         return ErrorAbort(state, kFileOpenFailure,
@@ -2338,53 +2346,60 @@ Value* CopyABPartitionsFn(const char* name, State* state,
             }
             snprintf(active_block_dev_filename, PATH_MAX, "%s/%s",
                     BOOTDEVICE_DIR, de->d_name);
-            // printf("Checking whether %s needs to be copied..\n", active_block_dev_filename);
 
-            // stat to check if this is a block-device file
-            // copy should be done only on block-devices
             struct stat st;
             stat(active_block_dev_filename, &st);
 
             if (!S_ISBLK(st.st_mode))
                 continue;
 
-            // if the filename doesn't have the boot/active slot
-            // as the last 2 chars, ignore copy operation
-            const char *suffix = &((de->d_name)[strlen(de->d_name)-2]);
-            if (strncmp(suffix, slot_suffix_arr[boot_slot], 2))
+            // Determine if this is an AB partition for the active slot
+            char partition_name[PATH_MAX];
+            bool is_active_slot = false;
+
+            if (strlen(slot_suffix_arr[boot_slot]) == 0) {
+                // Slot A: no suffix, e.g., "system"
+                strcpy(partition_name, de->d_name);
+                is_active_slot = true;
+            } else {
+                // Slot B: suffix "_b", e.g., "system_b"
+                size_t suffix_len = strlen(slot_suffix_arr[boot_slot]);
+                size_t name_len = strlen(de->d_name);
+                if (name_len > suffix_len &&
+                    strcmp(de->d_name + name_len - suffix_len, slot_suffix_arr[boot_slot]) == 0) {
+                    // Remove suffix to get partition name
+                    strncpy(partition_name, de->d_name, name_len - suffix_len);
+                    partition_name[name_len - suffix_len] = '\0';
+                    is_active_slot = true;
+                }
+            }
+
+            if (!is_active_slot)
                 continue;
 
-            if (exclude_from_copy) {
-                // there are some partitions that need not be copied.
-                // check if the current entry is one of them
-                bool match_found = false;
-                for (int i = 0; i < exclude_length; i++) {
-                    // printf("Matching %s against %s\n", de->d_name, partitions_to_exclude[i]);
-                    if (strcmp(de->d_name, partitions_to_exclude[i]) == 0) {
-                        match_found = true;
-                        break;
-                    }
+            // Only process partitions specified in the argument
+            bool match_found = false;
+            for (int i = 0; i < copy_length; i++) {
+                size_t cmp_len = strlen(partitions_to_copy[i]);
+                if (strncmp(partition_name, partitions_to_copy[i], cmp_len) == 0 &&
+                    strlen(partition_name) == cmp_len) {
+                    match_found = true;
+                    break;
                 }
-                if (match_found)
-                    continue; // ignore copy operation
             }
-            snprintf(inactive_block_dev_filename, PATH_MAX, "%s/%s",
-                    BOOTDEVICE_DIR, de->d_name);
-            char *p = strstr(inactive_block_dev_filename,
-                              slot_suffix_arr[boot_slot]);
-            // p shouldn't be null as we already checked for the suffix earlier
-            if (strstr(inactive_block_dev_filename, "vendor_boot_b")) {
-                p = p + 5;
+            if (!match_found)
+                continue;
+
+            // Build inactive slot device name
+            if (strlen(slot_suffix_arr[inactive_slot]) == 0) {
+                // Inactive slot is A: no suffix
+                snprintf(inactive_block_dev_filename, PATH_MAX, "%s/%s",
+                        BOOTDEVICE_DIR, partition_name);
+            } else {
+                // Inactive slot is B: add "_b"
+                snprintf(inactive_block_dev_filename, PATH_MAX, "%s/%s%s",
+                        BOOTDEVICE_DIR, partition_name, slot_suffix_arr[inactive_slot]);
             }
-#ifdef TARGET_SUPPORTS_ABC
-            if (strstr(inactive_block_dev_filename, "aop_config_c")) {
-                p = p + 7;
-            }
-            if (strstr(inactive_block_dev_filename, "xbl_config_c")) {
-                p = p + 7;
-            }
-#endif
-            strncpy(p,  slot_suffix_arr[inactive_slot], 2); // replace the slot
 
             /* Perform the actual copy */
             printf("%s: Copying from %s to %s\n", name, active_block_dev_filename,
@@ -2853,6 +2868,85 @@ Value* SetInactiveSlotAsActiveFn(const char* name, State* state,
     printf("%s: Couldn't set inactive slot as active!\n", name);
     return StringValue(strdup("")); // abort, if you want
 }
+
+Value* SetHlosStateMachine(const char* name, State* state,
+        int argc, Expr* argv[]) {
+    // Verify we have exactly 2 arguments: state and status
+    if (argc != 2) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects 2 args (state, status), got %d", name, argc);
+    }
+
+    char* state_str = NULL;
+    char* status_str = NULL;
+
+    // Read and validate arguments
+    if (ReadArgs(state, argv, 2, &state_str, &status_str) < 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s: couldn't parse args!", name);
+    }
+
+    // Parse state value (0-7)
+    char* endptr;
+    long state_value = strtol(state_str, &endptr, 10);
+    if (*endptr != '\0' || state_str[0] == '\0') {
+        free(state_str);
+        free(status_str);
+        printf("%s: invalid state value '%s'\n", name, state_str);
+        return StringValue(strdup(""));
+    }
+
+    // Validate state range (0-7)
+    if (state_value < HLOS_STATE_INVALID || state_value > HLOS_STATE_MAX) {
+        free(state_str);
+        free(status_str);
+        printf("%s: state value %ld out of range (valid: 0-7)\n", name, state_value);
+        return StringValue(strdup(""));
+    }
+
+    // Parse status value (0 or 1)
+    long status_value = strtol(status_str, &endptr, 10);
+    if (*endptr != '\0' || status_str[0] == '\0') {
+        free(state_str);
+        free(status_str);
+        printf("%s: invalid status value '%s'\n", name, status_str);
+        return StringValue(strdup(""));
+    }
+
+    // Validate status range (0 or 1)
+    if (status_value != STATUS_FAIL && status_value != STATUS_SUCCESS) {
+        free(state_str);
+        free(status_str);
+        printf("%s: status value %ld invalid (must be 0 or 1)\n", name, status_value);
+        return StringValue(strdup(""));
+    }
+
+    // Log the operation
+    printf("%s: Setting HLOS state machine: state=%ld, status=%ld\n",
+           name, state_value, status_value);
+    uiPrintf(state, "Setting HLOS state: %ld (status: %ld)\n",
+             state_value, status_value);
+
+    // Call the actual function
+    int result = libabctl_setHlosStateMachine((uint16_t)state_value, (uint16_t)status_value);
+
+    // Free allocated strings
+    free(state_str);
+    free(status_str);
+
+    // Handle result
+    if (result != 0) {
+        printf("%s: ERROR: libabctl_setHlosStateMachine failed with code %d\n", name, result);
+        uiPrintf(state, "ERROR: HLOS state update failed (code: %d)\n", result);
+        return StringValue(strdup(""));
+    }
+
+    // Success case
+    printf("%s: HLOS state machine updated successfully\n", name);
+    uiPrintf(state, "HLOS state updated successfully\n");
+    return StringValue(strdup("success"));
+}
+
 #endif
 #ifdef TARGET_SUPPORTS_NAND_DM_VERITY
 Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* argv[]) {
@@ -3169,6 +3263,7 @@ void RegisterInstallFunctions() {
     RegisterFunction("block_device_check", BlockDeviceCheckFn);
     RegisterFunction("set_inactive_slot_as_unbootable", SetInactiveAsUnbootableFn);
     RegisterFunction("set_inactive_slot_as_active", SetInactiveSlotAsActiveFn);
+    RegisterFunction("set_hlos_state_machine", SetHlosStateMachine);
 #endif
 #ifdef TARGET_SUPPORTS_NAND_DM_VERITY
     RegisterFunction("update_rootfs_ubi_volume", updateRootfsUbiVolume);

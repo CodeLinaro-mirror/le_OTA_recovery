@@ -49,6 +49,10 @@ extern bool post_install_verify;
 extern bool pre_install_verify;
 #endif
 
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+extern bool mirror_copy;
+#endif
+
 extern bool update_binary_from_device;
 typedef struct fstab_rec Volume;
 

@@ -10,7 +10,7 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 #include <iostream>
 #ifdef TARGET_SUPPORTS_AB
 #ifndef TARGET_NAD_OTA
-#include <libabctl.h>
+#include <abctl/libabctl.h>
 #else
 #include <nad-ab-al.h>
 #endif

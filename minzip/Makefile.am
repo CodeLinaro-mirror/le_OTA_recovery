@@ -18,8 +18,8 @@ endif
 AM_CPPFLAGS := \
               -DUSE_LE_MODE \
               -I. \
-              -I$(WORKSPACE)/external/safe-iop/include \
-              -I$(WORKSPACE)/system/core/include
+              -I$(WORKSPACE)/OTA/external/safe-iop/include \
+              -I$(WORKSPACE)/OTA/system/core/include
 
 AM_LDFLAGS := -shared -version-info 1:0:0
 

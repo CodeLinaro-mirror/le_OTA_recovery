@@ -6,9 +6,9 @@ AM_CFLAGS = -Wundef \
             -fno-short-enums \
             -fpic \
             $(LIBSELINUX_CFLAGS) \
-            -I$(WORKSPACE)/system/core/include \
-            -I$(WORKSPACE)/system/core/fs_mgr/include \
-            -I$(WORKSPACE)/system/extras/ext4_utils \
+            -I$(WORKSPACE)/OTA/system/core/include \
+            -I$(WORKSPACE)/OTA/system/core/fs_mgr/include \
+            -I$(WORKSPACE)/OTA/system/extras/ext4_utils \
             -D_GNU_SOURCE \
             -D_LARGEFILE64_SOURCE \
             -I.. \
@@ -20,10 +20,10 @@ AM_CPPFLAGS = \
               -I../otafault \
               -I.. \
                $(LIBSELINUX_CFLAGS) \
-              -I$(WORKSPACE)/system/core/base/include \
-              -I$(WORKSPACE)/system/core/include \
-              -I$(WORKSPACE)/system/core/fs_mgr/include \
-              -I$(WORKSPACE)/system/extras/ext4_utils \
+              -I$(WORKSPACE)/OTA/system/core/base/include \
+              -I$(WORKSPACE)/OTA/system/core/include \
+              -I$(WORKSPACE)/OTA/system/core/fs_mgr/include \
+              -I$(WORKSPACE)/OTA/system/extras/ext4_utils \
               -I$(WORKSPACE)/OTA/system/core/base/include \
               -include glib.h \
               -std=c++11
@@ -42,7 +42,6 @@ requiredlibs = -lm \
                -lcutils \
                -lext4_utils \
                -lcrypto \
-               -lrecovery_updater_msm \
                ../mtdutils/libmtdutils.la \
                ../edify/libedify.la \
                ../minzip/libminzip.la \
@@ -53,6 +52,7 @@ requiredlibs += -lselinux
 endif
 
 bin_PROGRAMS = updater
+
 if USE_GLIB
 updater_SOURCES = $(c_sources) $(h_sources)
 updater_CFLAGS = $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
@@ -102,3 +102,6 @@ updater_CPPFLAGS += -DTARGET_NAD_FDE
 endif
 endif
 
+if TARGET_SUPPORTS_MIRROR_AB_COPY
+updater_CPPFLAGS += -DTARGET_SUPPORTS_MIRROR_AB_COPY
+endif

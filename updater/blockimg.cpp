@@ -71,7 +71,7 @@
 #define TYPE_MTD     2
 #define SYSTEM_PATH "/dev/block/bootdevice/by-name/system"
 #ifndef TARGET_NAD_OTA
-#include <libabctl.h>
+#include <abctl/libabctl.h>
 int get_boot_dev_type();
 #else
 #include <nad-ab-al.h>
@@ -104,7 +104,7 @@ int get_boot_dev_type();
 // erase to mean fill the region with zeroes.
 #define DEBUG_ERASE  0
 
-#define STASH_DIRECTORY_BASE "/cache/recovery"
+#define STASH_DIRECTORY_BASE "/mnt/userdata/cache/recovery"
 #define STASH_DIRECTORY_MODE 0700
 #define STASH_FILE_MODE 0600
 

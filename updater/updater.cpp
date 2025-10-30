@@ -35,7 +35,7 @@
 
 #if defined(TARGET_SUPPORTS_AB)
 #ifndef TARGET_NAD_OTA
-#include <libabctl.h>
+#include <abctl/libabctl.h>
 #else
 #include <nad-ab-al.h>
 #include <limits.h>
@@ -51,7 +51,7 @@ const char* slot_suffix_arr[] = {"_a", "_b", NULL};
 const char* slot_suffix_arr[] = {"", "_b", NULL};
 #endif
 #else
-const char* slot_suffix_arr[] = {"_a", "_b", NULL};
+const char* slot_suffix_arr[] = {"", "_b", NULL};
 #endif
 #endif
 #else
@@ -73,6 +73,9 @@ extern void Register_librecovery_updater_msm();
 // Where in the package we expect to find the edify script to execute.
 // (Note it's "updateR-script", not the older "update-script".)
 #define SCRIPT_NAME "META-INF/com/google/android/updater-script"
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+#define MIRROR_SCRIPT_NAME "META-INF/com/google/android/updater-mirror-script"
+#endif
 #ifdef TARGET_NAD_OTA
 #define POST_INSTALL_SCRIPT_NAME "META-INF/com/google/android/updater-post-install-script"
 #define PRE_INSTALL_SCRIPT_NAME "META-INF/com/google/android/updater-pre-check-version-script"
@@ -112,6 +115,14 @@ int main(int argc, char** argv) {
         printf("unexpected number of arguments (%d)\n", argc);
         return 1;
     }
+
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    printf("updater number of arguments (%d)\n", argc);
+    for (int arg = 0; arg < argc; arg++) {
+        printf(" \"%s\"", argv[arg]);
+    }
+    printf("\n");
+#endif
 
     char* version = argv[1];
     if ((version[0] != '1' && version[0] != '2' && version[0] != '3') ||
@@ -190,18 +201,24 @@ int main(int argc, char** argv) {
     ota_io_init(&za);
 #endif
 
-#ifdef TARGET_NAD_OTA
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    char* copy_mirror = argv[4];
     char* script_name = NULL;
+    if(copy_mirror != NULL)
+    {
+        printf(" copy_mirror arg : %s \n",copy_mirror);
+    }
     if (argv[4] != NULL) {
-        if (strcmp(argv[4], "post_install_verify") == 0)
-        {
-            script_name = POST_INSTALL_SCRIPT_NAME;
-        } else if (strcmp(argv[4], "pre_install_verify") == 0) {
-            script_name = PRE_INSTALL_SCRIPT_NAME;
+        if (strcmp(argv[4], "copy_to_inactive") == 0){
+        //if (strcmp(copy_mirror, "copy_to_inactive")){
+            script_name = MIRROR_SCRIPT_NAME;
+        } else {
+            script_name = SCRIPT_NAME;
         }
     } else {
         script_name = SCRIPT_NAME;
     }
+
     printf(" updater using  script %s \n",script_name);
     const ZipEntry* script_entry = mzFindZipEntry(&za, script_name);
 #else
@@ -234,7 +251,7 @@ int main(int argc, char** argv) {
     RegisterInstallFunctions();
     RegisterBlockImageFunctions();
 #ifdef USE_LE_MODE
-    Register_librecovery_updater_msm();
+    //Register_librecovery_updater_msm();
 #else
     RegisterDeviceExtensions();
 #endif

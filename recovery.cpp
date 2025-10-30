@@ -32,6 +32,7 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <iostream>
 #ifdef USE_LE_MODE
 #include <cutils/klog.h>
 #else
@@ -94,7 +95,7 @@
 
 #ifdef TARGET_SUPPORTS_AB
 #ifndef TARGET_NAD_OTA
-#include <libabctl.h>
+#include <abctl/libabctl.h>
 #else
 #include <nad-ab-al.h>
 #endif
@@ -139,27 +140,32 @@ enum ota_status_value {
   OTA_STATUS_FAILED  = 3,
 };
 
-static const char *CACHE_LOG_DIR = "/cache/recovery";
-static const char *COMMAND_FILE = "/cache/recovery/command";
-static const char *INTENT_FILE = "/cache/recovery/intent";
-static const char *LOG_FILE = "/cache/recovery/log";
-static const char *LAST_INSTALL_FILE = "/cache/recovery/last_install";
-static const char *LOCALE_FILE = "/cache/recovery/last_locale";
+static const char *CACHE_LOG_DIR = "/mnt/userdata/cache/recovery";
+static const char *COMMAND_FILE = "/mnt/userdata/cache/recovery/command";
+static const char *INTENT_FILE = "/mnt/userdata/cache/recovery/intent";
+static const char *LOG_FILE = "/mnt/userdata/cache/recovery/log";
+static const char *LAST_INSTALL_FILE = "/mnt/userdata/cache/recovery/last_install";
+static const char *LOCALE_FILE = "/mnt/userdata/cache/recovery/last_locale";
 static const char *CONVERT_FBE_DIR = "/tmp/convert_fbe";
 static const char *CONVERT_FBE_FILE = "/tmp/convert_fbe/convert_fbe";
-static const char *CACHE_ROOT = "/cache";
-static const char *DATA_ROOT = "/data";
+static const char *CACHE_ROOT = "/mnt/userdata/cache";
+static const char *DATA_ROOT = "/mnt/userdata";
 static const char *SDCARD_ROOT = "/sdcard";
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
-static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
-static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
-static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
+static const char *LAST_KMSG_FILE = "/mnt/userdata/cache/recovery/last_kmsg";
+static const char *LAST_LOG_FILE = "/mnt/userdata/cache/recovery/last_log";
+static const char *STATUS_COOKIE_FILE = "/mnt/userdata/cache/recovery/ota_status";
+
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/mnt/userdata/cache/recovery/mirror_copy_status";
+static const char *ZIP_FILE_PATH = "/mnt/userdata/cache/recovery/update_package_path";
+#endif
 #ifdef TARGET_SUPPORTS_ABC
-static const char *ABC_OTA_STATUS_COOKIE_FILE = "/cache/recovery/abc_ota_status";
+static const char *ABC_OTA_STATUS_COOKIE_FILE = "/mnt/userdata/cache/recovery/abc_ota_status";
 #endif
 #ifdef TARGET_NAD_OTA
-static const char *NAD_STATUS_COOKIE_FILE = "/cache/recovery/nad_ota_status";
+static const char *NAD_STATUS_COOKIE_FILE = "/mnt/userdata/cache/recovery/nad_ota_status";
 #endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
@@ -180,6 +186,9 @@ char* reason = NULL;
 bool modified_flash = false;
 bool update_binary_from_device = false;
 static bool has_cache = false;
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+bool mirror_copy = false;
+#endif
 #ifdef TARGET_NAD_OTA
 bool post_install_verify = false;
 bool pre_install_verify = false;
@@ -656,6 +665,107 @@ static void copy_logs() {
     chmod(LAST_INSTALL_FILE, 0644);
     sync();
 }
+
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+void tokenize(std::string const& str, char delim,
+              std::vector<std::string>& out) {
+    std::istringstream iss(str);
+    std::string token;
+    while (std::getline(iss, token, delim)) {
+        out.push_back(std::string(token));
+    }
+}
+
+std::string read_last_line(std::fstream& fin) {
+    // std::ifstream fin;
+    // fin.open(ABC_OTA_STATUS_COOKIE_FILE);
+    if (fin.is_open()) {
+        fin.seekg(-1, std::ios_base::end);  // go to one spot before the EOF
+        char ch;
+        fin.get(ch);
+        if (ch == '\n') fin.seekg(-2, std::ios_base::end);
+        bool keepLooping = true;
+        while (keepLooping) {
+            char ch;
+            fin.get(ch);  // Get current byte's data
+
+            if ((int)fin.tellg() <=
+                1) {           // If the data was at or before the 0th byte
+                fin.seekg(0);  // The first line is the last line
+                keepLooping = false;  // So stop there
+            } else if (ch == '\n') {  // If the data was a newline
+                keepLooping = false;  // Stop at the current position.
+            } else {  // If the data was neither a newline nor at the 0 byte
+                fin.seekg(-2, std::ios_base::cur);  // Move to the front of that
+                                                    // data, then to the front
+                                                    // of the data before it
+            }
+        }
+
+        std::string lastLine;
+        getline(fin, lastLine);  // Read the current line
+
+        std::cout << "Result: " << lastLine << '\n';  // Display it
+        // fin.close();
+        return lastLine;
+    }
+    return "";
+}
+
+bool file_is_empty(std::fstream& pFile) {
+    bool result = (pFile.peek() == std::fstream::traits_type::eof());
+    pFile.seekg(0, std::ios::beg);
+    return result;
+}
+
+std::string read_first_line() {
+    std::fstream newfile;
+    newfile.open(MIRROR_COPY_STATUS_COOKIE_FILE, std::ios::in);
+    if (newfile.is_open()) {
+        std::string tp;
+        while (getline(newfile, tp)) {
+            return tp;
+        }
+        newfile.close();
+    }
+    return "";
+}
+
+static int set_mirror_copy_cookie(std::string ota_status) {
+    std::fstream file;
+    int boot_slot = libabctl_getBootSlot();
+    int next_inactive_slot = (boot_slot + 1) % 2;
+    file.open(MIRROR_COPY_STATUS_COOKIE_FILE,
+              std::ios::in | std::ios::out | std::ios::app);
+    if (!file) {
+        LOGE("Failed to open %s : %s\n", MIRROR_COPY_STATUS_COOKIE_FILE,
+             strerror(errno));
+        file.close();
+        return -1;
+    }
+    if (file_is_empty(file)) {
+        file << "STAGE1:OTA_STARTED:" << boot_slot << "\n";
+    } else {
+        std::string stage;
+        std::string first_line = read_first_line();
+        int ota_started_slot = first_line[19] - '0';
+        if (ota_started_slot == boot_slot) {
+            stage = "STAGE1";
+        } else if ((ota_started_slot + 1) % 2 == boot_slot) {
+            stage = "STAGE2";
+        }
+        if(ota_status == "STARTED") {
+            file << stage << ":COPY_STARTED:" << next_inactive_slot << "\n";
+        } else if (ota_status == "OTA_COMPLETED") {
+            file << stage << ":OTA_COMPLETED:" << next_inactive_slot << "\n";
+        } else if (ota_status == "COPY_COMPLETED") {
+            file << stage << ":COPY_COMPLETED:" << next_inactive_slot << "\n";
+        }
+    }
+    file.close();
+    return 0;
+}
+#endif
 
 #ifdef TARGET_SUPPORTS_ABC
 bool file_is_empty(std::fstream& pFile) {
@@ -2085,6 +2195,40 @@ int main(int argc, char **argv) {
             }
         }
 
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+        //  after AB update and success reboot to updated slots,
+        //  copy image to inactive partitions needs to be performed.
+        //  --mirror is set to enable this
+        //  "--update_package=/data/update.zip;--mirror"
+        //  check in update package path if '--mirror' is present is yes, set mirror_copy true
+        //  to call copy only flow
+        const char *get_mirr = (char*) strchr(update_package, ';');
+        if((get_mirr !=NULL) && (strncmp("--mirror", get_mirr , 8))){
+            mirror_copy = true;
+            char *mirror_str = (char*)malloc(strlen(update_package));
+            if (mirror_str != NULL) {
+                strlcpy(mirror_str, update_package, strlen(update_package));
+                char* save = mirror_str;
+                update_package = strtok_r(mirror_str, "\;", &save);
+                if(update_package !=NULL)
+                    printf("mirror flow update_package: %s \n",update_package);
+            }
+        } else {
+            char zip_path[MAX_ARG_LENGTH];
+            snprintf(zip_path, MAX_ARG_LENGTH, "--update_package=%s;--mirror", update_package);
+            std::cout << "Received ota_update and update_package path: " << zip_path
+                  << std::endl;
+            FILE *fp;
+            fp = fopen(ZIP_FILE_PATH, "w");
+            if(fp != NULL) {
+                fprintf(fp, "%s\n", zip_path);
+                fclose(fp);
+            }
+            printf("not --mirror copy flow \n");
+        }
+#endif
+
+
 #ifdef TARGET_NAD_OTA
         //  before AB update we need to check the versions of build, telaf and modem
         //  that it's not downgrading the existing feature.
@@ -2159,6 +2303,9 @@ int main(int argc, char **argv) {
         } else {
 #ifdef TARGET_SUPPORTS_ABC
             set_abc_ota_cookie("STARTED");
+#endif
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+            set_mirror_copy_cookie("STARTED");
 #endif
             LOGI("install_package\n");
             status = install_package(update_package, &should_wipe_cache,
@@ -2256,6 +2403,37 @@ error:
         }
     }
 #else
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    if(status == INSTALL_SUCCESS) {
+        std::fstream file;
+        std::string stage, mirror_status;
+        file.open(MIRROR_COPY_STATUS_COOKIE_FILE, std::ios::in);
+        if (!file) {
+            std::cout<<"File is not existed\n";
+            file.close();
+        }
+        if (file_is_empty(file)) {
+            std::cout<<"File is empty\n";
+            file.close();
+        }
+        else {
+            std::string last_line = read_last_line(file);
+            char delim = ':';
+            std::vector<std::string> out;
+            std::string slot_from_ota_status;
+            tokenize(last_line, delim, out);
+            stage = out[0];
+            mirror_status = out[1];
+            file.close();
+        }
+        if(stage == "STAGE1" && mirror_status == "OTA_STARTED") {
+            set_mirror_copy_cookie("OTA_COMPLETED");
+        }
+        else if (stage == "STAGE2" && mirror_status == "COPY_STARTED") {
+            set_mirror_copy_cookie("COPY_COMPLETED");
+        }
+    }
+#endif
 #ifdef TARGET_SUPPORTS_ABC
     if(status == INSTALL_SUCCESS) {
         set_abc_ota_cookie("SUCCESS");

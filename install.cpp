@@ -338,26 +338,8 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
         return INSTALL_ERROR;
     }
 
-#ifdef TARGET_NAD_OTA
-    if(post_install_verify) {
-         LOGI("post install update flow \n");
-         *cmd = {
-             binary,
-             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-             std::to_string(status_fd),
-             path,
-             "post_install_verify",
-         };
-    } else if (pre_install_verify){
-         LOGI("pre install update flow \n");
-         *cmd = {
-             binary,
-             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-             std::to_string(status_fd),
-             path,
-             "pre_install_verify",
-         };
-    } else {
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    if(!mirror_copy) {
          LOGI("update flow \n");
          *cmd = {
              binary,
@@ -365,6 +347,15 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
              std::to_string(status_fd),
              path,
          };
+    } else {
+        LOGI("ab sync mirror flow \n");
+        *cmd = {
+            binary,
+            EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
+            std::to_string(status_fd),
+            path,
+            "copy_to_inactive",
+        };
     }
 #else
     *cmd = {
