@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS := -I m4
 
-SUBDIRS := minzip mtdutils edify otafault applypatch updater  bootloader_message update_engine recovery_wrapper
+SUBDIRS := minzip mtdutils edify otafault applypatch updater  bootloader_message update_engine recovery_wrapper mirror_copy
 
 AM_CFLAGS := -Wundef \
              -Wstrict-prototypes \

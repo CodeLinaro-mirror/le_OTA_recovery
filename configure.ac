@@ -180,5 +180,6 @@ AC_CONFIG_FILES([     \
         recovery.pc      \
         update_engine/Makefile  \
         recovery_wrapper/Makefile  \
+        mirror_copy/Makefile \
         ])
 AC_OUTPUT
