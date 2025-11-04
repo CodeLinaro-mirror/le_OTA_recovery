@@ -60,9 +60,9 @@ updater_CPPFLAGS = $(AM_CPPFLAGS)
 updater_LDADD = $(requiredlibs)
 endif
 
-if USE_G_STRLCPY_STRLCAT
-updater_CFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
-updater_CPPFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+if NO_STRLCPY_STRLCAT
+AM_CFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
+AM_CPPFLAGS += -Dstrlcpy=g_strlcpy -Dstrlcat=g_strlcat
 endif
 
 if TARGET_SUPPORTS_AB
