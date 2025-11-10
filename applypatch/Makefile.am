@@ -83,6 +83,10 @@ if TARGET_NAD_OTA
 libapplypatch_la_CPPFLAGS += -DTARGET_NAD_OTA
 endif
 
+if TARGET_NAND_BOOT
+libapplypatch_la_CPPFLAGS += -DTARGET_NAND_BOOT
+endif
+
 bin_PROGRAMS := applypatch
 
 if USE_GLIB
