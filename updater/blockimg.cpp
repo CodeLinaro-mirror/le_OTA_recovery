@@ -1446,18 +1446,17 @@ static char* getInactiveRootfsMtdBlock(const Value* blockdev_filename) {
     if (strncmp(blockdev_filename->data, SYSTEM_PATH, len) == 0) {
         char rootfs_volume[PATH_MAX];
         mtd_scan_partitions();
+        const MtdPartition* mtd;
+
 #ifdef TARGET_NAD_OTA
-        const MtdPartition* mtd = mtd_find_partition_by_name("recovery");
-        if (mtd == NULL) {
+        if(isABVolumes()) {
             snprintf(rootfs_volume, PATH_MAX, "%s%s", "rootfs", slot_suffix_arr[inactive_slot]);
             printf("Inactive rootfs volume: %s\n", rootfs_volume);
         } else {
-            printf(" found mtd partition named misc, non-AB system \n");
-            snprintf(rootfs_volume, PATH_MAX, "%s", "system");
+            snprintf(rootfs_volume, PATH_MAX, "%s", "rootfs");
             printf("rootfs volume: %s\n", rootfs_volume);
         }
 #else
-        const MtdPartition* mtd;
         snprintf(rootfs_volume, PATH_MAX, "%s%s", "rootfs", slot_suffix_arr[inactive_slot]);
         printf("Inactive rootfs volume: %s\n", rootfs_volume);
 #endif
@@ -2353,9 +2352,9 @@ static int read_firmware_version() {
 }
 
 // read build version from etc/version
-static long read_rootfs_version(int lxcrootfs)
+static long long read_rootfs_version(int lxcrootfs)
 {
-  long version = -1;
+  long long version = -1;
   FILE* rootfs_fp;
   if (lxcrootfs)
     rootfs_fp = fopen(LXC_BUILD_VERSION_FILE, "r");
@@ -2370,7 +2369,7 @@ static long read_rootfs_version(int lxcrootfs)
 
     while ((fgets(rootfs_buf, BLOCKSIZE, rootfs_fp)) != NULL) {
       std::string rootfs_str(rootfs_buf);
-      version = strtol(rootfs_buf, NULL, 10);
+      version = strtoll(rootfs_buf, NULL, 10);
       break;
     }
     free(rootfs_buf);
@@ -2413,7 +2412,7 @@ Value* BlockPreCheckVersion(const char* name, State* state, int argc, Expr* argv
     Value* blockdev_num = nullptr;
     char buf[PATH_MAX];
     int ret;
-    size_t version;
+    long long version;
     if (ReadValueArgs(state, argv, 2, &blockdev_filename, &blockdev_num) < 0) {
         return StringValue(strdup(""));
     }
@@ -2433,7 +2432,7 @@ Value* BlockPreCheckVersion(const char* name, State* state, int argc, Expr* argv
                    name);
         return StringValue(strdup(""));
     }
-    version = strtol(blockdev_num->data, NULL, 10);
+    version = strtoll(blockdev_num->data, NULL, 10);
 
     if(blockdev_filename->data == NULL) {
         printf("BlockEraseFn: blockdev_filename_data is NULL\n");
