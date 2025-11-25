@@ -2257,6 +2257,8 @@ error:
     printf("set nad ota cookie \n");
     if ( status == INSTALL_SUCCESS ){
         set_nad_ota_cookie(" OTA_DONE ");
+        libnadab_reset_rollback_failed_attempts();
+        libnadab_reset_trialboot_count();
     } else {
         set_nad_ota_cookie(" OTA_FAIL ");
     }
