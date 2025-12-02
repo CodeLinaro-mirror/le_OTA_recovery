@@ -2372,20 +2372,7 @@ Value* CopyABPartitionsFn(const char* name, State* state,
             }
             snprintf(inactive_block_dev_filename, PATH_MAX, "%s/%s",
                     BOOTDEVICE_DIR, de->d_name);
-            char *p = strstr(inactive_block_dev_filename,
-                              slot_suffix_arr[boot_slot]);
-            // p shouldn't be null as we already checked for the suffix earlier
-            if (strstr(inactive_block_dev_filename, "vendor_boot_b")) {
-                p = p + 5;
-            }
-#ifdef TARGET_SUPPORTS_ABC
-            if (strstr(inactive_block_dev_filename, "aop_config_c")) {
-                p = p + 7;
-            }
-            if (strstr(inactive_block_dev_filename, "xbl_config_c")) {
-                p = p + 7;
-            }
-#endif
+            char *p = &inactive_block_dev_filename[strlen(inactive_block_dev_filename) - 2];
             strncpy(p,  slot_suffix_arr[inactive_slot], 2); // replace the slot
 
             /* Perform the actual copy */
