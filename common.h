@@ -52,6 +52,7 @@ extern bool modified_flash;
 extern bool mirror_copy;
 #endif
 
+extern bool update_binary_from_device;
 typedef struct fstab_rec Volume;
 
 // fopen a file, mounting volumes and making parent dirs as necessary.
