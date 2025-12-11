@@ -108,7 +108,7 @@ extern "C" {    // Use till system/core is updated
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define SOC_ID_PATH  "/sys/devices/soc0/soc_id"
 //soc_id 571 belonngs to sdx35 128MB DDR(low ram) variant
-int soc_id_list_for_disk_extraction_feature[] = {571};
+int soc_id_list_for_disk_extraction_feature[] = {571,570};
 #define FILESMAP_PATH "/tmp/filesmap"
 #define SYSTEM_PARTITION_NAME "system"
 #define BOOT_PARTITION_NAME "boot"
