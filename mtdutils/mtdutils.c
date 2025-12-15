@@ -434,7 +434,7 @@ static int write_block(MtdWriteContext *ctx, const char *data)
             add_bad_block_offset(ctx, pos);
             fprintf(stderr,
                     "mtd: not writing bad block at 0x%08lx (ret %d): %s\n",
-                    pos, ret, strerror(errno));
+                    (long)pos, ret, strerror(errno));
             pos += partition->erase_size;
             continue;  // Don't try to erase known factory-bad blocks.
         }
@@ -446,38 +446,38 @@ static int write_block(MtdWriteContext *ctx, const char *data)
         for (retry = 0; retry < 2; ++retry) {
             if (ioctl(fd, MEMERASE, &erase_info) < 0) {
                 printf("mtd: erase failure at 0x%08lx (%s)\n",
-                        pos, strerror(errno));
+                        (long)pos, strerror(errno));
                 continue;
             }
             if (TEMP_FAILURE_RETRY(lseek(fd, pos, SEEK_SET)) != pos ||
                 TEMP_FAILURE_RETRY(write(fd, data, size)) != size) {
                 printf("mtd: write error at 0x%08lx (%s)\n",
-                        pos, strerror(errno));
+                        (long)pos, strerror(errno));
             }
 
             char verify[size];
             if (TEMP_FAILURE_RETRY(lseek(fd, pos, SEEK_SET)) != pos ||
                 TEMP_FAILURE_RETRY(read(fd, verify, size)) != size) {
                 printf("mtd: re-read error at 0x%08lx (%s)\n",
-                        pos, strerror(errno));
+                        (long)pos, strerror(errno));
                 continue;
             }
             if (memcmp(data, verify, size) != 0) {
                 printf("mtd: verification error at 0x%08lx (%s)\n",
-                        pos, strerror(errno));
+                        (long)pos, strerror(errno));
                 continue;
             }
 
             if (retry > 0) {
                 printf("mtd: wrote block after %d retries\n", retry);
             }
-            printf("mtd: successfully wrote block at %lx\n", pos);
+            printf("mtd: successfully wrote block at 0x%08lx\n", (long)pos);
             return 0;  // Success!
         }
 
         // Try to erase it once more as we give up on this block
         add_bad_block_offset(ctx, pos);
-        printf("mtd: skipping write block at 0x%08lx\n", pos);
+        printf("mtd: skipping write block at 0x%08lx\n", (long)pos);
         ioctl(fd, MEMERASE, &erase_info);
         pos += partition->erase_size;
     }

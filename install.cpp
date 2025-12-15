@@ -295,10 +295,45 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
         LOGE("Can't make %s\n", binary);
         return INSTALL_ERROR;
     }
-    bool ok = mzExtractZipEntryToFile(zip, binary_entry, fd);
+    bool ok = false;
+    if(update_binary_from_device) {
+        printf("Using update-binary from device\n");
+        int src_fd = open("/usr/bin/updater", O_RDONLY);
+        if(src_fd < 0) {
+            printf("can't open /usr/bin/updater\n");
+            return INSTALL_ERROR;
+        }
+        char buffer[PATH_MAX];
+        int err,n;
+        while (1) {
+            err = read(src_fd, buffer, PATH_MAX);
+            if (err == -1) {
+                printf("Error reading updater from the device.\n");
+                close(src_fd);
+                close(fd);
+                return INSTALL_ERROR;
+            }
+            n = err;
+            if (n == 0) {
+                printf("Write done to %s\n", binary);
+                break;
+            }
+            err = write(fd, buffer, n);
+            if (err == -1) {
+                printf("Error writing updater to %s \n", binary);
+                close(src_fd);
+                close(fd);
+                return INSTALL_ERROR;
+            }
+        }
+        close(src_fd);
+    }
+    else {
+        printf("Using update-binary from package\n");
+        ok = mzExtractZipEntryToFile(zip, binary_entry, fd);
+    }
     close(fd);
-
-    if (!ok) {
+    if (!ok && !update_binary_from_device) {
         LOGE("Can't copy %s\n", ASSUMED_UPDATE_BINARY_NAME);
         return INSTALL_ERROR;
     }
