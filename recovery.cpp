@@ -2013,6 +2013,38 @@ int main(int argc, char **argv) {
     if (dest_fp == nullptr) {
         LOGE("Can't open %s\n", STATUS_COOKIE_FILE);
     }
+
+    // {{ Check volume modification requirement from metadata }}
+    bool volume_modification_required = false;
+    if (update_package != NULL) {
+        // Load the ZIP archive to read metadata
+        MemMapping map;
+        if (sysMapFile(update_package, &map) == 0) {
+            ZipArchive za = {0};
+            if (mzOpenZipArchive(map.addr, map.length, &za) == 0) {
+                std::string metadata;
+                if (read_metadata_from_package(&za, &metadata)) {
+                    // Parse metadata to find volume-modication-required
+                    std::vector<std::string> lines = android::base::Split(metadata, "\n");
+                    for (const auto& line : lines) {
+                        size_t eq = line.find('=');
+                        if (eq != std::string::npos) {
+                            std::string key = line.substr(0, eq);
+                            std::string value = line.substr(eq + 1);
+                            if (key == "volume-modication-required" && value == "YES") {
+                                volume_modification_required = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                mzCloseZipArchive(&za);
+            }
+            sysReleaseMap(&map);
+        }
+    }
+    // {{ End of modification }}
+
     if (IS_LE_MODE()) {
         LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
         ota_status = strdup("OTA_INPROGRESS");
