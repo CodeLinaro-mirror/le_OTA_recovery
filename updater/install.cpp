@@ -3089,6 +3089,32 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
         printf("Failed to remove %s and may cause no space left\n", rootfs_volume);
     return StringValue(strdup("success"));
 }
+
+Value* DeleteSystemrwUbiVolume(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+
+    size_t size = 0;
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+
+    if (!ui) {
+        return ErrorAbort(state, kArgsParsingFailure, "%s(): UpdaterInfo is null", name);
+    }
+
+    // Erase/truncate the systemrw volume
+    char *args_erase[] = {"ubiupdatevol", "/dev/ubi1_3", "-t", 0};
+    size = sizeof(args_erase)/sizeof(args_erase[0]);
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_erase, size) != 0) {
+        printf("%s: Couldn't erase systemrw volume\n", name);
+        return StringValue(strdup(""));
+    }
+    printf("Erasing of systemrw volume is successful\n");
+
+    return StringValue(strdup("success"));
+}
+
 #endif
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
@@ -3166,4 +3192,7 @@ void RegisterInstallFunctions() {
     }
 #endif
     RegisterFunction("update_rootfs_ubi_volume", updateRootfsUbiVolume);
+#ifndef TARGET_SUPPORTS_AB
+    RegisterFunction("delete_systemrw_ubi_volume", DeleteSystemrwUbiVolume);
+#endif
 }
