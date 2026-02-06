@@ -1990,6 +1990,7 @@ int main(int argc, char **argv) {
     ui->SetBackground(RecoveryUI::NONE);
     if (show_text) ui->ShowText(true);
 
+#ifdef CONFIG_PACKAGE_SELINUX_POLICY
     struct selinux_opt seopts[] = {
       { SELABEL_OPT_PATH, "/file_contexts" }
     };
@@ -1999,6 +2000,7 @@ int main(int argc, char **argv) {
     if (!sehandle) {
         ui->Print("Warning: No file_contexts\n");
     }
+#endif
 
     device->StartRecovery();
 
