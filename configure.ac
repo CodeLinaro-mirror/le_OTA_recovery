@@ -33,9 +33,20 @@ PKG_CHECK_MODULES([CUTILS], [libcutils])
 AC_SUBST([CUTILS_CFLAGS])
 AC_SUBST([CUTILS_LIBS])
 
+# Check if selinux-policy support is enabled
+AC_ARG_ENABLE([selinux-policy],
+    AS_HELP_STRING([--enable-selinux-policy], [Enable SELinux policy support (default: yes)]),
+    [enable_selinux_policy=$enableval],
+    [enable_selinux_policy=yes])
+
+if test "x$enable_selinux_policy" = "xyes"; then
 PKG_CHECK_MODULES([LIBSELINUX], [libselinux])
 AC_SUBST([LIBSELINUX_CFLAGS])
 AC_SUBST([LIBSELINUX_LIBS])
+fi
+
+AM_CONDITIONAL([ENABLE_SELINUX_POLICY], 
+               [test "x$enable_selinux_policy" = "xyes"])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_HEADER_STDBOOL

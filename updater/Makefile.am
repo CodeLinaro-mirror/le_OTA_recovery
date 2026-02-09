@@ -7,7 +7,6 @@ AM_CFLAGS = -Wundef \
             -fno-inline \
             -fno-short-enums \
             -fpic \
-            $(LIBSELINUX_CFLAGS) \
             -I$(WORKSPACE)/system/core/include \
             -I$(WORKSPACE)/system/core/fs_mgr/include \
             -I$(WORKSPACE)/system/extras/ext4_utils \
@@ -21,13 +20,20 @@ AM_CPPFLAGS = \
               -I.\
               -I../otafault \
               -I.. \
-               $(LIBSELINUX_CFLAGS) \
               -I$(WORKSPACE)/system/core/base/include \
               -I$(WORKSPACE)/system/core/include \
               -I$(WORKSPACE)/system/core/fs_mgr/include \
               -I$(WORKSPACE)/system/extras/ext4_utils \
               -I$(WORKSPACE)/OTA/system/core/base/include \
               -std=c++11
+
+SELINUX_FLAGS = -DCONFIG_PACKAGE_SELINUX_POLICY \
+                $(LIBSELINUX_CFLAGS)
+
+if ENABLE_SELINUX_POLICY
+AM_CPPFLAGS += $(SELINUX_FLAGS)
+AM_CFLAGS   += $(SELINUX_FLAGS)
+endif
 
 AM_LDFLAGS = -shared -version-info 1:0:0
 c_sources = install.cpp \
@@ -41,7 +47,6 @@ requiredlibs = -lm \
                -lpthread \
                -lz \
                -lcutils \
-               -lselinux \
                -lext4_utils \
                -lcrypto \
                -llog \
@@ -51,6 +56,10 @@ requiredlibs = -lm \
                ../edify/libedify.la \
                ../minzip/libminzip.la \
                ../applypatch/libapplypatch.la
+
+if ENABLE_SELINUX_POLICY
+requiredlibs += -lselinux
+endif
 
 bin_PROGRAMS = updater
 if USE_GLIB

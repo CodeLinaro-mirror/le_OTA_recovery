@@ -217,6 +217,7 @@ int main(int argc, char** argv) {
         return 6;
     }
 
+#ifdef CONFIG_PACKAGE_SELINUX_POLICY
     struct selinux_opt seopts[] = {
       { SELABEL_OPT_PATH, "/file_contexts" }
     };
@@ -226,6 +227,7 @@ int main(int argc, char** argv) {
     if (!sehandle) {
         fprintf(cmd_pipe, "ui_print Warning: No file_contexts\n");
     }
+#endif
 
     // read the partition mapping
     if (IS_LE_MODE()) {

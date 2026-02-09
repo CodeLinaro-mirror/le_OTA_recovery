@@ -12,7 +12,6 @@ AM_CFLAGS := -Wundef \
              -fno-short-enums \
              -fpic \
              -D__reboot=reboot \
-             $(LIBSELINUX_CFLAGS) \
              -D_GNU_SOURCE \
              -D_LARGEFILE64_SOURCE \
              -Dstrlcpy=strlcpy \
@@ -28,7 +27,6 @@ AM_CPPFLAGS := \
               -I$(WORKSPACE)/system/core/adb \
               -I$(WORKSPACE)/system/extras/ext4_utils \
               -I./bootloader_message/include \
-              $(LIBSELINUX_CFLAGS) \
               -I$(WORKSPACE)/OTA/system/core/base/include \
               -std=c++11 \
               -DENABLE_LEGACY_BOOTLOADER_MSG_UTILS \
@@ -37,6 +35,14 @@ AM_CPPFLAGS := \
               -DUSE_MUSL
 
 #AM_LDFLAGS := -shared -version-info 1:0:0
+
+SELINUX_FLAGS = -DCONFIG_PACKAGE_SELINUX_POLICY \
+                $(LIBSELINUX_CFLAGS)
+
+if ENABLE_SELINUX_POLICY
+AM_CPPFLAGS += $(SELINUX_FLAGS)
+AM_CFLAGS   += $(SELINUX_FLAGS)
+endif
 
 fuse_sideload_sources := fuse_sideload.cpp
 
@@ -73,7 +79,6 @@ requiredlibs := -lm \
                -lz \
                -lcutils \
                -lmincrypt \
-               -lselinux \
                -lfs_mgr \
                -lext4_utils \
                ./mtdutils/libmtdutils.la \
@@ -84,6 +89,9 @@ requiredlibs := -lm \
                ./otafault/libotafault.la \
                ./bootloader_message/libbootloader_message.la
 
+if ENABLE_SELINUX_POLICY
+requiredlibs += -lselinux
+endif
 
 RECOVERY_API_VERSION := 3
 

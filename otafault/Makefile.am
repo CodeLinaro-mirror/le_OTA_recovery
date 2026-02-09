@@ -14,7 +14,6 @@ AM_CPPFLAGS := \
               -DUSE_LE_MODE \
               -I. \
               -I.. \
-              $(LIBSELINUX_CFLAGS) \
               -I$(WORKSPACE)/system/core/include \
               -I$(WORKSPACE)/system/core/base/include \
               -std=c++11
@@ -25,10 +24,16 @@ c_sources := config.cpp ota_io.cpp
 
 library_includedir := $(pkgincludedir)
 
-requiredlibs := -lz \
+
+
+requiredlibs = -lz \
                ../minzip/libminzip.la \
-               -lbase \
-               -lselinux
+               -lbase
+
+if ENABLE_SELINUX_POLICY
+requiredlibs += -lselinux
+AM_CPPFLAGS += $(LIBSELINUX_CFLAGS)
+endif
 
 lib_LTLIBRARIES := libotafault.la
 
