@@ -181,10 +181,9 @@ char* reason = NULL;
 bool modified_flash = false;
 bool update_binary_from_device = false;
 static bool has_cache = false;
-bool is_mirror_copy=false;
+bool not_mirror_copy = true;
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
 bool mirror_copy = false;
-is_mirror_copy=mirror_copy;
 #endif
 
 #ifdef TARGET_SUPPORTS_LVM
@@ -1934,6 +1933,7 @@ static void parse_update_flags(const char** update_package) {
             memcmp(flag, "--mirror", sizeof("--mirror") - 1) == 0) {
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
             mirror_copy = true;
+            not_mirror_copy = false;
             LOGI("Detected mirror copy flag");
 #endif
         } 
@@ -2447,7 +2447,7 @@ error:
             // For normal OTA updates, check if volume modifications were required
             if (status == INSTALL_SUCCESS) {
 
-                if (volume_modification_required && (!is_mirror_copy)) {
+                if (volume_modification_required && (not_mirror_copy)) {
                     ota_status = strdup("PHYSICAL_PARTITION_WRITE_SUCCESS");
                 } else {
                     ota_status = strdup("OTA_SUCCESS");
