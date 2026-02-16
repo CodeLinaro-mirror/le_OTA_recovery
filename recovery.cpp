@@ -158,9 +158,9 @@ static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
 static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
+static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
 static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/cache/recovery/mirror_copy_status";
-static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
 #endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
@@ -416,7 +416,7 @@ get_args(int *argc, char ***argv) {
     bootloader_message boot = {};
 
 // Don't read anything from BCB if A/B
-#ifndef TARGET_SUPPORTS_AB
+#if !defined(TARGET_SUPPORTS_AB) && !defined(CONFIG_RECOVERY_STD)
 #ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
     get_bootloader_message(&boot);  // this may fail, leaving a zeroed structure
 #else
@@ -482,7 +482,7 @@ get_args(int *argc, char ***argv) {
     }
 
 // If A/B boot is supported, avoid writing into BCB
-#ifndef TARGET_SUPPORTS_AB
+#if !defined(TARGET_SUPPORTS_AB) && !defined(CONFIG_RECOVERY_STD)
     // --> write the arguments we have back into the bootloader control block
     // always boot into recovery after this (until finish_recovery() is called)
     strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
@@ -854,7 +854,7 @@ finish_recovery(const char *send_intent) {
     copy_logs();
 
 // Don't touch BCB if A/B mode
-#ifndef TARGET_SUPPORTS_AB
+#if !defined(TARGET_SUPPORTS_AB) && !defined(CONFIG_RECOVERY_STD)
     // Reset to normal system boot so recovery won't cycle indefinitely.
     bootloader_message boot = {};
 #ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
@@ -872,8 +872,8 @@ finish_recovery(const char *send_intent) {
         if (ensure_path_mounted(COMMAND_FILE) != 0 || (unlink(COMMAND_FILE) && errno != ENOENT)) {
             LOGW("Can't unlink %s\n", COMMAND_FILE);
         }
-#ifndef TARGET_SUPPORTS_AB
-        ensure_path_unmounted(CACHE_ROOT);
+#if !defined(TARGET_SUPPORTS_AB) && !defined(CONFIG_RECOVERY_STD)
+       ensure_path_unmounted(CACHE_ROOT);
 #endif
     }
 
@@ -2264,6 +2264,19 @@ int main(int argc, char **argv) {
 	}
       #endif
 #endif
+if (has_cache) {
+     printf("we are in zip file --update_package=%s\n", update_package);
+    FILE* fp = fopen_path(ZIP_FILE_PATH, "w");
+    if (fp != nullptr) {
+        fprintf(fp, "--update_package=%s\n", update_package);
+        fflush(fp);
+        fsync(fileno(fp));
+        check_and_fclose(fp, ZIP_FILE_PATH);
+        LOGI("Wrote update package path to %s\n", ZIP_FILE_PATH);
+    } else {
+        LOGE("Failed to open %s for writing: %s\n", ZIP_FILE_PATH, strerror(errno));
+    }
+}
 
     }
     printf("\n");
@@ -2387,7 +2400,7 @@ error:
 
 // Don't call prompt_and_wait() if A/B boot is supported
 // In this case, recovery should exit and with appropriate error code
-#ifndef TARGET_SUPPORTS_AB
+#if !defined(TARGET_SUPPORTS_AB) && !defined(CONFIG_RECOVERY_STD)
     if ((status != INSTALL_SUCCESS && status != INSTALL_SKIPPED && !sideload_auto_reboot) ||
             ui->IsTextVisible()) {
         Device::BuiltinAction temp = prompt_and_wait(device, status);
@@ -2472,7 +2485,7 @@ error:
 
     sync();
 
-#ifdef TARGET_SUPPORTS_AB
+#if defined(TARGET_SUPPORTS_AB)|| defined(CONFIG_RECOVERY_STD)
     _exit((status == INSTALL_SUCCESS) ? EXIT_SUCCESS : EXIT_FAILURE);
 #else
     switch (after) {
