@@ -2352,9 +2352,9 @@ static int read_firmware_version() {
 }
 
 // read build version from etc/version
-static long read_rootfs_version(int lxcrootfs)
+static long long read_rootfs_version(int lxcrootfs)
 {
-  long version = -1;
+  long long version = -1;
   FILE* rootfs_fp;
   if (lxcrootfs)
     rootfs_fp = fopen(LXC_BUILD_VERSION_FILE, "r");
@@ -2369,7 +2369,7 @@ static long read_rootfs_version(int lxcrootfs)
 
     while ((fgets(rootfs_buf, BLOCKSIZE, rootfs_fp)) != NULL) {
       std::string rootfs_str(rootfs_buf);
-      version = strtol(rootfs_buf, NULL, 10);
+      version = strtoll(rootfs_buf, NULL, 10);
       break;
     }
     free(rootfs_buf);
@@ -2412,7 +2412,7 @@ Value* BlockPreCheckVersion(const char* name, State* state, int argc, Expr* argv
     Value* blockdev_num = nullptr;
     char buf[PATH_MAX];
     int ret;
-    size_t version;
+    long long version;
     if (ReadValueArgs(state, argv, 2, &blockdev_filename, &blockdev_num) < 0) {
         return StringValue(strdup(""));
     }
@@ -2432,7 +2432,7 @@ Value* BlockPreCheckVersion(const char* name, State* state, int argc, Expr* argv
                    name);
         return StringValue(strdup(""));
     }
-    version = strtol(blockdev_num->data, NULL, 10);
+    version = strtoll(blockdev_num->data, NULL, 10);
 
     if(blockdev_filename->data == NULL) {
         printf("BlockEraseFn: blockdev_filename_data is NULL\n");
