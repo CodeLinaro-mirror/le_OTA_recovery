@@ -108,7 +108,7 @@ extern "C" {    // Use till system/core is updated
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define SOC_ID_PATH  "/sys/devices/soc0/soc_id"
 //soc_id 571 belonngs to sdx35 128MB DDR(low ram) variant
-int soc_id_list_for_disk_extraction_feature[] = {571};
+int soc_id_list_for_disk_extraction_feature[] = {571,570};
 #define FILESMAP_PATH "/tmp/filesmap"
 #define SYSTEM_PARTITION_NAME "system"
 #define BOOT_PARTITION_NAME "boot"
@@ -585,17 +585,21 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
     {
         char *secontext = NULL;
 
+#ifdef CONFIG_PACKAGE_SELINUX_POLICY
         if (sehandle) {
             selabel_lookup(sehandle, &secontext, mount_point, 0755);
             setfscreatecon(secontext);
         }
+#endif
 
         mkdir(mount_point, 0755);
 
+#ifdef CONFIG_PACKAGE_SELINUX_POLICY
         if (secontext) {
             freecon(secontext);
             setfscreatecon(NULL);
         }
+#endif
     }
 
     if (strcmp(partition_type, "MTD") == 0) {
@@ -1090,6 +1094,44 @@ static bool IsExtractionOnDiskEnabled() {
     return false;
 }
 
+const char* byname_to_location(const char* byname_path) {
+    const char *last = strrchr(byname_path, '/');
+    if (last) {
+        return last + 1;
+    }
+    return byname_path;
+}
+
+int MtdErasePartition(const char *byname_path) {
+    const char *location = byname_to_location(byname_path);
+    printf("MtdErasePartition:erasing partition \"%s\"\n", location);
+    if(mtd_scan_partitions() < 0) {
+        printf("MtdErasePartition: failed to scan partitions\n");
+        return -1;
+    }
+    const MtdPartition* mtd = mtd_find_partition_by_name(location);
+    if(NULL == mtd) {
+        printf("MtdErasePartition: no mtd partition named \"%s\"\n", location);
+        return -2;
+    }
+    MtdWriteContext* ctx = mtd_write_partition(mtd);
+    if (ctx == NULL) {
+        printf("MtdErasePartition: can't write \"%s\"\n", location);
+        return -3;
+    }
+    if (mtd_erase_blocks(ctx, -1) == -1) {
+        mtd_write_close(ctx);
+        printf("MtdErasePartition: failed to erase \"%s\"\n", location);
+        return -4;
+    }
+    if (mtd_write_close(ctx) != 0) {
+        printf("MtdErasePartition: failed to close \"%s\"\n", location);
+        return -5;
+    }
+    printf("MtdErasePartition: successfully erased \"%s\"\n", location);
+    return 0;
+}
+
 Value* PackageExtractFileFn(const char* name, State* state,
                            int argc, Expr* argv[]) {
     if (argc < 1 || argc > 2) {
@@ -1137,6 +1179,12 @@ Value* PackageExtractFileFn(const char* name, State* state,
             if (fd == -1) {
                 printf("%s: can't open %s for write: %s\n", name, dest_path, strerror(errno));
                 goto done2;
+            }
+            if(device_type == NAND) {
+                int ret = MtdErasePartition(dest_path);
+                if (ret != 0) {
+                    printf("MtdErasePartition failed for %s (err=%d)\n", dest_path, ret);
+                }
             }
             success = mzExtractZipEntryToFile(za, entry, fd);
             if (ota_fsync(fd) == -1) {
@@ -1519,6 +1567,7 @@ static int ApplyParsedPerms(
 {
     int bad = 0;
 
+#ifdef CONFIG_PACKAGE_SELINUX_POLICY
     if (parsed.has_selabel) {
         if (lsetfilecon(filename, parsed.selabel) != 0) {
             uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
@@ -1526,6 +1575,7 @@ static int ApplyParsedPerms(
             bad++;
         }
     }
+#endif
 
     /* ignore symlinks */
     if (S_ISLNK(statptr->st_mode)) {
@@ -3089,6 +3139,32 @@ Value* updateRootfsUbiVolume(const char* name, State* state, int argc, Expr* arg
         printf("Failed to remove %s and may cause no space left\n", rootfs_volume);
     return StringValue(strdup("success"));
 }
+
+Value* DeleteSystemrwUbiVolume(const char* name, State* state, int argc, Expr* argv[]) {
+    if (argc != 0) {
+        return ErrorAbort(state, kArgsParsingFailure,
+                "%s() expects no args, got %d", name, argc);
+    }
+
+    size_t size = 0;
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+
+    if (!ui) {
+        return ErrorAbort(state, kArgsParsingFailure, "%s(): UpdaterInfo is null", name);
+    }
+
+    // Erase/truncate the systemrw volume
+    char *args_erase[] = {"ubiupdatevol", "/dev/ubi1_3", "-t", 0};
+    size = sizeof(args_erase)/sizeof(args_erase[0]);
+    if (exec_command(ui->cmd_pipe, "/usr/sbin/ubiupdatevol", args_erase, size) != 0) {
+        printf("%s: Couldn't erase systemrw volume\n", name);
+        return StringValue(strdup(""));
+    }
+    printf("Erasing of systemrw volume is successful\n");
+
+    return StringValue(strdup("success"));
+}
+
 #endif
 void RegisterInstallFunctions() {
     RegisterFunction("mount", MountFn);
@@ -3166,4 +3242,7 @@ void RegisterInstallFunctions() {
     }
 #endif
     RegisterFunction("update_rootfs_ubi_volume", updateRootfsUbiVolume);
+#ifndef TARGET_SUPPORTS_AB
+    RegisterFunction("delete_systemrw_ubi_volume", DeleteSystemrwUbiVolume);
+#endif
 }
