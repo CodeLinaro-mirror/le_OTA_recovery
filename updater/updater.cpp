@@ -183,10 +183,8 @@ int main(int argc, char** argv) {
         script_name = SCRIPT_NAME;
     }
    
-    printf("This is test mirror %s \n",script_name);
     printf(" updater using script %s \n", script_name);
     const ZipEntry* script_entry = mzFindZipEntry(&za, script_name);
-    printf("This is test mirror %s \n",script_entry);
 
     if (script_entry == NULL) {
         printf("failed to find %s in %s\n", SCRIPT_NAME, package_filename);
