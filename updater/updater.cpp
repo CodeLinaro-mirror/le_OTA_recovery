@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/* Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+/* Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -80,14 +80,15 @@ int main(int argc, char** argv) {
     int lines = 0;
     fp = fopen("/proc/mtd","r");
     if(fp == NULL){
-        printf("File does not exist\n");
-        return -1;
-    }
-    while(getline(&line,&len,fp) != -1){
-        lines++;
-    }
-    if(lines >= 2) {
-        device_type = NAND;
+        printf("/proc/mtd does not exist, assuming eMMC/UFS device\n");
+        device_type = EMMC;
+    } else {
+        while(getline(&line,&len,fp) != -1){
+            lines++;
+        }
+        if(lines >= 2) {
+            device_type = NAND;
+        }
     }
     if (argc != 4 && argc != 5) {
         printf("unexpected number of arguments (%d)\n", argc);
