@@ -59,6 +59,10 @@ extern void Register_librecovery_updater_msm();
 #define MIRROR_SCRIPT_NAME "META-INF/com/google/android/updater-mirror-script"
 #endif
 
+#ifdef TARGET_SUPPORTS_LVM
+#define LVM_SCRIPT_NAME "META-INF/com/google/android/lvm-updater-script"
+#endif
+
 enum DeviceType device_type;
 
 extern bool have_eio_error;
@@ -157,29 +161,31 @@ int main(int argc, char** argv) {
     ota_io_init(&za);
 #endif
 
-#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
-    char* copy_mirror = argv[4];
     char* script_name = NULL;
-    if(copy_mirror != NULL)
+#ifdef TARGET_SUPPORTS_LVM
+    // Check for LVM update mode
+    if (argc >= 5 && strcmp(argv[4], "update_to_lvm") == 0) {
+        printf("LVM update mode detected\n");
+        script_name = LVM_SCRIPT_NAME;
+    } 
+    else
+#endif
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    // Check for mirror copy mode
+    if (argc >= 5 && strcmp(argv[4], "copy_to_inactive") == 0) {
+        printf("Mirror copy mode detected\n");
+        script_name = MIRROR_SCRIPT_NAME;
+    } 
+    else
+#endif
     {
-        printf(" copy_mirror arg : %s \n",copy_mirror);
-    }
-    if (argv[4] != NULL) {
-        if (strcmp(argv[4], "copy_to_inactive") == 0){
-        //if (strcmp(copy_mirror, "copy_to_inactive")){
-            script_name = MIRROR_SCRIPT_NAME;
-        } else {
-            script_name = SCRIPT_NAME;
-        }
-    } else {
+        printf("Normal update mode\n");
         script_name = SCRIPT_NAME;
     }
-
-    printf(" updater using  script %s \n",script_name);
+   
+    printf(" updater using script %s \n", script_name);
     const ZipEntry* script_entry = mzFindZipEntry(&za, script_name);
-#else
-    const ZipEntry* script_entry = mzFindZipEntry(&za, SCRIPT_NAME);
-#endif
+
     if (script_entry == NULL) {
         printf("failed to find %s in %s\n", SCRIPT_NAME, package_filename);
         fprintf(cmd_pipe, "ui_print failed to find %s in %s\n", SCRIPT_NAME, package_filename);
@@ -217,6 +223,7 @@ int main(int argc, char** argv) {
         return 6;
     }
 
+#ifdef CONFIG_PACKAGE_SELINUX_POLICY
     struct selinux_opt seopts[] = {
       { SELABEL_OPT_PATH, "/file_contexts" }
     };
@@ -226,6 +233,7 @@ int main(int argc, char** argv) {
     if (!sehandle) {
         fprintf(cmd_pipe, "ui_print Warning: No file_contexts\n");
     }
+#endif
 
     // read the partition mapping
     if (IS_LE_MODE()) {
@@ -277,9 +285,10 @@ int main(int argc, char** argv) {
             while (line) {
                 // Parse the error code in abort message.
                 // Example: "E30: This package is for bullhead devices."
+                line = strtok_r(NULL, "\n", &saveptr);
                 if (*line == 'E') {
                     if (sscanf(line, "E%u: ", &state.error_code) != 1) {
-                         printf("Failed to parse error code: [%s]\n", line);
+                        printf("Failed to parse error code: [%s]\n", line);
                     }
                 }
                 fprintf(cmd_pipe, "ui_print %s\n", line);

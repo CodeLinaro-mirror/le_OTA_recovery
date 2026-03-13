@@ -52,7 +52,14 @@ extern bool modified_flash;
 extern bool mirror_copy;
 #endif
 
+#ifdef TARGET_SUPPORTS_LVM
+extern bool lvm_update;
+#endif
+
+extern bool update_binary_from_device;
 typedef struct fstab_rec Volume;
+
+enum UpdateMode { UPDATE_NORMAL, UPDATE_MIRROR_COPY, UPDATE_LVM };
 
 // fopen a file, mounting volumes and making parent dirs as necessary.
 FILE* fopen_path(const char *path, const char *mode);

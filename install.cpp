@@ -295,41 +295,79 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
         LOGE("Can't make %s\n", binary);
         return INSTALL_ERROR;
     }
-    bool ok = mzExtractZipEntryToFile(zip, binary_entry, fd);
+    bool ok = false;
+    if(update_binary_from_device) {
+        printf("Using update-binary from device\n");
+        int src_fd = open("/usr/bin/updater", O_RDONLY);
+        if(src_fd < 0) {
+            printf("can't open /usr/bin/updater\n");
+            return INSTALL_ERROR;
+        }
+        char buffer[PATH_MAX];
+        int err,n;
+        while (1) {
+            err = read(src_fd, buffer, PATH_MAX);
+            if (err == -1) {
+                printf("Error reading updater from the device.\n");
+                close(src_fd);
+                close(fd);
+                return INSTALL_ERROR;
+            }
+            n = err;
+            if (n == 0) {
+                printf("Write done to %s\n", binary);
+                break;
+            }
+            err = write(fd, buffer, n);
+            if (err == -1) {
+                printf("Error writing updater to %s \n", binary);
+                close(src_fd);
+                close(fd);
+                return INSTALL_ERROR;
+            }
+        }
+        close(src_fd);
+    }
+    else {
+        printf("Using update-binary from package\n");
+        ok = mzExtractZipEntryToFile(zip, binary_entry, fd);
+    }
     close(fd);
-
-    if (!ok) {
+    if (!ok && !update_binary_from_device) {
         LOGE("Can't copy %s\n", ASSUMED_UPDATE_BINARY_NAME);
         return INSTALL_ERROR;
     }
 
+    // Determine update mode based on flags passed in
+    UpdateMode update_mode = UPDATE_NORMAL;
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
-    if(!mirror_copy) {
-         LOGI("update flow \n");
-         *cmd = {
-             binary,
-             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-             std::to_string(status_fd),
-             path,
-         };
-    } else {
-        LOGI("ab sync mirror flow \n");
-        *cmd = {
-            binary,
-            EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-            std::to_string(status_fd),
-            path,
-            "copy_to_inactive",
-        };
-    }
-#else
-     *cmd = {
-         binary,
-         EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-         std::to_string(status_fd),
-         path,
-     };
+    if (mirror_copy) update_mode = UPDATE_MIRROR_COPY;
 #endif
+#ifdef TARGET_SUPPORTS_LVM
+    if (lvm_update) update_mode = UPDATE_LVM;
+#endif
+
+    // Build command based on update mode
+    *cmd = {
+        binary,
+        EXPAND(RECOVERY_API_VERSION),
+        std::to_string(status_fd),
+        path,
+    };
+
+    switch (update_mode) {
+        case UPDATE_MIRROR_COPY:
+            LOGI("AB mirror copy flow");
+            cmd->push_back("copy_to_inactive");
+            break;
+        case UPDATE_LVM:
+            LOGI("LVM update flow");
+            cmd->push_back("update_to_lvm");
+            break;
+        default:
+            LOGI("Normal update flow");
+            break;
+    }
 
     if (retry_count > 0)
         cmd->push_back("retry");
