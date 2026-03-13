@@ -86,6 +86,12 @@ static CauseCode failure_type = kNoCause;
 static bool is_retry = false;
 static std::map<std::string, RangeSet> stash_map;
 
+#ifdef TARGET_SUPPORTS_LVM
+static bool is_lvm_path(const char* path) {
+    return (strstr(path, "/dev/vgdata/") != nullptr);
+}
+#endif
+
 static void parse_range(const std::string& range_text, RangeSet& rs) {
 
     std::vector<std::string> pieces = android::base::Split(range_text, ",");
@@ -1468,12 +1474,93 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
      if (device_type == NAND) {
          blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
      } else {
-         char buf[PATH_MAX];
-         snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-                 slot_suffix_arr[inactive_slot]);
-         blockdev_filename->data = strdup(buf);
-     }
-     printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
+        // Only append slot suffix for non-LVM paths
+#ifdef TARGET_SUPPORTS_LVM
+    // Check if it's an LVM path (contains /dev/vgdata)
+    if (strstr(blockdev_filename->data, "/dev/vgdata") != nullptr) {
+        // Extract partition name (everything after the last '/')
+        const char* partition_name = strrchr(blockdev_filename->data, '/');
+        if (partition_name != nullptr && partition_name[1] != '\0') {
+            partition_name++; // Skip the '/'
+            
+            // Read metadata to check if this is an A/B volume
+            static constexpr const char* METADATA_PATH = "META-INF/com/android/metadata";
+            UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
+            const ZipEntry* meta_entry = mzFindZipEntry(ui->package_zip, METADATA_PATH);
+            //const ZipEntry* meta_entry = mzFindZipEntry(za, METADATA_PATH);
+            if (meta_entry != nullptr) {
+                std::string metadata(meta_entry->uncompLen, '\0');
+                if (mzReadZipEntry(ui->package_zip, meta_entry, &metadata[0], meta_entry->uncompLen)) {
+                    std::vector<std::string> lines = android::base::Split(metadata, "\n");
+                    for (const auto& line : lines) {
+                        size_t eq = line.find('=');
+                        if (eq != std::string::npos && line.substr(0, eq) == "ab-volumes") {
+                            std::string ab_volumes = line.substr(eq + 1);
+                            
+                            // Split by comma (not space) since metadata uses comma-separated list
+                            std::vector<std::string> volumes = android::base::Split(ab_volumes, ",");
+                            
+                            // Check if our partition base name is in the list of A/B volumes
+                            bool is_ab_volume = false;
+                            for (const auto& vol : volumes) {
+                                if (vol == "NONE") continue;
+                                
+                                // Trim whitespace from volume name
+                                std::string trimmed_vol = android::base::Trim(vol);
+                                
+                                // Check if partition_name matches the base volume name
+                                if (partition_name == trimmed_vol) {
+                                    is_ab_volume = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (is_ab_volume) {
+                                // It's an A/B volume, append slot suffix
+                                char buf[PATH_MAX];
+                                snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+                                        slot_suffix_arr[inactive_slot]);
+                                char* new_path = strdup(buf);
+                                if (new_path) {
+                                    free(blockdev_filename->data);
+                                    blockdev_filename->data = new_path;
+                                }
+                                printf("LVM detected and %s is an A/B volume, appending slot suffix %s\n",
+                                       partition_name, slot_suffix_arr[inactive_slot]);
+                            } else {
+                                printf("LVM detected but %s is not an A/B volume, skipping slot suffix\n",
+                                       partition_name);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // Non-LVM path, append slot suffix as usual
+        char buf[PATH_MAX];
+        snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+                slot_suffix_arr[inactive_slot]);
+        char* new_path = strdup(buf);
+        if (new_path) {
+            free(blockdev_filename->data);
+            blockdev_filename->data = new_path;
+        }
+    }
+#else
+    // Non-LVM path, append slot suffix as usual
+    char buf[PATH_MAX];
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+            slot_suffix_arr[inactive_slot]);
+    char* new_path = strdup(buf);
+    if (new_path) {
+        free(blockdev_filename->data);
+        blockdev_filename->data = new_path;
+    }
+#endif
+    }
+    printf("PerformBlockImageUpdate: all operations will be performed on: %s\n",
              blockdev_filename->data);
 #endif
 
@@ -1796,10 +1883,83 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
     if(device_type == NAND) {
         blockdev_filename->data = getInactiveRootfsMtdBlock(blockdev_filename);
     } else {
+#ifdef TARGET_SUPPORTS_LVM
+    // Check if it's an LVM path (contains /dev/vgdata)
+    if (strstr(blockdev_filename->data, "/dev/vgdata") != nullptr) {
+        // Extract partition name (everything after the last '/')
+        const char* partition_name = strrchr(blockdev_filename->data, '/');
+        if (partition_name != nullptr && partition_name[1] != '\0') {
+            partition_name++; // Skip the '/'
+            
+            // Read metadata to check if this is an A/B volume
+            static constexpr const char* METADATA_PATH = "META-INF/com/android/metadata";
+            UpdaterInfo* ui = reinterpret_cast<UpdaterInfo*>(state->cookie);
+            if (ui != nullptr && ui->package_zip != nullptr) {
+                const ZipEntry* meta_entry = mzFindZipEntry(ui->package_zip, METADATA_PATH);
+                if (meta_entry != nullptr) {
+                    std::string metadata(meta_entry->uncompLen, '\0');
+                    if (mzReadZipEntry(ui->package_zip, meta_entry, &metadata[0], meta_entry->uncompLen)) {
+                        std::vector<std::string> lines = android::base::Split(metadata, "\n");
+                        for (const auto& line : lines) {
+                            size_t eq = line.find('=');
+                            if (eq != std::string::npos && line.substr(0, eq) == "ab-volumes") {
+                                std::string ab_volumes = line.substr(eq + 1);
+                                
+                                // Split by comma (not space) since metadata uses comma-separated list
+                                std::vector<std::string> volumes = android::base::Split(ab_volumes, ",");
+                                
+                                // Check if our partition base name is in the list of A/B volumes
+                                bool is_ab_volume = false;
+                                for (const auto& vol : volumes) {
+                                    if (vol == "NONE") continue;
+                                    
+                                    // Trim whitespace from volume name
+                                    std::string trimmed_vol = android::base::Trim(vol);
+                                    
+                                    // Check if partition_name matches the base volume name
+                                    if (partition_name == trimmed_vol) {
+                                        is_ab_volume = true;
+                                        break;
+                                    }
+                                }
+                                
+                                if (is_ab_volume) {
+                                    // It's an A/B volume, append slot suffix
+                                    char buf[PATH_MAX];
+                                    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+                                            slot_suffix_arr[inactive_slot]);
+                                    char* new_path = strdup(buf);
+                                    if (new_path) {
+                                        free(blockdev_filename->data);
+                                        blockdev_filename->data = new_path;
+                                    }
+                                    printf("LVM detected and %s is an A/B volume, appending slot suffix %s\n",
+                                           partition_name, slot_suffix_arr[inactive_slot]);
+                                } else {
+                                    printf("LVM detected but %s is not an A/B volume, skipping slot suffix\n",
+                                           partition_name);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // Non-LVM path, append slot suffix as usual
         char buf[PATH_MAX];
         snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
-             slot_suffix_arr[inactive_slot]);
+                slot_suffix_arr[inactive_slot]);
         blockdev_filename->data = strdup(buf);
+    }
+#else
+    // Non-LVM path, append slot suffix as usual
+    char buf[PATH_MAX];
+    snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data,
+            slot_suffix_arr[inactive_slot]);
+    blockdev_filename->data = strdup(buf);
+#endif
     }
     printf("RangeSha1Fn: sha1 verification will be performed on: %s\n",
             blockdev_filename->data);

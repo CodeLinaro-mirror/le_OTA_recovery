@@ -338,33 +338,36 @@ update_binary_command(const char* path, ZipArchive* zip, int retry_count,
         return INSTALL_ERROR;
     }
 
+    // Determine update mode based on flags passed in
+    UpdateMode update_mode = UPDATE_NORMAL;
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
-    if(!mirror_copy) {
-         LOGI("update flow \n");
-         *cmd = {
-             binary,
-             EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-             std::to_string(status_fd),
-             path,
-         };
-    } else {
-        LOGI("ab sync mirror flow \n");
-        *cmd = {
-            binary,
-            EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-            std::to_string(status_fd),
-            path,
-            "copy_to_inactive",
-        };
-    }
-#else
-     *cmd = {
-         binary,
-         EXPAND(RECOVERY_API_VERSION),   // defined in Android.mk
-         std::to_string(status_fd),
-         path,
-     };
+    if (mirror_copy) update_mode = UPDATE_MIRROR_COPY;
 #endif
+#ifdef TARGET_SUPPORTS_LVM
+    if (lvm_update) update_mode = UPDATE_LVM;
+#endif
+
+    // Build command based on update mode
+    *cmd = {
+        binary,
+        EXPAND(RECOVERY_API_VERSION),
+        std::to_string(status_fd),
+        path,
+    };
+
+    switch (update_mode) {
+        case UPDATE_MIRROR_COPY:
+            LOGI("AB mirror copy flow");
+            cmd->push_back("copy_to_inactive");
+            break;
+        case UPDATE_LVM:
+            LOGI("LVM update flow");
+            cmd->push_back("update_to_lvm");
+            break;
+        default:
+            LOGI("Normal update flow");
+            break;
+    }
 
     if (retry_count > 0)
         cmd->push_back("retry");
