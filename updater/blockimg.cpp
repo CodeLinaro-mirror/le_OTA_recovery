@@ -1677,6 +1677,10 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data, slot_suffix_arr[inactive_slot]);
     blockdev_filename->data = strdup(buf);
 #endif
+    if (blockdev_filename->data == NULL){
+        printf("%s: failed to get block device name \n", name);
+        return StringValue(strdup(""));
+    }
 #endif
 
 #ifdef TARGET_NAD_FDE
@@ -2033,6 +2037,10 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
     snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data, slot_suffix_arr[inactive_slot]);
     blockdev_filename->data = strdup(buf);
 #endif
+    if (blockdev_filename->data == NULL){
+        printf("%s: failed to get block device name \n", name);
+        return StringValue(strdup(""));
+    }
 #endif
 
 #ifdef TARGET_NAD_FDE
