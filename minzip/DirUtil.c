@@ -77,6 +77,7 @@ dirCreateHierarchy(const char *path, int mode,
         return -1;
     }
     memcpy(cpath, path, pathLen);
+    cpath[pathLen] = '\0';
     if (stripFileName) {
         /* Strip everything after the last slash.
          */

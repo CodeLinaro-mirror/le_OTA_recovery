@@ -100,7 +100,7 @@
 #endif
 
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
-#define OTA_STATUS_LEN 15
+#define OTA_STATUS_LEN 40
 
 struct selabel_handle *sehandle;
 
@@ -136,6 +136,10 @@ enum ota_status_value {
   OTA_STATUS_INPROGRESS = 1,
   OTA_STATUS_SUCCESS = 2,
   OTA_STATUS_FAILED  = 3,
+  OTA_STATUS_VOL_INPROGRESS = 4,
+  OTA_STATUS_VOL_SUCCESS = 5,
+  OTA_STATUS_VOL_FAILED = 6,
+  OTA_STATUS_PHYSICAL_PARTITION_WRITE_SUCCESS = 7
 };
 
 static const char *CACHE_LOG_DIR = "/cache/recovery";
@@ -154,9 +158,9 @@ static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
 static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
+static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
 static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/cache/recovery/mirror_copy_status";
-static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
 #endif
 static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
@@ -177,9 +181,15 @@ char* reason = NULL;
 bool modified_flash = false;
 bool update_binary_from_device = false;
 static bool has_cache = false;
+bool not_mirror_copy = true;
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
 bool mirror_copy = false;
 #endif
+
+#ifdef TARGET_SUPPORTS_LVM
+bool lvm_update = false;
+#endif
+
 static char* ota_status = NULL;
 /*
  * The recovery tool communicates with the main system through /cache files.
@@ -406,7 +416,7 @@ get_args(int *argc, char ***argv) {
     bootloader_message boot = {};
 
 // Don't read anything from BCB if A/B
-#ifndef TARGET_SUPPORTS_AB
+#if !defined(TARGET_SUPPORTS_AB) && !defined(CONFIG_RECOVERY_STD)
 #ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
     get_bootloader_message(&boot);  // this may fail, leaving a zeroed structure
 #else
@@ -472,7 +482,7 @@ get_args(int *argc, char ***argv) {
     }
 
 // If A/B boot is supported, avoid writing into BCB
-#ifndef TARGET_SUPPORTS_AB
+#if !defined(TARGET_SUPPORTS_AB) && !defined(CONFIG_RECOVERY_STD)
     // --> write the arguments we have back into the bootloader control block
     // always boot into recovery after this (until finish_recovery() is called)
     strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
@@ -766,6 +776,14 @@ int get_ota_status() {
         status = OTA_STATUS_SUCCESS;
     } else if (!strncmp(buf, "OTA_FAILED", strlen("OTA_FAILED"))) {
         status = OTA_STATUS_FAILED;
+    } else if (!strncmp(buf, "OTA_VOL_INPROGRESS", strlen("OTA_VOL_INPROGRESS"))) {
+        status = OTA_STATUS_VOL_INPROGRESS;
+    } else if (!strncmp(buf, "OTA_VOL_SUCCESS", strlen("OTA_VOL_SUCCESS"))) {
+        status = OTA_STATUS_VOL_SUCCESS;
+    } else if (!strncmp(buf, "OTA_VOL_FAILED", strlen("OTA_VOL_FAILED"))) {
+        status = OTA_STATUS_VOL_FAILED;
+    } else if (!strncmp(buf, "PHYSICAL_PARTITION_WRITE_SUCCESS", strlen("PHYSICAL_PARTITION_WRITE_SUCCESS"))) {
+        status = OTA_STATUS_PHYSICAL_PARTITION_WRITE_SUCCESS;
     } else {
         status = OTA_STATUS_UNKNOWN;
     }
@@ -836,7 +854,7 @@ finish_recovery(const char *send_intent) {
     copy_logs();
 
 // Don't touch BCB if A/B mode
-#ifndef TARGET_SUPPORTS_AB
+#if !defined(TARGET_SUPPORTS_AB) && !defined(CONFIG_RECOVERY_STD)
     // Reset to normal system boot so recovery won't cycle indefinitely.
     bootloader_message boot = {};
 #ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
@@ -854,8 +872,8 @@ finish_recovery(const char *send_intent) {
         if (ensure_path_mounted(COMMAND_FILE) != 0 || (unlink(COMMAND_FILE) && errno != ENOENT)) {
             LOGW("Can't unlink %s\n", COMMAND_FILE);
         }
-#ifndef TARGET_SUPPORTS_AB
-        ensure_path_unmounted(CACHE_ROOT);
+#if !defined(TARGET_SUPPORTS_AB) && !defined(CONFIG_RECOVERY_STD)
+       ensure_path_unmounted(CACHE_ROOT);
 #endif
     }
 
@@ -1877,6 +1895,106 @@ static ssize_t logrotate(
 }
 #endif
 
+// Initialize all update flags to default values
+static void init_update_flags() {
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    mirror_copy = false;
+#endif
+#ifdef TARGET_SUPPORTS_LVM
+    lvm_update = false;
+#endif
+}
+
+// Parse flags from the update package path and set appropriate global variables
+static void parse_update_flags(const char** update_package) {
+    // Initialize all flags to false first
+    init_update_flags();
+    
+    if (!*update_package) return;
+
+    // Check if there are flags in the update package path (separated by ';')
+    const char* flag_pos = strchr(*update_package, ';');
+    if (!flag_pos) return;
+
+    // Make a copy we can modify
+    char* temp_path = strdup(*update_package);
+    if (!temp_path) return;
+
+    // Parse the path and flags
+    char* saveptr;
+    char* path = strtok_r(temp_path, ";", &saveptr);
+    char* flag;
+    bool path_modified = false;
+    
+    while ((flag = strtok_r(NULL, ";", &saveptr)) != NULL) {
+        // Check for mirror flag with exact length matching
+        size_t flag_len = strlen(flag);
+        if (flag_len == (sizeof("--mirror") - 1) && 
+            memcmp(flag, "--mirror", sizeof("--mirror") - 1) == 0) {
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+            mirror_copy = true;
+            not_mirror_copy = false;
+            LOGI("Detected mirror copy flag");
+#endif
+        } 
+        // Check for LVM flag with exact length matching
+        else if (flag_len == (sizeof("--lvm_updation") - 1) && 
+                 memcmp(flag, "--lvm_updation", sizeof("--lvm_updation") - 1) == 0) {
+#ifdef TARGET_SUPPORTS_LVM
+            lvm_update = true;
+            LOGI("Detected LVM update flag");
+#endif
+        }
+    }
+
+    // Check if paths are different using length + memcmp
+    if (path) {
+        const char* orig = *update_package;
+        size_t orig_len = strlen(orig);
+        size_t path_len = strlen(path);
+        
+        // Paths differ if lengths differ OR content differs
+        bool paths_differ = (orig_len != path_len);
+        if (!paths_differ && orig_len > 0) {
+            paths_differ = (memcmp(orig, path, orig_len) != 0);
+        }
+        
+        if (paths_differ) {
+            free((void*)*update_package);  // Free the original string
+            *update_package = strdup(path);
+            if (*update_package) {
+                path_modified = true;
+            } else {
+                // If strdup fails, restore original pointer
+                *update_package = orig;
+                LOGE("Failed to allocate memory for cleaned package path");
+            }
+        }
+    }
+    
+    if (path_modified) {
+        LOGI("Cleaned update package path: %s", *update_package);
+    }
+
+    free(temp_path);
+}
+
+// Write update package path with mirror flag to file
+static void write_mirror_flag_to_file(const char* update_package) {
+#ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    char zip_path[MAX_ARG_LENGTH];
+    snprintf(zip_path, MAX_ARG_LENGTH, "--update_package=%s;--mirror", update_package);
+    std::cout << "Received ota_update and update_package path: " << zip_path << std::endl;
+    
+    FILE *fp = fopen(ZIP_FILE_PATH, "w");
+    if (fp != NULL) {
+        fprintf(fp, "%s\n", zip_path);
+        fclose(fp);
+    }
+    printf("not --mirror copy flow \n");
+#endif
+} 
+
 int main(int argc, char **argv) {
     // Take last pmsg contents and rewrite it to the current pmsg session.
     static const char filter[] = "recovery/";
@@ -1929,7 +2047,7 @@ int main(int argc, char **argv) {
         switch (arg) {
         case 'i': send_intent = optarg; break;
         case 'n': android::base::ParseInt(optarg, &retry_count, 0); break;
-        case 'u': update_package = optarg; break;
+        case 'u': update_package = strdup(optarg); break;
         case 'w': should_wipe_data = true; break;
         case 'c': should_wipe_cache = true; break;
         case 't': show_text = true; break;
@@ -1964,6 +2082,8 @@ int main(int argc, char **argv) {
             continue;
         }
     }
+
+    init_update_flags();
 
     if (locale == nullptr && has_cache) {
         load_locale_from_cache();
@@ -2013,13 +2133,58 @@ int main(int argc, char **argv) {
     if (dest_fp == nullptr) {
         LOGE("Can't open %s\n", STATUS_COOKIE_FILE);
     }
-    if (IS_LE_MODE()) {
-        LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
-        ota_status = strdup("OTA_INPROGRESS");
-        if(ota_status != nullptr)
-            set_ota_cookie(ota_status);
-    }
+
+    // {{ Check volume modification requirement from metadata }}
+    bool volume_modification_required = false;
+
     if (update_package) {
+        // Parse flags from update_package and potentially modify the path
+        parse_update_flags(&update_package);
+
+        MemMapping map;
+        if (sysMapFile(update_package, &map) == 0) {
+            ZipArchive za = {0};
+            if (mzOpenZipArchive(map.addr, map.length, &za) == 0) {
+                std::string metadata;
+                if (read_metadata_from_package(&za, &metadata)) {
+                    // Parse metadata to find volume-modication-required
+                    std::vector<std::string> lines = android::base::Split(metadata, "\n");
+                    for (const auto& line : lines) {
+                        size_t eq = line.find('=');
+                        if (eq != std::string::npos) {
+                            std::string key = line.substr(0, eq);
+                            std::string value = line.substr(eq + 1);
+                            if (key == "volume-modication-required" && value == "YES") {
+                                volume_modification_required = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                mzCloseZipArchive(&za);
+            }
+            sysReleaseMap(&map);
+        }
+
+        // Set initial OTA status based on update type
+        // Set initial OTA status based on update type
+        if (IS_LE_MODE()) {
+#ifdef TARGET_SUPPORTS_LVM
+            if (lvm_update) {
+                LOGI("Write OTA_VOL_INPROGRESS to OTA status cookie\n");
+                ota_status = strdup("OTA_VOL_INPROGRESS");
+            } else
+#endif
+            {
+                LOGI("Write OTA_INPROGRESS to OTA status cookie\n");
+                ota_status = strdup("OTA_INPROGRESS");
+            }
+            if (ota_status != nullptr) {
+                set_ota_cookie(ota_status);
+                free(ota_status);  // Free immediately after setting
+                ota_status = nullptr;
+            }
+        }
         // For backwards compatibility on the cache partition only, if
         // we're given an old 'root' path "CACHE:foo", change it to
         // "/cache/foo".
@@ -2058,7 +2223,7 @@ int main(int argc, char **argv) {
         }
 
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
-        //  after AB update and success reboot to updated slots,
+/*        //  after AB update and success reboot to updated slots,
         //  copy image to inactive partitions needs to be performed.
         //  --mirror is set to enable this
         //  "--update_package=/data/update.zip;--mirror"
@@ -2087,8 +2252,31 @@ int main(int argc, char **argv) {
                 fclose(fp);
             }
             printf("not --mirror copy flow \n");
+        }*/
+        // Check if this is a normal OTA (neither mirror copy nor LVM)
+      #ifdef TARGET_SUPPORTS_LVM
+        if (!mirror_copy && !lvm_update) {
+            write_mirror_flag_to_file(update_package);
         }
+      #else
+	if(!mirror_copy) {
+	   write_mirror_flag_to_file(update_package);
+	}
+      #endif
 #endif
+if (has_cache) {
+     printf("we are in zip file --update_package=%s\n", update_package);
+    FILE* fp = fopen_path(ZIP_FILE_PATH, "w");
+    if (fp != nullptr) {
+        fprintf(fp, "--update_package=%s\n", update_package);
+        fflush(fp);
+        fsync(fileno(fp));
+        check_and_fclose(fp, ZIP_FILE_PATH);
+        LOGI("Wrote update package path to %s\n", ZIP_FILE_PATH);
+    } else {
+        LOGE("Failed to open %s for writing: %s\n", ZIP_FILE_PATH, strerror(errno));
+    }
+}
 
     }
     printf("\n");
@@ -2118,7 +2306,13 @@ int main(int argc, char **argv) {
             status = INSTALL_SKIPPED;
         } else {
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
+    #ifdef TARGET_SUPPORTS_LVM
+        if (!lvm_update) {
             set_mirror_copy_cookie("STARTED");
+        }
+    #else
+        set_mirror_copy_cookie("STARTED");
+    #endif
 #endif
             status = install_package(update_package, &should_wipe_cache,
                                      TEMPORARY_INSTALL_FILE, mount_required, retry_count);
@@ -2206,7 +2400,7 @@ error:
 
 // Don't call prompt_and_wait() if A/B boot is supported
 // In this case, recovery should exit and with appropriate error code
-#ifndef TARGET_SUPPORTS_AB
+#if !defined(TARGET_SUPPORTS_AB) && !defined(CONFIG_RECOVERY_STD)
     if ((status != INSTALL_SUCCESS && status != INSTALL_SKIPPED && !sideload_auto_reboot) ||
             ui->IsTextVisible()) {
         Device::BuiltinAction temp = prompt_and_wait(device, status);
@@ -2216,7 +2410,12 @@ error:
     }
 #else
 #ifdef TARGET_SUPPORTS_MIRROR_AB_COPY
-    if(status == INSTALL_SUCCESS) {
+
+    #ifdef TARGET_SUPPORTS_LVM
+    if (status == INSTALL_SUCCESS && !lvm_update) {
+    #else
+    if (status == INSTALL_SUCCESS) {
+    #endif
         std::fstream file;
         std::string stage, mirror_status;
         file.open(MIRROR_COPY_STATUS_COOKIE_FILE, std::ios::in);
@@ -2249,10 +2448,34 @@ error:
     printf("Recovery exiting, upgrade %s\n",
             (status == INSTALL_SUCCESS) ? "success!" : "failed!");
 #endif
-    ota_status = (status == INSTALL_SUCCESS) ? strdup("OTA_SUCCESS") : strdup("OTA_FAILED");
-    if (IS_LE_MODE() && ota_status != nullptr) {
-        printf("Write OTA status to OTA cookie %s\n", ota_status);
-        set_ota_cookie(ota_status);
+    if (IS_LE_MODE()) {
+#ifdef TARGET_SUPPORTS_LVM
+        if (lvm_update) {
+            // For LVM updates, use the VOL-specific status codes
+            ota_status = (status == INSTALL_SUCCESS) ? 
+                strdup("OTA_VOL_SUCCESS") : strdup("OTA_VOL_FAILED");
+        } else
+#endif
+        {
+            // For normal OTA updates, check if volume modifications were required
+            if (status == INSTALL_SUCCESS) {
+
+                if (volume_modification_required && (not_mirror_copy)) {
+                    ota_status = strdup("PHYSICAL_PARTITION_WRITE_SUCCESS");
+                } else {
+                    ota_status = strdup("OTA_SUCCESS");
+                }
+            } else {
+                ota_status = strdup("OTA_FAILED");
+            }
+        }
+        
+        if (ota_status != nullptr) {
+            printf("Write OTA status to OTA cookie %s\n", ota_status);
+            set_ota_cookie(ota_status);
+            free(ota_status);  // Clean up immediately
+            ota_status = nullptr;
+        }
     }
     int ota_status_val = get_ota_status();
     printf("OTA status %d\n", ota_status_val);
@@ -2262,7 +2485,7 @@ error:
 
     sync();
 
-#ifdef TARGET_SUPPORTS_AB
+#if defined(TARGET_SUPPORTS_AB)|| defined(CONFIG_RECOVERY_STD)
     _exit((status == INSTALL_SUCCESS) ? EXIT_SUCCESS : EXIT_FAILURE);
 #else
     switch (after) {
