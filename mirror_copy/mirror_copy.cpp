@@ -26,6 +26,7 @@ SPDX-License-Identifier: BSD-3-Clause-Clear
 #ifdef TARGET_SUPPORTS_AB
 #include <libabctl.h>
 #endif
+static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
 static const char *MIRROR_COPY_STATUS_COOKIE_FILE = "/cache/recovery/mirror_copy_status";
 static const char *TEMPORARY_LOG_FILE = "/cache/recovery/mirror_copy.log";
 static const char *ZIP_FILE_PATH = "/cache/recovery/update_package_path";
@@ -87,8 +88,26 @@ std::string read_last_line(std::fstream &fin) {
     return "";
 }
 
+std::string read_ota_status() {
+    FILE *f = fopen(STATUS_COOKIE_FILE, "r");
+    if (!f) {
+        perror("Failed to open ota_status");
+        return "";
+    }
 
+    char buf[64];
+    if (fgets(buf, sizeof(buf), f) == NULL) {
+        perror("Failed to read ota_status");
+        fclose(f);
+        return "";
+    }
+    fclose(f);
 
+    // Strip newline if present
+    buf[strcspn(buf, "\r\n")] = '\0';
+
+    return std::string(buf);
+}
 
 int main() {
     FILE *stream = freopen(TEMPORARY_LOG_FILE, "a", stdout);
@@ -165,11 +184,17 @@ int main() {
         std::cout << "stage: " << stage << " ota_status: " << ota_status
                   << " zip_path: " << zip_path << "\n";
 
-
+         // Update usage:
+        std::string current_status = read_ota_status();
+        if (current_status.empty()) {
+          std::cout << "Failed to read OTA status\n";
+        return 0;
+        }
         // triggering the mirror copy
         if (stage == "STAGE1" && ota_status == "OTA_COMPLETED" &&
-                 boot_slot == boot_slot_from_ota_status &&
-                 (ota_started_slot + 1) % 2 == boot_slot) {
+            current_status == "OTA_SUCCESS" &&
+            boot_slot == boot_slot_from_ota_status &&
+            (ota_started_slot + 1) % 2 == boot_slot) {
             std::cout << "triggering the mirror copy\n";
             //fclose(stream);
             pid_t pid = fork();
