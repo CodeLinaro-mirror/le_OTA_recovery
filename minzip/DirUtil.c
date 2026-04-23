@@ -77,6 +77,7 @@ dirCreateHierarchy(const char *path, int mode,
         return -1;
     }
     memcpy(cpath, path, pathLen);
+    cpath[pathLen] = '\0';
     if (stripFileName) {
         /* Strip everything after the last slash.
          */
@@ -147,17 +148,21 @@ dirCreateHierarchy(const char *path, int mode,
 
             char *secontext = NULL;
 
+#ifdef CONFIG_PACKAGE_SELINUX_POLICY
             if (sehnd) {
                 selabel_lookup(sehnd, &secontext, cpath, mode);
                 setfscreatecon(secontext);
             }
+#endif
 
             err = mkdir(cpath, mode);
 
+#ifdef CONFIG_PACKAGE_SELINUX_POLICY
             if (secontext) {
                 freecon(secontext);
                 setfscreatecon(NULL);
             }
+#endif
 
             if (err != 0) {
                 free(cpath);
