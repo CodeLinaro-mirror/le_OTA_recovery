@@ -2214,6 +2214,11 @@ bool PerformBlockCopyOperation(char* source, char* dest) {
     uint8_t src_hash[SHA_DIGEST_LENGTH], dest_hash[SHA_DIGEST_LENGTH];
 
     char* buffer = reinterpret_cast<char*>(malloc(BLOCKSIZE));
+    if(buffer==NULL){
+        printf("PerformBlockCopyOperation: failed to allocate buffer");
+        success = false;
+        goto end;
+    }
     while (success && (read =
             TEMP_FAILURE_RETRY(ota_read(source_fd, buffer, BLOCKSIZE))) > 0) {
         // printf("Read %zd bytes from source_fd\n", read);
@@ -2415,6 +2420,10 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
         snprintf(buffer, PATH_MAX, "%s%s", block_dev,
                 slot_suffix_arr[inactive_slot]);
         block_dev = strdup(buffer);
+        if(block_dev == NULL){
+            printf("%s: Failed while getting block_dev name\n", name);
+            return StringValue(strdup(""));
+        }
         printf("%s: Checking sanity of %s\n", name, block_dev);
     } else {
         printf("%s: Expecting block-device but received something else!\n", name);
@@ -2445,6 +2454,11 @@ Value* BlockDeviceCheckFn(const char* name, State* state,
     SHA1_Init(&ctx);
     uint8_t block_dev_sha1[SHA_DIGEST_LENGTH];
     char* buffer = reinterpret_cast<char*>(malloc(BLOCKSIZE));
+    if(buffer == NULL) {
+        printf("%s: Failed to allocate buffer\n", name);
+        free(block_dev);
+        return StringValue(strdup(""));
+    }
     size_t to_read = atoll(total_read_size), so_far = 0;
     size_t read = (size_t)min(BLOCKSIZE, to_read - so_far);
 

@@ -147,9 +147,12 @@ Value* AbortFn(const char* name, State* state, int argc, Expr* argv[]) {
     // clearing the cookie would reset the state, and this means more chances
     // of OTA upgrade not failing when re-triggered.
 #ifdef TARGET_SUPPORTS_AB
-    std::string tmp(state->errmsg);
-    std::string buf = tmp + "\nDeleting AB_COPY_DONE before exiting..\n";
-    state->errmsg = strdup(buf.c_str());
+    if(state->errmsg != NULL){
+        std::string tmp(state->errmsg);
+        std::string buf = tmp + "\nDeleting AB_COPY_DONE before exiting..\n";
+        free(state->errmsg);
+        state->errmsg = strdup(buf.c_str());
+    }
     unlink("/cache/recovery/AB_COPY_DONE");
 #ifdef TARGET_NAD_OTA
     system("modprobe -r mtdblock");

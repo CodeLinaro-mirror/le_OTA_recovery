@@ -213,8 +213,15 @@ mtd_mount_partition(const MtdPartition *partition, const char *mount_point,
     const unsigned long flags = MS_NOATIME | MS_NODEV | MS_NODIRATIME;
     char devname[64];
     int rv = -1;
+    char base_path[32];
 
-    snprintf(devname, sizeof(devname), IS_LE_MODE() ? "/dev/mtdblock%d" : "/dev/block/mtdblock%d", partition->device_index);
+    if (IS_LE_MODE()) {
+        strlcpy(base_path, "/dev/mtdblock", sizeof(base_path));
+    } else {
+        strlcpy(base_path, "/dev/block/mtdblock", sizeof(base_path));
+    }
+
+    snprintf(devname, sizeof(devname), "%s%d", base_path, partition->device_index);
     if (!read_only) {
         rv = mount(devname, mount_point, filesystem, flags, NULL);
     }
@@ -256,7 +263,15 @@ mtd_partition_info(const MtdPartition *partition,
         size_t *total_size, size_t *erase_size, size_t *write_size)
 {
     char mtddevname[32];
-    snprintf(mtddevname, sizeof(mtddevname), IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
+    char base_path[32];
+
+    if (IS_LE_MODE()) {
+        strlcpy(base_path, "/dev/mtd", sizeof(base_path));
+    } else {
+        strlcpy(base_path, "/dev/mtd/mtd", sizeof(base_path));
+    }
+
+    snprintf(mtddevname, sizeof(mtddevname), "%s%d", base_path, partition->device_index);
     int fd = open(mtddevname, O_RDONLY);
     if (fd < 0) return -1;
 
@@ -283,7 +298,15 @@ MtdReadContext *mtd_read_partition(const MtdPartition *partition)
     }
 
     char mtddevname[32];
-    snprintf(mtddevname, sizeof(mtddevname), IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
+    char base_path[32];
+
+    if (IS_LE_MODE()) {
+        strlcpy(base_path, "/dev/mtd", sizeof(base_path));
+    } else {
+        strlcpy(base_path, "/dev/mtd/mtd", sizeof(base_path));
+    }
+
+    snprintf(mtddevname, sizeof(mtddevname), "%s%d", base_path, partition->device_index);
     ctx->fd = open(mtddevname, O_RDONLY);
     if (ctx->fd < 0) {
         free(ctx->buffer);
@@ -398,7 +421,15 @@ MtdWriteContext *mtd_write_partition(const MtdPartition *partition)
     }
 
     char mtddevname[32];
-    snprintf(mtddevname, sizeof(mtddevname), IS_LE_MODE() ? "/dev/mtd%d" : "/dev/mtd/mtd%d", partition->device_index);
+    char base_path[32];
+
+    if (IS_LE_MODE()) {
+        strlcpy(base_path, "/dev/mtd", sizeof(base_path));
+    } else {
+        strlcpy(base_path, "/dev/mtd/mtd", sizeof(base_path));
+    }
+
+    snprintf(mtddevname, sizeof(mtddevname), "%s%d", base_path, partition->device_index);
     ctx->fd = open(mtddevname, O_RDWR);
     if (ctx->fd < 0) {
         free(ctx->buffer);
