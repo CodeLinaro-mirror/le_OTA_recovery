@@ -66,6 +66,10 @@ cpp_sources := adb_install.cpp \
     screen_ui.cpp \
     ui.cpp
 
+if TARGET_SUPPORTS_OTA_WHOLE_FILE_SIGN
+cpp_sources += verifier.cpp
+endif
+
 requiredlibs := -lm \
                -lpthread \
                -lz \
@@ -142,6 +146,10 @@ endif
 
 if TARGET_SUPPORTS_OTA_VERIFICATION
 recovery_CPPFLAGS += -DTARGET_SUPPORTS_OTA_VERIFICATION
+endif
+
+if TARGET_SUPPORTS_OTA_WHOLE_FILE_SIGN
+recovery_CPPFLAGS += -DTARGET_SUPPORTS_OTA_WHOLE_FILE_SIGN
 endif
 
 if TARGET_NAND_BOOT
