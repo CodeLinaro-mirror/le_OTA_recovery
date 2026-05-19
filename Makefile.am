@@ -40,12 +40,12 @@ libfusesideload_la_SOURCES := $(fuse_sideload_sources)
 if USE_GLIB
 libfusesideload_la_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 libfusesideload_la_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
-libfusesideload_la_LIBADD := -lm -lpthread @GLIB_LIBS@
+libfusesideload_la_LIBADD := -lm -lpthread -lcrypto @GLIB_LIBS@
 libfusesideload_la_LDFLAGS := -all-static
 else
 libfusesideload_la_CFLAGS := $(AM_CFLAGS)
 libfusesideload_la_CPPFLAGS := $(AM_CPPFLAGS)
-libfusesideload_la_LIBADD := -lm -lpthread
+libfusesideload_la_LIBADD := -lm -lpthread -lcrypto
 libfusesideload_la_LDFLAGS := -all-static
 endif
 
@@ -95,12 +95,12 @@ if USE_GLIB
 recovery_SOURCES := $(cpp_sources)
 recovery_CFLAGS := $(AM_CFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION) -DUSE_GLIB @GLIB_CFLAGS@
 recovery_CPPFLAGS := $(AM_CPPFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION) -DUSE_GLIB @GLIB_CFLAGS@
-recovery_LDADD := $(requiredlibs) -lcrypto @GLIB_LIBS@
+recovery_LDADD := -lcrypto $(requiredlibs) @GLIB_LIBS@
 else
 recovery_SOURCES := $(cpp_sources)
 recovery_CFLAGS := $(AM_CFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION)
 recovery_CPPFLAGS := $(AM_CPPFLAGS) -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION)
-recovery_LDADD := $(requiredlibs) -lcrypto
+recovery_LDADD := -lcrypto $(requiredlibs)
 endif
 
 if USE_G_STRLCPY_STRLCAT
