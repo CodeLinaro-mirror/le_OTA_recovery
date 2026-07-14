@@ -99,6 +99,33 @@ static const char *RECOVERYUPDATER_COOKIE = "/cache/recoveryupgrade/RECOVERY_UPG
 //This variable holds the value of build-id fetched
 static const char* buildId;
 
+// Cookie file capturing the detailed OTA status as a single stable string
+// token (see *_to_token() in error_code.h). Written on both success and
+// failure so that a subsequent boot / analytics can classify the outcome
+// without parsing last_install. Named after the existing last_install/last_log
+// convention. Example contents: "OPENSSL_COMPAT_ERROR", "SUCCESS".
+static const char *DETAILED_OTA_STATUS = "/cache/recovery/detailed_ota_status";
+
+// Write a single status token to the detailed OTA status cookie, truncating
+// any previous contents. Best-effort: failures here must never abort an install.
+static void write_detailed_ota_status(const char* token) {
+    if (token == NULL) {
+        token = "UNKNOWN_ERROR";
+    }
+    // Make sure the containing dir is mounted before writing.
+    if (ensure_path_mounted(DETAILED_OTA_STATUS) != 0) {
+        LOGW("Can't mount %s to write OTA status\n", DETAILED_OTA_STATUS);
+        return;
+    }
+    std::string content = std::string(token) + "\n";
+    if (!android::base::WriteStringToFile(content, DETAILED_OTA_STATUS)) {
+        LOGE("failed to write OTA status cookie %s: %s\n",
+             DETAILED_OTA_STATUS, strerror(errno));
+    } else {
+        LOGI("Wrote OTA status '%s' to %s\n", token, DETAILED_OTA_STATUS);
+    }
+}
+
 // This function parses and returns the build.version.incremental
 static int parse_build_number(std::string str) {
     size_t pos = str.find("=");
@@ -602,8 +629,15 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
     if (pid == 0) {
         umask(022);
         close(pipefd[0]);
+        // Redirect the child's stderr into the status pipe as well, so that
+        // diagnostics emitted by the dynamic linker (e.g. "error while loading
+        // shared libraries: libcrypto.so.1.1: cannot open shared object file")
+        // before execv even reaches main() are captured by the parent and can
+        // be classified below. Without this, ld.so writes straight to the
+        // console and the parent only observes a non-zero exit status.
+        dup2(pipefd[1], STDERR_FILENO);
         execv(chr_args[0], const_cast<char**>(chr_args));
-        fprintf(stdout, "E:Can't run %s (%s)\n", chr_args[0], strerror(errno));
+        fprintf(stderr, "E:Can't run %s (%s)\n", chr_args[0], strerror(errno));
         LOGE("Can't run %s (%s)\n", chr_args[0], strerror(errno));
         _exit(-1);
     }
@@ -611,10 +645,30 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
 
     *wipe_cache = false;
     bool retry_update = false;
+    // Set if the dynamic linker reported it could not load a shared library
+    // the update_binary depends on, and (more specifically) whether that
+    // library is an OpenSSL library — indicating an OpenSSL soname mismatch
+    // between the recovery image and update_binary.
+    bool shared_lib_load_failure = false;
+    bool openssl_compat_failure = false;
 
     char buffer[1024];
     FILE* from_child = fdopen(pipefd[0], "r");
     while (fgets(buffer, sizeof(buffer), from_child) != NULL) {
+        // Inspect the raw line before strtok_r() mutates it. The dynamic linker
+        // emits lines like:
+        //   "<binary>: error while loading shared libraries: libcrypto.so.1.1:
+        //    cannot open shared object file: No such file or directory"
+        // These are not status-pipe commands, so detect and classify them here.
+        if (strstr(buffer, "error while loading shared libraries") != NULL) {
+            shared_lib_load_failure = true;
+            if (strstr(buffer, "libcrypto") != NULL ||
+                strstr(buffer, "libssl") != NULL) {
+                openssl_compat_failure = true;
+            }
+            LOGE("update_binary failed to load shared libraries: %s", buffer);
+            continue;
+        }
         char* saveptr = NULL;
         char* command = strtok_r(buffer, " \n", &saveptr);
         if (command == NULL) {
@@ -667,6 +721,24 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache,
     }
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
         LOGE("Error in %s\n(Status %d)\n", path, WEXITSTATUS(status));
+        // If the child died because the dynamic linker could not resolve a
+        // shared library, surface a specific cause code so post-processing
+        // (and last_install) can tell an OpenSSL compatibility problem apart
+        // from a generic install error. The "cause:" line is consumed the same
+        // way as codes emitted by update_binary itself.
+        if (shared_lib_load_failure) {
+            if (openssl_compat_failure) {
+                LOGE("update_binary failed due to OpenSSL library incompatibility "
+                     "(libcrypto/libssl soname mismatch between recovery image and "
+                     "update_binary)\n");
+                log_buffer.push_back(
+                        android::base::StringPrintf("cause: %d", kOpensslCompatFailure));
+            } else {
+                LOGE("update_binary failed due to a missing/incompatible shared library\n");
+                log_buffer.push_back(
+                        android::base::StringPrintf("cause: %d", kSharedLibLoadFailure));
+            }
+        }
         return INSTALL_ERROR;
     }
 
@@ -1078,9 +1150,25 @@ install_package(const char* path, bool* wipe_cache, const char* install_file,
     }
     
     printf("cause code: %d error_code %d\n",cause_code, error_code);
-    //these error codes are from causecode enum in error_code.h
-    if((cause_code =! -1 && cause_code>=100 && cause_code<=113))
+    //these error codes are from causecode enum in error_code.h.
+    //Use the enum bounds rather than hardcoded numbers so newly added
+    //cause codes are covered automatically.
+    if(cause_code != kNoCause && cause_code >= kArgsParsingFailure &&
+       cause_code < kVendorFailure)
         result = INSTALL_ERROR;
+
+    // Write a single status token to the detailed OTA status cookie, reusing
+    // the cause_code/error_code already parsed above from install_file. Prefer
+    // the most specific information available: a cause code (e.g. 115 ->
+    // OPENSSL_COMPAT_ERROR) beats a generic error code, which in turn beats the
+    // coarse SUCCESS/FAIL derived from the install result.
+    const char* status_token = (result == INSTALL_SUCCESS) ? "SUCCESS" : "FAIL";
+    if (cause_code != kNoCause) {
+        status_token = cause_code_to_token(cause_code);
+    } else if (error_code != kNoError) {
+        status_token = error_code_to_token(error_code);
+    }
+    write_detailed_ota_status(status_token);
 #endif
     // Write a copy into last_log.
     LOGI("%s\n", log_content.c_str());
