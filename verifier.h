@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 
-#include <openssl/ec_key.h>
+#include <openssl/ec.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
 
