@@ -2680,13 +2680,18 @@ Value* CopyABPartitionsFn(const char* name, State* state,
             }
             snprintf(inactive_block_dev_filename, PATH_MAX, "%s/%s",
                     BOOTDEVICE_DIR, de->d_name);
-            char *p = strstr(inactive_block_dev_filename,
-                              slot_suffix_arr[boot_slot]);
-            if (p == NULL) {
-                printf("CopyABPartitionsFn: Inactive Block device is null");
+            size_t inactive_len = strlen(inactive_block_dev_filename);
+            if (inactive_len < 2) {
+                printf("CopyABPartitionsFn: Inactive Block device name too short");
                 return StringValue(strdup(""));
             }
-            strlcpy(p,  slot_suffix_arr[inactive_slot], 3); // replace the slot
+            char *p = inactive_block_dev_filename + inactive_len - 2;
+            if (strncmp(p, slot_suffix_arr[boot_slot], 2) != 0) {
+                printf("CopyABPartitionsFn: Inactive Block device is null");
+                closedir(dir);
+                return StringValue(strdup(""));
+            }
+            strlcpy(p, slot_suffix_arr[inactive_slot], 3); // replace the slot
 
             /* Perform the actual copy */
             printf("%s: Copying from %s to %s\n", name, active_block_dev_filename,
