@@ -52,7 +52,7 @@
 #include "roots.h"
 #include "ui.h"
 
-#ifndef USE_LE_MODE
+#if !defined(USE_LE_MODE) || defined(TARGET_SUPPORTS_OTA_WHOLE_FILE_SIGN)
 #include "verifier.h"
 #endif
 
@@ -645,7 +645,16 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
         }
     }
 
-    // Try to open the package.
+#ifdef TARGET_SUPPORTS_OTA_WHOLE_FILE_SIGN
+    // Verify package.
+    if (!verify_package(map.addr, map.length)) {
+        log_buffer.push_back(android::base::StringPrintf("error: %d", kZipVerificationFailure));
+        sysReleaseMap(&map);
+        return INSTALL_CORRUPT;
+    }
+#endif
+
+    // Try to open the package after signature verification succeeds.
     ZipArchive zip;
     int err = mzOpenZipArchive(map.addr, map.length, &zip);
     if (err != 0) {
@@ -655,8 +664,8 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
         return INSTALL_CORRUPT;
     }
 
-#ifdef TARGET_SUPPORTS_OTA_VERIFICATION
-    // Verify package.
+#if defined(TARGET_SUPPORTS_OTA_VERIFICATION) && !defined(TARGET_SUPPORTS_OTA_WHOLE_FILE_SIGN)
+    // Verify package with legacy update.sig flow.
     if (!verify_ota_package(path, &zip)) {
         log_buffer.push_back(android::base::StringPrintf("error: %d", kZipVerificationFailure));
         sysReleaseMap(&map);
@@ -765,7 +774,7 @@ install_package(const char* path, bool* wipe_cache, const char* install_file,
 }
 
 bool verify_package(const unsigned char* package_data, size_t package_size) {
-#ifndef USE_LE_MODE
+#if defined(TARGET_SUPPORTS_OTA_WHOLE_FILE_SIGN) || !defined(USE_LE_MODE)
     std::vector<Certificate> loadedKeys;
     if (!load_keys(PUBLIC_KEYS_FILE, loadedKeys)) {
         LOGE("Failed to load keys\n");
