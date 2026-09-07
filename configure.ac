@@ -141,6 +141,9 @@ AM_CONDITIONAL([TARGET_SUPPORTS_ABC],[test x$TARGET_SUPPORTS_ABC = xtrue])
 # Compile ota package verification code for targets supporting it
 AM_CONDITIONAL([TARGET_SUPPORTS_OTA_VERIFICATION],[test x$TARGET_SUPPORTS_OTA_VERIFICATION = xtrue])
 
+# Compile AOSP whole-file verification path for targets supporting it
+AM_CONDITIONAL([TARGET_SUPPORTS_OTA_WHOLE_FILE_SIGN],[test x$TARGET_SUPPORTS_OTA_WHOLE_FILE_SIGN = xtrue])
+
 # Compile nand dm verity code for targets supporting it
 AM_CONDITIONAL([TARGET_SUPPORTS_NAND_DM_VERITY],[test x$TARGET_SUPPORTS_NAND_DM_VERITY = xtrue])
 
