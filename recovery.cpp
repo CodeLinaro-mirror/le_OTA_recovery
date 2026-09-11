@@ -808,7 +808,7 @@ static int set_ota_cookie(const char* ota_status) {
              strerror(errno));
         goto error;
     }
-    LOGI("ota_status cookie set");
+    LOGI("ota_status cookie set\n");
     close(fd);
     return 0;
 error:
@@ -1985,7 +1985,6 @@ static void write_mirror_flag_to_file(const char* update_package) {
     char zip_path[MAX_ARG_LENGTH];
     snprintf(zip_path, MAX_ARG_LENGTH, "--update_package=%s;--mirror", update_package);
     std::cout << "Received ota_update and update_package path: " << zip_path << std::endl;
-    
     FILE *fp = fopen(ZIP_FILE_PATH, "w");
     if (fp != NULL) {
         fprintf(fp, "%s\n", zip_path);
@@ -1993,7 +1992,7 @@ static void write_mirror_flag_to_file(const char* update_package) {
     }
     printf("not --mirror copy flow \n");
 #endif
-} 
+}
 
 int main(int argc, char **argv) {
     // Take last pmsg contents and rewrite it to the current pmsg session.
@@ -2264,6 +2263,7 @@ int main(int argc, char **argv) {
 	}
       #endif
 #endif
+#ifndef TARGET_SUPPORTS_AB
 if (has_cache) {
      printf("we are in zip file --update_package=%s\n", update_package);
     FILE* fp = fopen_path(ZIP_FILE_PATH, "w");
@@ -2277,7 +2277,7 @@ if (has_cache) {
         LOGE("Failed to open %s for writing: %s\n", ZIP_FILE_PATH, strerror(errno));
     }
 }
-
+#endif
     }
     printf("\n");
 #ifndef USE_LE_MODE
@@ -2469,7 +2469,6 @@ error:
                 ota_status = strdup("OTA_FAILED");
             }
         }
-        
         if (ota_status != nullptr) {
             printf("Write OTA status to OTA cookie %s\n", ota_status);
             set_ota_cookie(ota_status);
