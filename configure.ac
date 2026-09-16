@@ -151,6 +151,7 @@ AM_CONDITIONAL([TARGET_NAND_BOOT],[test x$TARGET_NAND_BOOT = xtrue])
 
 AM_CONDITIONAL([TARGET_SUPPORT_FDE_OTA],[test x$TARGET_SUPPORT_FDE_OTA = xtrue])
 
+# Compile nad ota code for targets supporting it
 AM_CONDITIONAL([TARGET_NAD_OTA],[test x$TARGET_NAD_OTA = xtrue])
 
 AC_ARG_WITH([nad-prod],
@@ -159,7 +160,11 @@ AC_ARG_WITH([nad-prod],
 # Compile nad_prod ota code for targets supporting it
 AM_CONDITIONAL([TARGET_NAD_PROD],[test "x${with_nad_prod}" = "xtrue"])
 
-# Compile nad ota code for targets supporting it
+AC_ARG_WITH([var-cache],
+      AC_HELP_STRING([--with-var-cache],
+         [Use this for /var/cache]))
+# Use /var/cache for ota in device for targets supporting it
+AM_CONDITIONAL(USE_VAR_CACHE, test "x${with_var_cache}" = "xyes")
 
 AC_ARG_WITH([core-headers],
       AC_HELP_STRING([--with-core-headers=@<:@dir@:>@],
