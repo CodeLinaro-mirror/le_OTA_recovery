@@ -108,12 +108,10 @@ if USE_GLIB
 imgdiff_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 imgdiff_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 imgdiff_LDADD := -lz -lbz2 @GLIB_LIBS@
-imgdiff_LDFLAGS := -all-static
 else
 imgdiff_CFLAGS := $(AM_CFLAGS)
 imgdiff_CPPFLAGS := $(AM_CPPFLAGS)
 imgdiff_LDADD := -lz -lbz2
-imgdiff_LDFLAGS := -all-static
 endif
 
 
