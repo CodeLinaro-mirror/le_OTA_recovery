@@ -369,14 +369,18 @@ std::unique_ptr<RSA, RSADeleter> parse_rsa_key(FILE* file, uint32_t exponent) {
       return nullptr;
     }
 
-    key->n = BN_bin2bn((uint8_t*)modulus.get(),
-                       key_len_words * sizeof(uint32_t), NULL);
-    if (!key->n) {
+    std::unique_ptr<BIGNUM, void (*)(BIGNUM*)> n(
+        BN_bin2bn((uint8_t*)modulus.get(), key_len_words * sizeof(uint32_t), nullptr), BN_free);
+    if (!n) {
       return nullptr;
     }
 
-    key->e = BN_new();
-    if (!key->e || !BN_set_word(key->e, exponent)) {
+    std::unique_ptr<BIGNUM, void (*)(BIGNUM*)> e(BN_new(), BN_free);
+    if (!e || !BN_set_word(e.get(), exponent)) {
+      return nullptr;
+    }
+
+    if (!RSA_set0_key(key.get(), n.release(), e.release(), nullptr)) {
       return nullptr;
     }
 
