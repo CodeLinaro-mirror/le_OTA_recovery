@@ -63,7 +63,7 @@ static MtdState g_mtd_state = {
 };
 
 #define MTD_PROC_FILENAME   "/proc/mtd"
-#define NUM_MAX_PARTITIONS   70
+#define NUM_MAX_PARTITIONS   80
 #define MAX_BUFFER_SIZE 4096
 
 int
