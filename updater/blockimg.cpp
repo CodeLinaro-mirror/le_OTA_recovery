@@ -2383,7 +2383,7 @@ static long read_telaf_version()
 {
     long version = -1;
     char versionBuffer[MAX_VERSION_STR_BYTES];
-    char* telaf_ver = (char*) malloc(7*sizeof(char));
+    char* telaf_ver = (char*) malloc(10*sizeof(char));
     if (telaf_ver == NULL){
         return -1;
     }
@@ -2397,9 +2397,28 @@ static long read_telaf_version()
     if (versionFile != NULL){
       if (fgets(versionBuffer, MAX_VERSION_STR_BYTES, versionFile) != NULL){
         char* verStart = strchr(versionBuffer, '-');
-        memcpy(telaf_ver, ++verStart, 6);
-        const char* out = telaf_ver;
-        version = strtol(out, NULL, 10);
+        char* verEnd = strchr(versionBuffer, '_');
+        if ((verStart != NULL) && (verEnd != NULL) && (verEnd > verStart)){
+          int i = 0;
+          verStart++; // Skip '-'
+
+          while (verStart < verEnd) {
+            if (isdigit((unsigned char)*verStart)) {
+              if(i<9){
+                telaf_ver[i++] = *verStart;
+              } else {
+                printf ("telaf version is out of bound \n");
+                free(telaf_ver);
+                fclose(versionFile);
+                return -1;
+              }
+            }
+            verStart++;
+          }
+          telaf_ver[i] = '\0';
+          const char* out = telaf_ver;
+          version = strtol(out, NULL, 10);
+        }
       }
       fclose(versionFile);
     }
