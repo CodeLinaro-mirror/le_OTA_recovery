@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
@@ -256,6 +257,36 @@ int RecoveryUI::WaitKey() {
 }
 
 bool RecoveryUI::IsUsbConnected() {
+#if defined(QCLINUX_KERNEL_BASED_TARGETS)
+    const char* udc_base = "/sys/class/udc/";
+    char state_path[256] = {};
+
+    DIR* dir = opendir(udc_base);
+    if (dir) {
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            if (entry->d_name[0] == '.')
+                continue;
+            snprintf(state_path, sizeof(state_path), "%s%s/state",
+                     udc_base, entry->d_name);
+            break;
+        }
+        closedir(dir);
+    }
+    if (state_path[0] == '\0') {
+        printf("IsUsbConnected: no UDC entry under %s\n", udc_base);
+        return false;
+    }
+    int fd = open(state_path, O_RDONLY);
+    if (fd < 0) {
+        printf("failed to open %s: %s\n", state_path, strerror(errno));
+        return false;
+    }
+    char buf[32] = {};
+    ssize_t n = TEMP_FAILURE_RETRY(read(fd, buf, sizeof(buf) - 1));
+    close(fd);
+    return (n > 0) && (strncmp(buf, "configured", 10) == 0);
+#else
     int fd = open("/sys/class/android_usb/android0/state", O_RDONLY);
     if (fd < 0) {
         printf("failed to open /sys/class/android_usb/android0/state: %s\n",
@@ -271,6 +302,7 @@ bool RecoveryUI::IsUsbConnected() {
                strerror(errno));
     }
     return connected;
+#endif
 }
 
 bool RecoveryUI::IsKeyPressed(int key) {
