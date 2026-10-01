@@ -87,6 +87,10 @@ if TARGET_NAND_BOOT
 libapplypatch_la_CPPFLAGS += -DTARGET_NAND_BOOT
 endif
 
+if USE_VAR_CACHE
+libapplypatch_la_CPPFLAGS += -DUSE_VAR_CACHE
+endif
+
 bin_PROGRAMS := applypatch
 
 if USE_GLIB
@@ -108,12 +112,10 @@ if USE_GLIB
 imgdiff_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 imgdiff_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 imgdiff_LDADD := -lz -lbz2 @GLIB_LIBS@
-imgdiff_LDFLAGS := -all-static
 else
 imgdiff_CFLAGS := $(AM_CFLAGS)
 imgdiff_CPPFLAGS := $(AM_CPPFLAGS)
 imgdiff_LDADD := -lz -lbz2
-imgdiff_LDFLAGS := -all-static
 endif
 
 
