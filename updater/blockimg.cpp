@@ -104,7 +104,11 @@ int get_boot_dev_type();
 // erase to mean fill the region with zeroes.
 #define DEBUG_ERASE  0
 
+#ifndef USE_VAR_CACHE
 #define STASH_DIRECTORY_BASE "/cache/recovery"
+#else
+#define STASH_DIRECTORY_BASE "/var/cache/recovery"
+#endif
 #define STASH_DIRECTORY_MODE 0700
 #define STASH_FILE_MODE 0600
 
