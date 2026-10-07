@@ -2311,11 +2311,18 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     size_t total_eb_count = vol_size/leb_size;
-    size_t image_eb_count = (image_size * BLOCKSIZE) / leb_size;
-    struct erase_info_user ei;
+    size_t image_bytes = image_size * BLOCKSIZE;
+    size_t remainder = image_bytes % leb_size;
+    // Image ends exactly at the end of LEB full_eb_count - 1.
+    // First unused LEB is full_eb_count.
+    size_t image_eb_count = image_bytes / leb_size;
+    if (remainder != 0) {
+        // The final occupied LEB is full_eb_count.
+        // Clear its unused tail, then erase only from the next LEB.
+        image_eb_count = (image_bytes / leb_size) + 1;
+    }
     struct erase_info_user64 ei64;
-    image_eb_count++;
-    for (int eb_cnt = image_eb_count ; eb_cnt < total_eb_count; eb_cnt++) {
+    for (size_t eb_cnt = image_eb_count ; eb_cnt < total_eb_count; eb_cnt++) {
       ei64.start = (uint64_t)eb_cnt*leb_size;
       ei64.length = (uint64_t)leb_size;
       ret = ioctl(fd, MEMERASE64, &ei64);
