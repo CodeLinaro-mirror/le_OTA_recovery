@@ -455,11 +455,13 @@ get_args(int *argc, char ***argv) {
             char *save;
             for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
                 if ((arg = strtok_r(NULL, "\n", &save)) == NULL) break;
-                (*argv)[*argc] = strdup(arg);
+                if (*argv != NULL)
+                    (*argv)[*argc] = strdup(arg);
             }
             LOGI("Got arguments from boot message\n");
-             if(argv != NULL) {
-                (*argv)[0] = strdup(arg);
+             if(*argv != NULL) {
+                if (arg != NULL)
+                    (*argv)[0] = strdup(arg);
                  char *save_ptr;
                 for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
                     if ((arg = strtok_r(NULL, "\n", &save_ptr)) == NULL) break;
@@ -479,9 +481,9 @@ get_args(int *argc, char ***argv) {
         if (fp != NULL) {
             char *token;
             char *saveptr = NULL;
-            char *argv0 = (*argv)[0];
+            char *argv0 = (*argv != NULL) ? (*argv)[0] : NULL;
             *argv = (char **) malloc(sizeof(char *) * MAX_ARGS);
-            if(argv != NULL) {
+            if(*argv != NULL) {
                 (*argv)[0] = argv0;  // use the same program name
 
                 char buf[MAX_ARG_LENGTH];
@@ -507,9 +509,11 @@ get_args(int *argc, char ***argv) {
     strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
     strlcpy(boot.recovery, "recovery\n", sizeof(boot.recovery));
     int i;
+    if (*argv != NULL) {
     for (i = 1; i < *argc; ++i) {
         strlcat(boot.recovery, (*argv)[i], sizeof(boot.recovery));
         strlcat(boot.recovery, "\n", sizeof(boot.recovery));
+    }
     }
 #ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
     set_bootloader_message(&boot);
@@ -1078,7 +1082,11 @@ static char* browse_directory(const char* path, Device* device) {
 
             if (d_size >= d_alloc) {
                 d_alloc *= 2;
-                dirs = (char**)realloc(dirs, d_alloc * sizeof(char*));
+                char** new_dirs = (char**)realloc(dirs, d_alloc * sizeof(char*));
+                if (new_dirs == NULL) {
+                    break;
+                }
+                dirs = new_dirs;
             }
             dirs[d_size] = (char*)malloc(name_len + 2);
             strlcpy(dirs[d_size], de->d_name, sizeof(dirs[d_size]));
@@ -1090,7 +1098,11 @@ static char* browse_directory(const char* path, Device* device) {
                    strncasecmp(de->d_name + (name_len-4), ".zip", 4) == 0) {
             if (z_size >= z_alloc) {
                 z_alloc *= 2;
-                zips = (char**)realloc(zips, z_alloc * sizeof(char*));
+                char** new_zips = (char**)realloc(zips, z_alloc * sizeof(char*));
+                if (new_zips == NULL) {
+                    break;
+                }
+                zips = new_zips;
             }
             zips[z_size++] = strdup(de->d_name);
         }
@@ -1103,7 +1115,13 @@ static char* browse_directory(const char* path, Device* device) {
     // append dirs to the zips list
     if (d_size + z_size + 1 > z_alloc) {
         z_alloc = d_size + z_size + 1;
-        zips = (char**)realloc(zips, z_alloc * sizeof(char*));
+        char** new_zips = (char**)realloc(zips, z_alloc * sizeof(char*));
+        if (new_zips == NULL) {
+            free(dirs);
+            free(zips);
+            return NULL;
+        }
+        zips = new_zips;
     }
     memcpy(zips + z_size, dirs, d_size * sizeof(char*));
     free(dirs);

@@ -536,14 +536,14 @@ static void EnumerateStash(const std::string& dirname, StashCallback callback, v
         return;
     }
 
-    std::unique_ptr<DIR, int(*)(DIR*)> directory(opendir(dirname.c_str()), closedir);
-
-    if (directory == nullptr) {
+    DIR* raw_dir = opendir(dirname.c_str());
+    if (raw_dir == nullptr) {
         if (errno != ENOENT) {
             fprintf(stderr, "opendir \"%s\" failed: %s\n", dirname.c_str(), strerror(errno));
         }
         return;
     }
+    std::unique_ptr<DIR, int(*)(DIR*)> directory(raw_dir, closedir);
 
     struct dirent* item;
     while ((item = readdir(directory.get())) != nullptr) {
@@ -1268,7 +1268,7 @@ static int PerformCommandDiff(CommandParameters& params) {
         return -1;
     }
 
-    RangeSet tgt;
+    RangeSet tgt = {};
     size_t blocks = 0;
     bool overlap = false;
     int status = 0;
@@ -1823,9 +1823,13 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
         params.cmdline = line_str.c_str();
 
         unsigned int cmdhash = HashString(params.cmdname);
-        const Command* cmd = reinterpret_cast<const Command*>(mzHashTableLookup(cmdht, cmdhash,
-                const_cast<char*>(params.cmdname), CompareCommandNames,
-                false));
+        const Command* cmd = nullptr;
+        if (cmdht != nullptr) {
+                       cmd = reinterpret_cast<const Command*>(mzHashTableLookup(cmdht,cmdhash,
+                             const_cast<char*>(params.cmdname),CompareCommandNames,
+                             false));
+        }
+
 
         if (cmd == nullptr) {
             fprintf(stderr, "unexpected command [%s]\n", params.cmdname);

@@ -194,7 +194,13 @@ unsigned char* ReadZip(const char* filename,
 
   size_t sz = static_cast<size_t>(st.st_size);
   unsigned char* img = reinterpret_cast<unsigned char*>(malloc(sz));
+  if (img == NULL) return NULL;
   FILE* f = fopen(filename, "rb");
+  if (f == NULL) {
+    printf("failed to open \"%s\": %s\n", filename, strerror(errno));
+    free(img);
+    return NULL;
+  }
   if (fread(img, 1, sz, f) != sz) {
     printf("failed to read \"%s\" %s\n", filename, strerror(errno));
     fclose(f);
@@ -222,6 +228,10 @@ unsigned char* ReadZip(const char* filename,
 
   ZipFileEntry* temp_entries = reinterpret_cast<ZipFileEntry*>(malloc(
       cdcount * sizeof(ZipFileEntry)));
+  if (temp_entries == NULL) {
+      free(img);
+      return NULL;
+  }
   int entrycount = 0;
 
   unsigned char* cd = img+cdoffset;
@@ -239,6 +249,11 @@ unsigned char* ReadZip(const char* filename,
     int hoffset = Read4(cd+42);   // local header offset
 
     char* filename = reinterpret_cast<char*>(malloc(nlen+1));
+    if (filename == NULL) {
+      free(temp_entries);
+      free(img);
+      return NULL;
+    }
     memcpy(filename, cd+46, nlen);
     filename[nlen] = '\0';
 
@@ -288,6 +303,11 @@ unsigned char* ReadZip(const char* filename,
 
   *num_chunks = 0;
   *chunks = reinterpret_cast<ImageChunk*>(malloc((entrycount*2+2) * sizeof(ImageChunk)));
+  if (*chunks == NULL) {
+      free(temp_entries);
+      free(img);
+      return NULL;
+  }
   ImageChunk* curr = *chunks;
 
   if (include_pseudo_chunk) {
@@ -386,7 +406,13 @@ unsigned char* ReadImage(const char* filename,
 
   size_t sz = static_cast<size_t>(st.st_size);
   unsigned char* img = reinterpret_cast<unsigned char*>(malloc(sz + 4));
+  if (img == NULL) return NULL;
   FILE* f = fopen(filename, "rb");
+  if (f == NULL) {
+    printf("failed to open \"%s\": %s\n", filename, strerror(errno));
+    free(img);
+    return NULL;
+  }
   if (fread(img, 1, sz, f) != sz) {
     printf("failed to read \"%s\" %s\n", filename, strerror(errno));
     fclose(f);
@@ -418,6 +444,7 @@ unsigned char* ReadImage(const char* filename,
       *num_chunks += 3;
       *chunks = reinterpret_cast<ImageChunk*>(realloc(*chunks,
           *num_chunks * sizeof(ImageChunk)));
+      if (*chunks == NULL) { free(img); return NULL; }
       ImageChunk* curr = *chunks + (*num_chunks-3);
 
       // create a normal chunk for the header.
@@ -515,6 +542,7 @@ unsigned char* ReadImage(const char* filename,
       // chunks to be small (5 for typical boot and recovery images).
       ++*num_chunks;
       *chunks = reinterpret_cast<ImageChunk*>(realloc(*chunks, *num_chunks * sizeof(ImageChunk)));
+      if (*chunks == NULL) { free(img); return NULL; }
       ImageChunk* curr = *chunks + (*num_chunks-1);
       curr->start = pos;
       curr->I = NULL;
@@ -600,6 +628,7 @@ int ReconstructDeflateChunk(ImageChunk* chunk) {
 
   size_t p = 0;
   unsigned char* out = reinterpret_cast<unsigned char*>(malloc(BUFFER_SIZE));
+  if (out == NULL) return -1;
 
   // We only check two combinations of encoder parameters:  level 6
   // (the default) and level 9 (the maximum).
@@ -661,6 +690,7 @@ unsigned char* MakePatch(ImageChunk* src, ImageChunk* tgt, size_t* size) {
   size_t sz = static_cast<size_t>(st.st_size);
   // TODO: Memory leak on error return.
   unsigned char* data = reinterpret_cast<unsigned char*>(malloc(sz));
+  if (data == NULL) return NULL;
 
   if (tgt->type == CHUNK_NORMAL && tgt->len <= sz) {
     unlink(ptemp);
@@ -828,6 +858,7 @@ int main(int argc, char** argv) {
     }
     bonus_size = st.st_size;
     bonus_data = reinterpret_cast<unsigned char*>(malloc(bonus_size));
+    if (bonus_data == NULL) return 1;
     FILE* f = fopen(argv[2], "rb");
     if (f == NULL) {
       printf("failed to open bonus file %s: %s\n", argv[2], strerror(errno));
@@ -977,6 +1008,11 @@ int main(int argc, char** argv) {
   unsigned char** patch_data = reinterpret_cast<unsigned char**>(malloc(
       num_tgt_chunks * sizeof(unsigned char*)));
   size_t* patch_size = reinterpret_cast<size_t*>(malloc(num_tgt_chunks * sizeof(size_t)));
+  if (patch_data == NULL || patch_size == NULL) {
+      free(patch_data);
+      free(patch_size);
+      return 1;
+  }
   for (i = 0; i < num_tgt_chunks; ++i) {
     if (zip_mode) {
       ImageChunk* src;
@@ -1025,6 +1061,10 @@ int main(int argc, char** argv) {
   size_t offset = total_header_size;
 
   FILE* f = fopen(argv[3], "wb");
+  if (f == NULL) {
+    printf("failed to open output file %s: %s\n", argv[3], strerror(errno));
+    return 1;
+  }
 
   // Write out the headers.
 
