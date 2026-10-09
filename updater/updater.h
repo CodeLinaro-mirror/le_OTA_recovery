@@ -40,7 +40,11 @@ typedef struct {
 } UpdaterInfo;
 
 #ifdef TARGET_NAD_OTA
+#ifndef USE_VAR_CACHE
 static const char *NAD_UPDATE_STATUS = "/cache/recovery/nad_ota_status";
+#else
+static const char *NAD_UPDATE_STATUS = "/var/cache/recovery/nad_ota_status";
+#endif
 int set_nad_update_status( const char * value );
 #endif
 
