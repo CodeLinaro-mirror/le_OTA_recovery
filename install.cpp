@@ -70,7 +70,11 @@ static constexpr const char* AB_OTA_PAYLOAD_PROPERTIES = "payload_properties.txt
 static constexpr const char* AB_OTA_PAYLOAD = "payload.bin";
 #define PUBLIC_KEYS_FILE "/res/keys"
 static constexpr const char* METADATA_PATH = "META-INF/com/android/metadata";
+#ifndef USE_VAR_CACHE
 static constexpr const char* UNCRYPT_STATUS = "/cache/recovery/uncrypt_status";
+#else
+static constexpr const char* UNCRYPT_STATUS = "/var/cache/recovery/uncrypt_status";
+#endif
 
 // Default allocation of progress bar segments to operations
 static const int VERIFICATION_PROGRESS_TIME = 60;
@@ -78,7 +82,11 @@ static const float VERIFICATION_PROGRESS_FRACTION = 0.25;
 static const float DEFAULT_FILES_PROGRESS_FRACTION = 0.4;
 static const float DEFAULT_IMAGE_PROGRESS_FRACTION = 0.1;
 
+#ifndef USE_VAR_CACHE
 static const char *RECOVERYUPDATER_COOKIE = "/cache/recoveryupgrade/RECOVERY_UPGRADE_DONE";
+#else
+static const char *RECOVERYUPDATER_COOKIE = "/var/cache/recoveryupgrade/RECOVERY_UPGRADE_DONE";
+#endif
 
 // This function parses and returns the build.version.incremental
 static int parse_build_number(std::string str) {

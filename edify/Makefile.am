@@ -64,3 +64,7 @@ endif
 if TARGET_NAND_BOOT
 libedify_la_CPPFLAGS += -DTARGET_NAND_BOOT
 endif
+
+if USE_VAR_CACHE
+libedify_la_CPPFLAGS += -DUSE_VAR_CACHE
+endif
