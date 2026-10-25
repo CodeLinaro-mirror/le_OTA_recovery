@@ -87,6 +87,10 @@ if TARGET_NAND_BOOT
 libapplypatch_la_CPPFLAGS += -DTARGET_NAND_BOOT
 endif
 
+if USE_VAR_CACHE
+libapplypatch_la_CPPFLAGS += -DUSE_VAR_CACHE
+endif
+
 bin_PROGRAMS := applypatch
 
 if USE_GLIB
