@@ -40,6 +40,12 @@ extern "C" {    // Use till system/core is updated
 #include "cryptfs.h"
 #endif
 
+#ifndef USE_VAR_CACHE
+#define CACHE_PATH "/cache"
+#else
+#define CACHE_PATH "/var/cache"
+#endif
+
 static struct fstab *fstab = NULL;
 
 extern struct selabel_handle *sehandle;
@@ -84,7 +90,7 @@ Volume* volume_for_path(const char* path) {
 // Mount the volume specified by path at the given mount_point.
 int ensure_path_mounted_at(const char* path, const char* mount_point) {
 #ifdef TARGET_NAD_OTA
-    if(strncmp(path, "/cache", strlen("/cache")) == 0) {
+    if(strncmp(path, CACHE_PATH, strlen(CACHE_PATH)) == 0) {
         return 0;
     }
 #endif
@@ -149,7 +155,7 @@ int ensure_path_mounted_at(const char* path, const char* mount_point) {
 
 int ensure_path_mounted(const char* path) {
 #ifdef TARGET_NAD_OTA
-    if(strncmp(path, "/cache", strlen("/cache")) == 0) {
+    if(strncmp(path, CACHE_PATH, strlen(CACHE_PATH)) == 0) {
         return 0;
     }
 #endif
@@ -159,7 +165,7 @@ int ensure_path_mounted(const char* path) {
 
 int ensure_path_unmounted(const char* path) {
 #ifdef TARGET_NAD_OTA
-    if(strncmp(path, "/cache", strlen("/cache")) == 0) {
+    if(strncmp(path, CACHE_PATH, strlen(CACHE_PATH)) == 0) {
         return 0;
     }
 #endif
@@ -315,7 +321,7 @@ int setup_install_mounts() {
         Volume* v = fstab->recs + i;
 
         if (strcmp(v->mount_point, "/tmp") == 0 ||
-            strcmp(v->mount_point, "/cache") == 0) {
+            strcmp(v->mount_point, CACHE_PATH) == 0) {
             if (ensure_path_mounted(v->mount_point) != 0) {
                 LOGE("failed to mount %s\n", v->mount_point);
                 return -1;
