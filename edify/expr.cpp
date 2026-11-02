@@ -57,6 +57,7 @@ Value* EvaluateValue(State* state, Expr* expr) {
 Value* StringValue(char* str) {
     if (str == NULL) return NULL;
     Value* v = reinterpret_cast<Value*>(malloc(sizeof(Value)));
+    if (v == NULL) return NULL;
     v->type = VAL_STRING;
     v->size = strlen(str);
     v->data = str;
@@ -74,6 +75,7 @@ Value* ConcatFn(const char* name, State* state, int argc, Expr* argv[]) {
         return StringValue(strdup(""));
     }
     char** strings = reinterpret_cast<char**>(malloc(argc * sizeof(char*)));
+    if (strings == NULL) return NULL;
     int i;
     for (i = 0; i < argc; ++i) {
         strings[i] = NULL;
@@ -89,6 +91,7 @@ Value* ConcatFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     result = reinterpret_cast<char*>(malloc(length+1));
+    if (result == NULL) goto done;
     int p;
     p = 0;
     for (i = 0; i < argc; ++i) {
@@ -147,10 +150,17 @@ Value* AbortFn(const char* name, State* state, int argc, Expr* argv[]) {
     // clearing the cookie would reset the state, and this means more chances
     // of OTA upgrade not failing when re-triggered.
 #ifdef TARGET_SUPPORTS_AB
-    std::string tmp(state->errmsg);
-    std::string buf = tmp + "\nDeleting AB_COPY_DONE before exiting..\n";
-    state->errmsg = strdup(buf.c_str());
+    if(state->errmsg != NULL){
+        std::string tmp(state->errmsg);
+        std::string buf = tmp + "\nDeleting AB_COPY_DONE before exiting..\n";
+        free(state->errmsg);
+        state->errmsg = strdup(buf.c_str());
+    }
+#ifndef USE_VAR_CACHE
     unlink("/cache/recovery/AB_COPY_DONE");
+#else
+    unlink("/var/cache/recovery/AB_COPY_DONE");
+#endif
 #ifdef TARGET_NAD_OTA
     system("modprobe -r mtdblock");
 #endif
@@ -172,6 +182,7 @@ Value* AssertFn(const char* name, State* state, int argc, Expr* argv[]) {
             int prefix_len;
             int len = argv[i]->end - argv[i]->start;
             char* err_src = reinterpret_cast<char*>(malloc(len + 20));
+            if (err_src == NULL) return NULL;
             strcpy(err_src, "assert failed: ");
             prefix_len = strlen(err_src);
             memcpy(err_src + prefix_len, state->script + argv[i]->start, len);
@@ -349,10 +360,12 @@ Expr* Build(Function fn, YYLTYPE loc, int count, ...) {
     va_list v;
     va_start(v, count);
     Expr* e = reinterpret_cast<Expr*>(malloc(sizeof(Expr)));
+    if (e == NULL) return NULL;
     e->fn = fn;
     e->name = "(operator)";
     e->argc = count;
     e->argv = reinterpret_cast<Expr**>(malloc(count * sizeof(Expr*)));
+    if (e->argv == NULL) { free(e); return NULL; }
     int i;
     for (i = 0; i < count; ++i) {
         e->argv[i] = va_arg(v, Expr*);
@@ -374,7 +387,9 @@ NamedFunction* fn_table = NULL;
 void RegisterFunction(const char* name, Function fn) {
     if (fn_entries >= fn_size) {
         fn_size = fn_size*2 + 1;
-        fn_table = reinterpret_cast<NamedFunction*>(realloc(fn_table, fn_size * sizeof(NamedFunction)));
+        NamedFunction* new_fn_table = reinterpret_cast<NamedFunction*>(realloc(fn_table, fn_size * sizeof(NamedFunction)));
+        if (new_fn_table == NULL) return;
+        fn_table = new_fn_table;
     }
     fn_table[fn_entries].name = name;
     fn_table[fn_entries].fn = fn;
@@ -425,6 +440,7 @@ void RegisterBuiltins() {
 // to NULL, free the rest and return -1.  Return 0 on success.
 int ReadArgs(State* state, Expr* argv[], int count, ...) {
     char** args = reinterpret_cast<char**>(malloc(count * sizeof(char*)));
+    if (args == NULL) return -1;
     va_list v;
     va_start(v, count);
     int i;
@@ -451,6 +467,7 @@ int ReadArgs(State* state, Expr* argv[], int count, ...) {
 // to NULL, free the rest and return -1.  Return 0 on success.
 int ReadValueArgs(State* state, Expr* argv[], int count, ...) {
     Value** args = reinterpret_cast<Value**>(malloc(count * sizeof(Value*)));
+    if (args == NULL) return -1;
     va_list v;
     va_start(v, count);
     int i;
@@ -478,6 +495,7 @@ int ReadValueArgs(State* state, Expr* argv[], int count, ...) {
 // strings it contains.
 char** ReadVarArgs(State* state, int argc, Expr* argv[]) {
     char** args = (char**)malloc(argc * sizeof(char*));
+    if (args == NULL) return NULL;
     int i = 0;
     for (i = 0; i < argc; ++i) {
         args[i] = Evaluate(state, argv[i]);
@@ -499,6 +517,7 @@ char** ReadVarArgs(State* state, int argc, Expr* argv[]) {
 // Values it contains.
 Value** ReadValueVarArgs(State* state, int argc, Expr* argv[]) {
     Value** args = (Value**)malloc(argc * sizeof(Value*));
+    if (args == NULL) return NULL;
     int i = 0;
     for (i = 0; i < argc; ++i) {
         args[i] = EvaluateValue(state, argv[i]);

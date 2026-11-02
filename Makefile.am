@@ -163,3 +163,7 @@ endif
 if TARGET_NAD_OTA
 recovery_CPPFLAGS += -DTARGET_NAD_OTA
 endif
+
+if USE_VAR_CACHE
+recovery_CPPFLAGS += -DUSE_VAR_CACHE
+endif

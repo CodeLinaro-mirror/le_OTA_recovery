@@ -161,6 +161,11 @@ int sysMapFile(const char* fn, MemMapping* pMap)
 {
     memset(pMap, 0, sizeof(*pMap));
 
+    if (fn == NULL) {
+        LOGE("sysMapFile: null filename\n");
+        return -1;
+    }
+
     if (fn && fn[0] == '@') {
         // A map of blocks
         FILE* mapf = fopen(fn+1, "r");

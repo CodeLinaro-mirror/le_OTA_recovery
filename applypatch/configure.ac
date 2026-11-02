@@ -123,6 +123,12 @@ AC_ARG_WITH([core-headers],
       [CPPFLAGS="$CPPFLAGS -I$withval"],
       with_core-headers=no)
 
+AC_ARG_WITH([var-cache],
+      AC_HELP_STRING([--with-var-cache],
+         [Use this for /var/cache]))
+# Use /var/cache for ota in device for targets supporting it
+AM_CONDITIONAL([USE_VAR_CACHE],[test "x${with_var_cache}" = "xyes"])
+
 AC_SUBST(CFLAGS)
 AC_CONFIG_FILES([     \
         Makefile \
