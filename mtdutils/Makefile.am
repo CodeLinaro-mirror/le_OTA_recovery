@@ -32,7 +32,7 @@ libmtdutils_la_SOURCES := $(min_c_sources) $(h_sources)
 if USE_GLIB
 libmtdutils_la_CFLAGS := $(AM_CFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
 libmtdutils_la_CPPFLAGS := $(AM_CPPFLAGS) -DUSE_GLIB @GLIB_CFLAGS@
-libmtdutils_la_LIBADD := -lm -lpthread @GLIB_LIBS@
+libmtdutils_la_LIBADD := -lm -lpthread @GLIB_LIBS@ -lcutils
 libmtdutils_la_LDFLAGS := -all-static
 else
 libmtdutils_la_CFLAGS := $(AM_CFLAGS)

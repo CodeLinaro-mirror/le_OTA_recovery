@@ -144,28 +144,35 @@ enum ota_status_value {
   OTA_STATUS_FAILED  = 3,
 };
 
-static const char *CACHE_LOG_DIR = "/cache/recovery";
-static const char *COMMAND_FILE = "/cache/recovery/command";
-static const char *INTENT_FILE = "/cache/recovery/intent";
-static const char *LOG_FILE = "/cache/recovery/log";
-static const char *LAST_INSTALL_FILE = "/cache/recovery/last_install";
-static const char *LOCALE_FILE = "/cache/recovery/last_locale";
+#ifndef USE_VAR_CACHE
+#define CACHE_PATH "/cache"
+#else
+#define CACHE_PATH "/var/cache"
+#endif
+
+static const char *CACHE_LOG_DIR = CACHE_PATH "/recovery";
+static const char *COMMAND_FILE = CACHE_PATH "/recovery/command";
+static const char *INTENT_FILE = CACHE_PATH "/recovery/intent";
+static const char *LOG_FILE = CACHE_PATH "/recovery/log";
+static const char *LAST_INSTALL_FILE = CACHE_PATH "/recovery/last_install";
+static const char *LOCALE_FILE = CACHE_PATH "/recovery/last_locale";
 static const char *CONVERT_FBE_DIR = "/tmp/convert_fbe";
 static const char *CONVERT_FBE_FILE = "/tmp/convert_fbe/convert_fbe";
-static const char *CACHE_ROOT = "/cache";
+static const char *CACHE_ROOT = CACHE_PATH;
 static const char *DATA_ROOT = "/data";
 static const char *SDCARD_ROOT = "/sdcard";
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
-static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
-static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
-static const char *STATUS_COOKIE_FILE = "/cache/recovery/ota_status";
+static const char *LAST_KMSG_FILE = CACHE_PATH "/recovery/last_kmsg";
+static const char *LAST_LOG_FILE = CACHE_PATH "/recovery/last_log";
+static const char *STATUS_COOKIE_FILE = CACHE_PATH "/recovery/ota_status";
 #ifdef TARGET_SUPPORTS_ABC
-static const char *ABC_OTA_STATUS_COOKIE_FILE = "/cache/recovery/abc_ota_status";
+static const char *ABC_OTA_STATUS_COOKIE_FILE = CACHE_PATH "/recovery/abc_ota_status";
 #endif
 #ifdef TARGET_NAD_OTA
-static const char *NAD_STATUS_COOKIE_FILE = "/cache/recovery/nad_ota_status";
+static const char *NAD_STATUS_COOKIE_FILE = CACHE_PATH "/recovery/nad_ota_status";
 #endif
+
 static const char *SYSTEMRW_ROOT = "/systemrw";
 static const int KEEP_LOG_COUNT = 5;
 // We will try to apply the update package 5 times at most in case of an I/O error.
@@ -448,11 +455,13 @@ get_args(int *argc, char ***argv) {
             char *save;
             for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
                 if ((arg = strtok_r(NULL, "\n", &save)) == NULL) break;
-                (*argv)[*argc] = strdup(arg);
+                if (*argv != NULL)
+                    (*argv)[*argc] = strdup(arg);
             }
             LOGI("Got arguments from boot message\n");
-             if(argv != NULL) {
-                (*argv)[0] = strdup(arg);
+             if(*argv != NULL) {
+                if (arg != NULL)
+                    (*argv)[0] = strdup(arg);
                  char *save_ptr;
                 for (*argc = 1; *argc < MAX_ARGS; ++*argc) {
                     if ((arg = strtok_r(NULL, "\n", &save_ptr)) == NULL) break;
@@ -472,9 +481,9 @@ get_args(int *argc, char ***argv) {
         if (fp != NULL) {
             char *token;
             char *saveptr = NULL;
-            char *argv0 = (*argv)[0];
+            char *argv0 = (*argv != NULL) ? (*argv)[0] : NULL;
             *argv = (char **) malloc(sizeof(char *) * MAX_ARGS);
-            if(argv != NULL) {
+            if(*argv != NULL) {
                 (*argv)[0] = argv0;  // use the same program name
 
                 char buf[MAX_ARG_LENGTH];
@@ -500,9 +509,11 @@ get_args(int *argc, char ***argv) {
     strlcpy(boot.command, "boot-recovery", sizeof(boot.command));
     strlcpy(boot.recovery, "recovery\n", sizeof(boot.recovery));
     int i;
+    if (*argv != NULL) {
     for (i = 1; i < *argc; ++i) {
         strlcat(boot.recovery, (*argv)[i], sizeof(boot.recovery));
         strlcat(boot.recovery, "\n", sizeof(boot.recovery));
+    }
     }
 #ifdef ENABLE_LEGACY_BOOTLOADER_MSG_UTILS
     set_bootloader_message(&boot);
@@ -605,7 +616,7 @@ static void rotate_logs(int max) {
 
     // MTD devices usually are low on free-space in cache, so cap the
     // max number of logs retained (from previous iterations) to 1.
-    Volume* v = volume_for_path("/cache");
+    Volume* v = volume_for_path(CACHE_PATH);
     // cache on nand usually has ubifs filesystem
     if (v != nullptr && strcmp(v->fs_type, "ubifs") == 0) {
         max = 1;
@@ -1071,7 +1082,11 @@ static char* browse_directory(const char* path, Device* device) {
 
             if (d_size >= d_alloc) {
                 d_alloc *= 2;
-                dirs = (char**)realloc(dirs, d_alloc * sizeof(char*));
+                char** new_dirs = (char**)realloc(dirs, d_alloc * sizeof(char*));
+                if (new_dirs == NULL) {
+                    break;
+                }
+                dirs = new_dirs;
             }
             dirs[d_size] = (char*)malloc(name_len + 2);
             strlcpy(dirs[d_size], de->d_name, sizeof(dirs[d_size]));
@@ -1083,7 +1098,11 @@ static char* browse_directory(const char* path, Device* device) {
                    strncasecmp(de->d_name + (name_len-4), ".zip", 4) == 0) {
             if (z_size >= z_alloc) {
                 z_alloc *= 2;
-                zips = (char**)realloc(zips, z_alloc * sizeof(char*));
+                char** new_zips = (char**)realloc(zips, z_alloc * sizeof(char*));
+                if (new_zips == NULL) {
+                    break;
+                }
+                zips = new_zips;
             }
             zips[z_size++] = strdup(de->d_name);
         }
@@ -1096,7 +1115,13 @@ static char* browse_directory(const char* path, Device* device) {
     // append dirs to the zips list
     if (d_size + z_size + 1 > z_alloc) {
         z_alloc = d_size + z_size + 1;
-        zips = (char**)realloc(zips, z_alloc * sizeof(char*));
+        char** new_zips = (char**)realloc(zips, z_alloc * sizeof(char*));
+        if (new_zips == NULL) {
+            free(dirs);
+            free(zips);
+            return NULL;
+        }
+        zips = new_zips;
     }
     memcpy(zips + z_size, dirs, d_size * sizeof(char*));
     free(dirs);
@@ -1169,7 +1194,7 @@ static bool wipe_data(int should_confirm, Device* device) {
         device->PreWipeData() &&
         erase_volume("/data") &&
         (has_systemrw ? erase_volume("/systemrw") : true) &&
-        (has_cache ? erase_volume("/cache") : true) &&
+        (has_cache ? erase_volume(CACHE_PATH) : true) &&
         device->PostWipeData();
     ui->Print("Data wipe %s.\n", success ? "complete" : "failed");
     return success;
@@ -1178,7 +1203,7 @@ static bool wipe_data(int should_confirm, Device* device) {
 // Return true on success.
 static bool wipe_cache(bool should_confirm, Device* device) {
     if (!has_cache) {
-        ui->Print("No /cache partition found.\n");
+        ui->Print("No " CACHE_PATH " partition found.\n");
         return false;
     }
 
@@ -1189,7 +1214,7 @@ static bool wipe_cache(bool should_confirm, Device* device) {
     modified_flash = true;
 
     ui->Print("\n-- Wiping cache...\n");
-    bool success = erase_volume("/cache");
+    bool success = erase_volume(CACHE_PATH);
     ui->Print("Cache wipe %s.\n", success ? "complete" : "failed");
     return success;
 }
@@ -1367,7 +1392,7 @@ static void choose_recovery_file(Device* device) {
         }
     } else {
         // If cache partition is not found, view /tmp/recovery.log instead.
-        ui->Print("No /cache partition found.\n");
+        ui->Print("No " CACHE_PATH " partition found.\n");
         if (access(TEMPORARY_LOG_FILE, R_OK) == -1) {
             return;
         } else{
@@ -1482,7 +1507,7 @@ static int apply_from_sdcard(Device* device, bool* wipe_cache) {
               return INSTALL_ERROR;
              }
     }
-    if (ensure_path_mounted("/cache") != 0 ||
+    if (ensure_path_mounted(CACHE_PATH) != 0 ||
         ensure_path_mounted("/tmp") != 0) {
         ui->Print("\nFailed to mount cache/tmp partition\n");
         return INSTALL_ERROR;
@@ -1914,7 +1939,7 @@ int main(int argc, char **argv) {
     load_volume_table();
 #ifdef TARGET_NAD_OTA
     struct stat st;
-    stat("/cache", &st);
+    stat(CACHE_PATH, &st);
     has_cache = (S_ISDIR(st.st_mode)) ? true : false;
     LOGI("has_cache value %d \n", has_cache);
 #else
@@ -2081,7 +2106,7 @@ int main(int argc, char **argv) {
             int len = strlen(update_package) + 10;
             char* modified_path = (char*)malloc(len);
             if (modified_path) {
-                strlcpy(modified_path, "/cache/", len);
+                strlcpy(modified_path, CACHE_PATH "/", len);
                 strlcat(modified_path, update_package+6, len);
                 printf("(replacing path \"%s\" with \"%s\")\n",
                        update_package, modified_path);
@@ -2102,7 +2127,8 @@ int main(int argc, char **argv) {
                             status = INSTALL_ERROR;
                             goto error;
                     }
-                    if (ensure_path_mounted("/cache") != 0 || ensure_path_mounted("/tmp") != 0) {
+                    if (ensure_path_mounted(CACHE_PATH) != 0
+                        || ensure_path_mounted("/tmp") != 0) {
                             ui->Print("\nFailed to mount tmp/cache partition\n");
                             status = INSTALL_ERROR;
                             goto error;

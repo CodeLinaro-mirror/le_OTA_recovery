@@ -34,6 +34,12 @@
 
 #include "applypatch.h"
 
+#ifndef USE_VAR_CACHE
+#define CACHE_PATH "/cache"
+#else
+#define CACHE_PATH "/var/cache"
+#endif
+
 static int EliminateOpenFiles(std::set<std::string>* files) {
   std::unique_ptr<DIR, decltype(&closedir)> d(opendir("/proc"), closedir);
   if (!d) {
@@ -61,7 +67,7 @@ static int EliminateOpenFiles(std::set<std::string>* files) {
       int count = readlink(fd_path.c_str(), link, sizeof(link)-1);
       if (count >= 0) {
         link[count] = '\0';
-        if (strncmp(link, "/cache/", 7) == 0) {
+        if (strncmp(link, CACHE_PATH "/", strlen(CACHE_PATH) +1) == 0) {
           if (files->erase(link) > 0) {
             printf("%s is open by %s\n", link, de->d_name);
           }
@@ -76,8 +82,7 @@ static std::set<std::string> FindExpendableFiles() {
   std::set<std::string> files;
   // We're allowed to delete unopened regular files in any of these
   // directories.
-  const char* dirs[2] = {"/cache", "/cache/recovery/otatest"};
-
+  const char* dirs[2] = {CACHE_PATH, CACHE_PATH "/recovery/otatest"};
   for (size_t i = 0; i < sizeof(dirs)/sizeof(dirs[0]); ++i) {
     std::unique_ptr<DIR, decltype(&closedir)> d(opendir(dirs[i]), closedir);
     if (!d) {
@@ -112,8 +117,8 @@ static std::set<std::string> FindExpendableFiles() {
 }
 
 int MakeFreeSpaceOnCache(size_t bytes_needed) {
-  size_t free_now = FreeSpaceForFile("/cache");
-  printf("%zu bytes free on /cache (%zu needed)\n", free_now, bytes_needed);
+  size_t free_now = FreeSpaceForFile(CACHE_PATH);
+  printf("%zu bytes free on " CACHE_PATH " (%zu needed)\n", free_now, bytes_needed);
 
   if (free_now >= bytes_needed) {
     return 0;
@@ -121,7 +126,7 @@ int MakeFreeSpaceOnCache(size_t bytes_needed) {
   std::set<std::string> files = FindExpendableFiles();
   if (files.empty()) {
     // nothing we can delete to free up space!
-    printf("no files can be deleted to free space on /cache\n");
+    printf("no files can be deleted to free space on " CACHE_PATH "\n");
     return -1;
   }
 
@@ -133,7 +138,7 @@ int MakeFreeSpaceOnCache(size_t bytes_needed) {
 
   for (const auto& file : files) {
     unlink(file.c_str());
-    free_now = FreeSpaceForFile("/cache");
+    free_now = FreeSpaceForFile(CACHE_PATH);
     printf("deleted %s; now %zu bytes free\n", file.c_str(), free_now);
     if (free_now < bytes_needed) {
         break;

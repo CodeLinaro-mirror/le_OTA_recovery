@@ -243,7 +243,9 @@ int bsdiff(u_char* old, off_t oldsize, off_t** IP, u_char* newdata, off_t newsiz
         if (*IP == NULL) {
             off_t* V;
             *IP = reinterpret_cast<off_t*>(malloc((oldsize+1) * sizeof(off_t)));
+            if (*IP == NULL) return -1;
             V = reinterpret_cast<off_t*>(malloc((oldsize+1) * sizeof(off_t)));
+            if (V == NULL) { free(*IP); *IP = NULL; return -1; }
             qsufsort(*IP, V, old, oldsize);
             free(V);
         }

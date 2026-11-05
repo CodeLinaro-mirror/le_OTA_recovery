@@ -254,6 +254,8 @@ INLINE char* readNewUtf8String(unsigned char const** ppSrc, size_t* pLength)
     char* buf;
 
     buf = (char*) malloc(length+1);
+    if (buf == NULL)
+        return NULL;
 
     memcpy(buf, *ppSrc, length);
     buf[length] = '\0';
