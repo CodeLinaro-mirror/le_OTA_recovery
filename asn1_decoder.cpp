@@ -117,6 +117,9 @@ asn1_context_t* asn1_constructed_get(asn1_context_t* ctx) {
         return NULL;
     }
     asn1_context_t* app_ctx = asn1_context_new(ctx->p, length);
+    if (app_ctx == NULL) {
+        return NULL;
+    }
     app_ctx->app_type = type & kMaskAppType;
     return app_ctx;
 }

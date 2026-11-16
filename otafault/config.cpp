@@ -64,6 +64,9 @@ std::string fault_fname(const char* io_type) {
     std::string fname;
     fname.resize(OTAIO_MAX_FNAME_SIZE);
     const ZipEntry* entry = mzFindZipEntry(archive, type_path.c_str());
+    if (entry == NULL) {
+        return std::string();
+    }
     mzReadZipEntry(archive, entry, &fname[0], OTAIO_MAX_FNAME_SIZE);
     return fname;
 }

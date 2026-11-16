@@ -646,6 +646,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount,
     }
 
     MemMapping map;
+    memset(&map, 0, sizeof(map));
     if (path != NULL) {
         if (sysMapFile(path, &map) != 0) {
             LOGE("failed to map file\n");

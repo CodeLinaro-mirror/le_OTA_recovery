@@ -536,14 +536,14 @@ static void EnumerateStash(const std::string& dirname, StashCallback callback, v
         return;
     }
 
-    std::unique_ptr<DIR, int(*)(DIR*)> directory(opendir(dirname.c_str()), closedir);
-
-    if (directory == nullptr) {
+    DIR* raw_dir = opendir(dirname.c_str());
+    if (raw_dir == nullptr) {
         if (errno != ENOENT) {
             fprintf(stderr, "opendir \"%s\" failed: %s\n", dirname.c_str(), strerror(errno));
         }
         return;
     }
+    std::unique_ptr<DIR, int(*)(DIR*)> directory(raw_dir, closedir);
 
     struct dirent* item;
     while ((item = readdir(directory.get())) != nullptr) {
@@ -1268,7 +1268,7 @@ static int PerformCommandDiff(CommandParameters& params) {
         return -1;
     }
 
-    RangeSet tgt;
+    RangeSet tgt = {};
     size_t blocks = 0;
     bool overlap = false;
     int status = 0;
@@ -1677,6 +1677,10 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
     snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data, slot_suffix_arr[inactive_slot]);
     blockdev_filename->data = strdup(buf);
 #endif
+    if (blockdev_filename->data == NULL){
+        printf("%s: failed to get block device name \n", name);
+        return StringValue(strdup(""));
+    }
 #endif
 
 #ifdef TARGET_NAD_FDE
@@ -1819,9 +1823,13 @@ static Value* PerformBlockImageUpdate(const char* name, State* state, int /* arg
         params.cmdline = line_str.c_str();
 
         unsigned int cmdhash = HashString(params.cmdname);
-        const Command* cmd = reinterpret_cast<const Command*>(mzHashTableLookup(cmdht, cmdhash,
-                const_cast<char*>(params.cmdname), CompareCommandNames,
-                false));
+        const Command* cmd = nullptr;
+        if (cmdht != nullptr) {
+                       cmd = reinterpret_cast<const Command*>(mzHashTableLookup(cmdht,cmdhash,
+                             const_cast<char*>(params.cmdname),CompareCommandNames,
+                             false));
+        }
+
 
         if (cmd == nullptr) {
             fprintf(stderr, "unexpected command [%s]\n", params.cmdname);
@@ -2033,6 +2041,10 @@ Value* RangeSha1Fn(const char* name, State* state, int /* argc */, Expr* argv[])
     snprintf(buf, PATH_MAX, "%s%s", blockdev_filename->data, slot_suffix_arr[inactive_slot]);
     blockdev_filename->data = strdup(buf);
 #endif
+    if (blockdev_filename->data == NULL){
+        printf("%s: failed to get block device name \n", name);
+        return StringValue(strdup(""));
+    }
 #endif
 
 #ifdef TARGET_NAD_FDE
@@ -2306,11 +2318,18 @@ Value* BlockEraseFn(const char* name, State* state, int argc, Expr* argv[]) {
     }
 
     size_t total_eb_count = vol_size/leb_size;
-    size_t image_eb_count = (image_size * BLOCKSIZE) / leb_size;
-    struct erase_info_user ei;
+    size_t image_bytes = image_size * BLOCKSIZE;
+    size_t remainder = image_bytes % leb_size;
+    // Image ends exactly at the end of LEB full_eb_count - 1.
+    // First unused LEB is full_eb_count.
+    size_t image_eb_count = image_bytes / leb_size;
+    if (remainder != 0) {
+        // The final occupied LEB is full_eb_count.
+        // Clear its unused tail, then erase only from the next LEB.
+        image_eb_count = (image_bytes / leb_size) + 1;
+    }
     struct erase_info_user64 ei64;
-    image_eb_count++;
-    for (int eb_cnt = image_eb_count ; eb_cnt < total_eb_count; eb_cnt++) {
+    for (size_t eb_cnt = image_eb_count ; eb_cnt < total_eb_count; eb_cnt++) {
       ei64.start = (uint64_t)eb_cnt*leb_size;
       ei64.length = (uint64_t)leb_size;
       ret = ioctl(fd, MEMERASE64, &ei64);
